@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Caffeinate — cegah Mac Mini sleep (display + system) selama jam pasar.
+  Dijalankan sebagai LaunchAgent terpisah supaya app utama bisa restart
+  tanpa kehilangan caffeinate.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.shariata.caffeinate</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- -d: prevent display sleep, -i: prevent idle, -s: prevent system sleep -->
+        <string>/usr/bin/caffeinate</string>
+        <string>-dis</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/hanif/Saham/logs/caffeinate.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/hanif/Saham/logs/caffeinate.log</string>
+</dict>
+</plist>

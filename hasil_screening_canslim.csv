@@ -1,0 +1,25 @@
+Ticker,Status,Rekomendasi TV,Harga,Jarak 52W High,EPS QnQ,ROE,PER,PBV,DER (%),Free Float,Catatan Gagal
+ADRO,GAGAL,SELL,2440,-9.63%,N/A,9.44%,9.28x,15641.02x,16.41%,40.38%,"Laba QnQ rendah (Kosong/Negatif), ROE rendah (9.4%)"
+AKRA,GAGAL,BUY,1550,-1.90%,16.10%,18.94%,11.93x,2.43x,34.16%,33.72%,Laba QnQ rendah (16.1%)
+ANTM,GAGAL,SELL,3880,-21.93%,-14.60%,23.03%,12.94x,2.64x,12.45%,35.00%,"Harga < 85% dari 52W High, Laba QnQ rendah (-14.6%)"
+ASII,GAGAL,SELL,6050,-19.06%,3.10%,14.29%,7.47x,1.06x,37.93%,44.65%,"Harga < 85% dari 52W High, Laba QnQ rendah (3.1%), ROE rendah (14.3%)"
+BRIS,GAGAL,SELL,1790,-40.73%,5.30%,15.60%,10.92x,1.59x,N/A,9.90%,"Harga < 85% dari 52W High, Laba QnQ rendah (5.3%), ROE rendah (15.6%)"
+BRPT,GAGAL,SELL,1950,-56.95%,N/A,31.57%,21.65x,81250.00x,134.82%,28.25%,"Harga < 85% dari 52W High, Laba QnQ rendah (Kosong/Negatif)"
+CPIN,GAGAL,SELL,4110,-23.53%,71.80%,17.52%,11.95x,1.97x,19.51%,44.47%,Harga < 85% dari 52W High
+EXCL,GAGAL,SELL,3000,-34.07%,N/A,-15.70%,N/A,1.83x,209.36%,33.13%,"Harga < 85% dari 52W High, Laba QnQ rendah (Kosong/Negatif), ROE rendah (-15.7%)"
+ICBP,GAGAL,SELL,6725,-40.63%,N/A,15.29%,8.50x,1.52x,64.37%,19.47%,"Harga < 85% dari 52W High, Laba QnQ rendah (Kosong/Negatif), ROE rendah (15.3%)"
+INCO,GAGAL,STRONG_BUY,6825,-13.61%,255.00%,2.76%,54.85x,25950.57x,0.12%,20.63%,ROE rendah (2.8%)
+INDF,GAGAL,BUY,6850,-22.38%,N/A,13.57%,5.63x,0.82x,62.46%,49.92%,"Harga < 85% dari 52W High, Laba QnQ rendah (Kosong/Negatif), ROE rendah (13.6%)"
+INTP,GAGAL,SELL,5200,-30.43%,24.50%,9.93%,7.71x,0.74x,11.82%,27.95%,"Harga < 85% dari 52W High, Laba QnQ rendah (24.5%), ROE rendah (9.9%)"
+KLBF,GAGAL,SELL,875,-45.31%,19.90%,15.18%,10.87x,1.70x,1.21%,39.85%,"Harga < 85% dari 52W High, Laba QnQ rendah (19.9%), ROE rendah (15.2%)"
+MDKA,GAGAL,BUY,3400,-14.14%,N/A,0.55%,N/A,106249.99x,71.14%,50.70%,"Free Float tinggi (50.7%), Laba QnQ rendah (Kosong/Negatif), ROE rendah (0.6%)"
+PGAS,GAGAL,NEUTRAL,1920,-23.81%,45.80%,10.09%,11.15x,16410.26x,29.05%,43.02%,"Harga < 85% dari 52W High, ROE rendah (10.1%)"
+PTBA,GAGAL,NEUTRAL,2910,-9.63%,-18.00%,13.08%,11.45x,1.49x,17.05%,32.80%,"Laba QnQ rendah (-18.0%), ROE rendah (13.1%)"
+PWON,GAGAL,SELL,328,-25.45%,50.30%,10.74%,6.73x,0.70x,20.97%,30.50%,"Harga < 85% dari 52W High, ROE rendah (10.7%)"
+SCMA,GAGAL,SELL,256,-44.41%,109.90%,9.14%,21.05x,2.49x,0.48%,6.57%,"Harga < 85% dari 52W High, ROE rendah (9.1%)"
+SMGR,GAGAL,SELL,2090,-35.89%,189927.50%,0.37%,74.62x,0.32x,21.79%,48.66%,"Harga < 85% dari 52W High, ROE rendah (0.4%)"
+TLKM,GAGAL,SELL,2870,-28.07%,-18.70%,18.31%,13.09x,2.07x,50.11%,47.82%,"Harga < 85% dari 52W High, Laba QnQ rendah (-18.7%)"
+TPIA,GAGAL,STRONG_SELL,5300,-50.30%,N/A,38.13%,20.12x,123255.81x,116.26%,10.68%,"Harga < 85% dari 52W High, Laba QnQ rendah (Kosong/Negatif)"
+UNTR,GAGAL,NEUTRAL,30425,-4.01%,-15.30%,15.08%,7.45x,1.11x,18.34%,37.85%,"Laba QnQ rendah (-15.3%), ROE rendah (15.1%)"
+UNVR,GAGAL,SELL,1575,-43.14%,N/A,106.80%,16.94x,13.37x,14.41%,14.63%,"Harga < 85% dari 52W High, Laba QnQ rendah (Kosong/Negatif)"
+WIKA,GAGAL,SELL,204,0.00%,N/A,-149.52%,N/A,1.44x,1985.14%,7.03%,"Laba QnQ rendah (Kosong/Negatif), ROE rendah (-149.5%)"

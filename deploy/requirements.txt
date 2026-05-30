@@ -1,0 +1,9 @@
+flask>=3.0
+pandas>=2.0
+yfinance>=0.2
+apscheduler>=3.10
+requests>=2.31
+openpyxl>=3.1
+reportlab>=4.0
+gunicorn>=21.0
+numpy>=1.24

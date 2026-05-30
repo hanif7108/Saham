@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.shariata.pipeline</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/hanif/Saham/deploy/macmini/trigger_pipeline.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/hanif/Saham</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/hanif/Saham/venv/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+        <!-- macOS fork-safety: stop "+[NSCharacterSet initialize] may have been in
+             progress in another thread when fork() was called. Crashing instead."
+             yang banjir di launchd_stderr.log saat build_master_data.py / scheduler
+             memanggil subprocess via multiprocessing/Popen pasca-Foundation load. -->
+        <key>OBJC_DISABLE_INITIALIZE_FORK_SAFETY</key>
+        <string>YES</string>
+    </dict>
+
+    <!-- Jalankan pada jadwal spesifik -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <!-- Senin - Jumat jam 08:30 WIB (Pagi) -->
+        <dict>
+            <key>DayOfWeek</key><integer>1</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <dict>
+            <key>DayOfWeek</key><integer>2</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <dict>
+            <key>DayOfWeek</key><integer>3</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <dict>
+            <key>DayOfWeek</key><integer>4</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <dict>
+            <key>DayOfWeek</key><integer>5</integer>
+            <key>Hour</key><integer>8</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+
+        <!-- Senin - Jumat jam 16:00 WIB (Sore) -->
+        <dict>
+            <key>DayOfWeek</key><integer>1</integer>
+            <key>Hour</key><integer>16</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>DayOfWeek</key><integer>2</integer>
+            <key>Hour</key><integer>16</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>DayOfWeek</key><integer>3</integer>
+            <key>Hour</key><integer>16</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>DayOfWeek</key><integer>4</integer>
+            <key>Hour</key><integer>16</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <dict>
+            <key>DayOfWeek</key><integer>5</integer>
+            <key>Hour</key><integer>16</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/hanif/Saham/logs/pipeline_cron_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/hanif/Saham/logs/pipeline_cron_stderr.log</string>
+</dict>
+</plist>

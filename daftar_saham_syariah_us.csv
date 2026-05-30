@@ -1,0 +1,51 @@
+Ticker,Name,Sector,Note
+AAPL,Apple Inc.,Technology,HLAL top-10
+MSFT,Microsoft Corporation,Technology,HLAL top-10
+NVDA,NVIDIA Corporation,Technology,HLAL top-10
+GOOGL,Alphabet Inc. Class A,Communication Services,HLAL top-10
+GOOG,Alphabet Inc. Class C,Communication Services,HLAL top-10
+META,Meta Platforms Inc.,Communication Services,HLAL top-20
+TSLA,Tesla Inc.,Consumer Discretionary,HLAL top-20
+JNJ,Johnson & Johnson,Healthcare,Healthcare large-cap
+PG,Procter & Gamble,Consumer Staples,Consumer staples
+XOM,Exxon Mobil,Energy,Energy major
+CVX,Chevron Corporation,Energy,Energy major
+UNH,UnitedHealth Group,Healthcare,Healthcare large-cap
+LLY,Eli Lilly,Healthcare,Pharma growth
+ABBV,AbbVie Inc.,Healthcare,Pharma
+MRK,Merck & Co,Healthcare,Pharma
+PFE,Pfizer Inc.,Healthcare,Pharma
+TMO,Thermo Fisher Scientific,Healthcare,Healthcare equipment
+ABT,Abbott Laboratories,Healthcare,Healthcare equipment
+AMGN,Amgen Inc.,Healthcare,Biotech
+GILD,Gilead Sciences,Healthcare,Biotech
+ORCL,Oracle Corporation,Technology,Enterprise SW
+CRM,Salesforce Inc.,Technology,Enterprise SW
+ADBE,Adobe Inc.,Technology,Software
+INTC,Intel Corporation,Technology,Semis
+AMD,Advanced Micro Devices,Technology,Semis
+QCOM,Qualcomm Inc.,Technology,Semis
+TXN,Texas Instruments,Technology,Semis
+AVGO,Broadcom Inc.,Technology,Semis
+CSCO,Cisco Systems,Technology,Networking
+IBM,International Business Machines,Technology,Enterprise IT
+NFLX,Netflix Inc.,Communication Services,Streaming
+DIS,Walt Disney Company,Communication Services,Media
+NKE,Nike Inc.,Consumer Discretionary,Apparel
+HD,Home Depot,Consumer Discretionary,Retail
+LOW,Lowe's Companies,Consumer Discretionary,Retail
+COST,Costco Wholesale,Consumer Staples,Retail
+WMT,Walmart Inc.,Consumer Staples,Retail
+KO,Coca-Cola Company,Consumer Staples,Beverages
+PEP,PepsiCo Inc.,Consumer Staples,Beverages
+MCD,McDonald's Corporation,Consumer Discretionary,Restaurants
+SBUX,Starbucks Corporation,Consumer Discretionary,Restaurants
+LIN,Linde plc,Materials,Industrial gas
+CAT,Caterpillar Inc.,Industrials,Heavy machinery
+DE,Deere & Company,Industrials,Agriculture machinery
+LMT,Lockheed Martin,Industrials,Aerospace defense (review)
+BA,Boeing Company,Industrials,Aerospace
+UPS,United Parcel Service,Industrials,Logistics
+HON,Honeywell International,Industrials,Diversified industrial
+GE,General Electric,Industrials,Diversified industrial
+NEE,NextEra Energy,Utilities,Renewable utility

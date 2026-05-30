@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Sharia Trading Assistant — launchd LaunchAgent untuk Mac Mini
+  =============================================================
+  Install: cp ke ~/Library/LaunchAgents/, lalu launchctl load
+  Detail: lihat deploy/macmini/README.md
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.shariata.app</string>
+
+    <!-- Path ke gunicorn dari venv. GANTI USERNAME jika beda. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/hanif/Saham/venv/bin/python3</string>
+        <string>-m</string>
+        <string>gunicorn</string>
+        <string>-c</string>
+        <string>/Users/hanif/Saham/deploy/gunicorn_config.py</string>
+        <string>app:app</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/hanif/Saham</string>
+
+    <!-- Environment variables — Telegram credentials di sini, ATAU pakai .env -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/hanif/Saham/venv/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+        <key>FLASK_DEBUG</key>
+        <string>0</string>
+        <!-- macOS fork-safety: dibutuhkan supaya subprocess Python (yfinance/requests/
+             multiprocessing) tidak crash dengan "+[NSCharacterSet initialize] may have
+             been in progress in another thread when fork() was called". HARUS di-set
+             di level launchd, bukan di dalam Python — kalau di-set dari Python sudah
+             terlambat karena Foundation sudah ter-load. -->
+        <key>OBJC_DISABLE_INITIALIZE_FORK_SAFETY</key>
+        <string>YES</string>
+        <!-- Uncomment & isi kalau ingin set di sini (lebih disarankan pakai .env): -->
+        <!--
+        <key>TELEGRAM_BOT_TOKEN</key>
+        <string>your-bot-token-here</string>
+        <key>TELEGRAM_CHAT_ID</key>
+        <string>your-chat-id-here</string>
+        -->
+    </dict>
+
+    <!-- Auto-start saat user login (Mac Mini biasanya auto-login) -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart kalau crash (max ~10 detik antar percobaan) -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>NetworkState</key>
+        <true/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Logging -->
+    <key>StandardOutPath</key>
+    <string>/Users/hanif/Saham/logs/launchd_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/hanif/Saham/logs/launchd_stderr.log</string>
+
+    <!-- Process priority — biar tidak hog CPU -->
+    <key>Nice</key>
+    <integer>5</integer>
+
+    <!-- Soft limit resources -->
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>1024</integer>
+    </dict>
+</dict>
+</plist>

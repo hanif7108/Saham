@@ -1,0 +1,19 @@
+# Secrets
+.env
+.env.*
+*.bak
+*.bak.*
+
+# Virtual env & cache
+venv/
+__pycache__/
+*.pyc
+
+# Runtime / output
+logs/
+cache/
+state/
+exports/
+
+# OS
+.DS_Store

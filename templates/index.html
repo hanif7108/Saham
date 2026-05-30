@@ -1,0 +1,1983 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- Mobile / PWA hints -->
+    <meta name="theme-color" content="#0b1020">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Sharia TA">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="color-scheme" content="dark">
+    <title>Sharia Trading Assistant v2</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=11">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="background-mesh"></div>
+
+    <div class="container">
+        <header class="glass-panel">
+            <div class="logo">
+                <h1>☪ Sharia Trading Assistant</h1>
+                <p>O'Neil CAN SLIM • 6 Magic Numbers • Technical Signals</p>
+            </div>
+            <div id="idx-market-status" class="market-status-widget">
+                <!-- Populated dynamically by JS -->
+            </div>
+            <div class="header-actions">
+                <button id="btn-theme" class="btn icon-btn" title="Toggle theme">🌗</button>
+                <button id="btn-refresh" class="btn primary">🔄 Refresh</button>
+                <button id="btn-alerts" class="btn secondary">🔔 Cek Alert</button>
+                <button id="btn-telegram" class="btn secondary" title="Kirim rekomendasi ke Telegram">✈️ Telegram</button>
+                <button id="btn-export" class="btn secondary">📥 Export</button>
+                <button id="btn-build-master" class="btn secondary">⚙️ Update Master</button>
+            </div>
+        </header>
+
+        <!-- TABS NAVIGATION -->
+        <div class="tabs-nav glass-panel" style="margin-bottom: 1.5rem; display: flex; gap: 0.5rem; padding: 0.5rem 1rem;">
+            <button id="main-tab-btn-saham" class="tab-btn-main active" onclick="switchMainTab('saham')">🏠 Dashboard</button>
+            <button id="main-tab-btn-idxstock" class="tab-btn-main" onclick="switchMainTab('idxstock')">🇮🇩 IDX Stock</button>
+            <button id="main-tab-btn-usstock" class="tab-btn-main" onclick="switchMainTab('usstock')">🇺🇸 US Stock</button>
+            <button id="main-tab-btn-komoditas" class="tab-btn-main" onclick="switchMainTab('komoditas')">🪙 Emas & Komoditas</button>
+            <button id="main-tab-btn-perakdinar" class="tab-btn-main" onclick="switchMainTab('perakdinar')">🪙 Perak & Dinar</button>
+            <button id="main-tab-btn-top5" class="tab-btn-main" onclick="switchMainTab('top5')">⭐ Top 5 Pilihan</button>
+            <button id="main-tab-btn-portfolio" class="tab-btn-main" onclick="switchMainTab('portfolio')">💼 Portofolio</button>
+            <button id="main-tab-btn-tradersakti" class="tab-btn-main" onclick="switchMainTab('tradersakti')">⚡ Trader Sakti Hub</button>
+            <button id="main-tab-btn-rules" class="tab-btn-main" onclick="switchMainTab('rules')">📜 Rules & Pedoman</button>
+        </div>
+
+        <div id="main-tab-saham-content">
+
+            <!-- ============================================================== -->
+            <!-- DASHBOARD TRADING SYARIAH — overview 6 section (IDX + US Stock) -->
+            <!-- ============================================================== -->
+            <section class="glass-panel dashboard-panel">
+                <div class="panel-header">
+                    <h2>🏠 Dashboard Trading Syariah</h2>
+                    <span id="dashboard-timestamp" class="dashboard-ts">–</span>
+                    <button id="btn-refresh-dashboard" class="btn text-btn">🔄 Refresh Dashboard</button>
+                </div>
+
+                <!-- Verdict harian -->
+                <div id="dashboard-verdict" class="dashboard-verdict">
+                    <span class="loading">Menghitung rekomendasi harian…</span>
+                </div>
+
+                <!-- Grid 6 widget utama -->
+                <div class="dashboard-grid">
+
+                    <!-- 1. Action Plan harian — IDX + US -->
+                    <div class="dashboard-card dashboard-action-card">
+                        <div class="dashboard-card-header">
+                            <h3>🎯 Action Plan Hari Ini</h3>
+                            <span id="dashboard-action-count" class="badge">–</span>
+                        </div>
+                        <h4 class="dashboard-subheader" style="margin-top:0.25rem;">🇮🇩 IDX</h4>
+                        <div id="dashboard-action-list" class="dashboard-action-list">
+                            <p class="loading">Memuat rekomendasi IDX…</p>
+                        </div>
+                        <h4 class="dashboard-subheader" style="margin-top:0.75rem;">🇺🇸 US Stock</h4>
+                        <div id="dashboard-action-list-us" class="dashboard-action-list">
+                            <p class="loading">Memuat rekomendasi US…</p>
+                        </div>
+                    </div>
+
+                    <!-- 2. Alokasi target (saham IDX / saham US / emas / cash) -->
+                    <div class="dashboard-card dashboard-alloc-card">
+                        <div class="dashboard-card-header">
+                            <h3>📊 Alokasi Target</h3>
+                            <span id="dashboard-alloc-action" class="badge">–</span>
+                        </div>
+                        <div class="dashboard-alloc-row" id="dashboard-alloc-bars">
+                            <p class="loading">Menghitung alokasi optimal…</p>
+                        </div>
+                        <ul id="dashboard-alloc-signals" class="dashboard-alloc-signals"></ul>
+                    </div>
+
+                    <!-- 3. Portfolio summary + Top Picks gabungan -->
+                    <div class="dashboard-card dashboard-portfolio-card">
+                        <div class="dashboard-card-header">
+                            <h3>💼 Portofolio &amp; Top Picks</h3>
+                            <span id="dashboard-portfolio-pnl" class="badge">–</span>
+                        </div>
+                        <div class="dashboard-portfolio-summary" id="dashboard-portfolio-summary">
+                            <p class="loading">Memuat portofolio…</p>
+                        </div>
+                    </div>
+
+                    <!-- 4. Komoditas + Market (IHSG & SPX/NDX) -->
+                    <div class="dashboard-card dashboard-commodity-card">
+                        <div class="dashboard-card-header">
+                            <h3>🪙 Komoditas &amp; Market</h3>
+                            <span id="dashboard-ihsg-status" class="badge">IHSG –</span>
+                        </div>
+                        <div class="dashboard-commodity-row" id="dashboard-commodities">
+                            <p class="loading">Memuat harga emas/perak/dinar/indeks…</p>
+                        </div>
+                        <h4 class="dashboard-subheader">🔔 Alert Aktif</h4>
+                        <ul id="dashboard-alerts" class="dashboard-alerts-list">
+                            <li class="loading">Memuat alert…</li>
+                        </ul>
+                    </div>
+
+                    <!-- 5. Top 5 Saham Syariah IDX Hari Ini -->
+                    <div class="dashboard-card dashboard-top5-card">
+                        <div class="dashboard-card-header">
+                            <h3>🇮🇩 Top 5 Saham Syariah IDX</h3>
+                            <span class="badge">Hari Ini</span>
+                        </div>
+                        <ol id="dashboard-top5" class="dashboard-top5-list">
+                            <li class="loading">Memuat top picks IDX…</li>
+                        </ol>
+                    </div>
+
+                    <!-- 6. Top 5 Saham Syariah US Hari Ini -->
+                    <div class="dashboard-card dashboard-top5-us-card">
+                        <div class="dashboard-card-header">
+                            <h3>🇺🇸 Top 5 Saham Syariah US</h3>
+                            <span class="badge">AAOIFI</span>
+                        </div>
+                        <ol id="dashboard-top5-us" class="dashboard-top5-list">
+                            <li class="loading">Memuat top picks US…</li>
+                        </ol>
+                    </div>
+
+                </div>
+                <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:1rem;">
+                    💡 Untuk detail lengkap (decision center, ranking semua emiten, radar prospek), lihat tab
+                    <strong>🇮🇩 IDX Stock</strong> atau <strong>🇺🇸 US Stock</strong>.
+                </p>
+            </section>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- TAB IDX STOCK — chart IHSG 1Y + sektor + decision + portfolio + radar -->
+        <!-- ============================================================== -->
+        <div id="main-tab-idxstock-content" class="hidden">
+            <div class="main-grid">
+                <!-- Kolom Kiri: IHSG chart + market overview -->
+                <section class="glass-panel col-span-2">
+                    <div class="panel-header">
+                        <h2>🇮🇩 IDX Composite (IHSG)</h2>
+                        <span id="ihsg-timestamp" style="font-size:0.85rem; color:var(--text-secondary);"></span>
+                    </div>
+
+                    <!-- IHSG spot card -->
+                    <div id="ihsg-spot-card" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
+                        <div class="text-center loading" style="grid-column: span 3;">Memuat IHSG…</div>
+                    </div>
+
+                    <!-- Grafik IHSG 1 Tahun -->
+                    <div class="panel-header" style="margin-top:1.5rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                        <h2>📈 Grafik IHSG (1 Tahun Terakhir)</h2>
+                        <div class="zoom-buttons" style="display:flex; gap:0.25rem;">
+                            <button type="button" class="btn text-btn" id="btn-ihsg-zoom-7d" onclick="zoomIHSGChart(7)" style="padding:0.25rem 0.5rem; font-size:0.8rem;">7 Hari</button>
+                            <button type="button" class="btn text-btn" id="btn-ihsg-zoom-30d" onclick="zoomIHSGChart(30)" style="padding:0.25rem 0.5rem; font-size:0.8rem;">30 Hari</button>
+                            <button type="button" class="btn text-btn" id="btn-ihsg-zoom-1y" onclick="zoomIHSGChart(365)" style="padding:0.25rem 0.5rem; font-size:0.8rem;">1 Tahun</button>
+                            <button type="button" class="btn text-btn active" id="btn-ihsg-zoom-all" onclick="zoomIHSGChart('all')" style="padding:0.25rem 0.5rem; font-size:0.8rem;">Semua</button>
+                        </div>
+                    </div>
+                    <div style="position:relative; width:100%; height:280px; margin-bottom:1.5rem; background:rgba(0,0,0,0.02); border-radius:8px; padding:0.5rem; border:1px solid rgba(255,255,255,0.05);">
+                        <canvas id="chart-ihsg-history"></canvas>
+                    </div>
+
+                    <!-- Decision Center IDX -->
+                    <div class="panel-header" style="margin-top:1.5rem;">
+                        <h2>🎯 Rekomendasi IDX Hari Ini</h2>
+                        <button id="btn-refresh-decisions" class="btn text-btn">🔄 Update</button>
+                    </div>
+                    <div id="verdict-banner" class="verdict-banner">
+                        <span class="loading">Menghitung rekomendasi...</span>
+                    </div>
+                    <div class="decisions-grid">
+                        <div class="decision-col sell-col">
+                            <h3>🔴 SELL <span class="count" id="count-sell">–</span></h3>
+                            <div id="list-sell" class="decision-list"></div>
+                        </div>
+                        <div class="decision-col buy-col">
+                            <h3>🟢 BUY <span class="count" id="count-buy">–</span></h3>
+                            <div id="list-buy" class="decision-list"></div>
+                        </div>
+                        <div class="decision-col hold-col">
+                            <h3>⏸ HOLD <span class="count" id="count-hold">–</span></h3>
+                            <p id="hold-info" class="hold-info" style="margin-bottom: 0.5rem;">–</p>
+                            <div id="list-hold" class="decision-list"></div>
+                        </div>
+                    </div>
+
+                    <!-- Stats Bar IDX -->
+                    <div class="stats-bar glass-panel" style="margin-top:1rem;">
+                        <div class="stat">
+                            <span class="stat-label">Total Posisi</span>
+                            <span class="stat-value" id="stat-positions">–</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Avg P/L</span>
+                            <span class="stat-value" id="stat-pnl">–</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Prospek Hari Ini</span>
+                            <span class="stat-value" id="stat-prospects">–</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Master Data</span>
+                            <span class="stat-value" id="stat-master">–</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Kolom Kanan: Portfolio IDX + Radar Prospek -->
+                <div style="display:flex; flex-direction:column; gap:1.5rem;">
+                    <section class="glass-panel">
+                        <div class="panel-header">
+                            <h2>🛡 Portfolio Monitor (IDX)</h2>
+                            <button id="btn-add-stock" class="btn text-btn">+ Tambah Saham</button>
+                        </div>
+                        <div id="add-stock-form" class="hidden glass-panel form-panel">
+                            <input type="text" id="inp-ticker" placeholder="TICKER (e.g. BRIS)">
+                            <input type="number" id="inp-harga" placeholder="Harga Beli Rata-rata">
+                            <input type="number" id="inp-lot" placeholder="Jumlah Lot">
+                            <button id="btn-submit-stock" class="btn primary">Simpan</button>
+                            <button id="btn-cancel-stock" class="btn secondary">Batal</button>
+                        </div>
+                        <div class="table-container">
+                            <table id="table-portfolio">
+                                <thead>
+                                    <tr>
+                                        <th>TICKER</th>
+                                        <th>BELI</th>
+                                        <th>SEKARANG</th>
+                                        <th>P/L</th>
+                                        <th>FUND</th>
+                                        <th>TECH</th>
+                                        <th>AKSI</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-portfolio">
+                                    <tr><td colspan="8" class="text-center loading">Memuat portofolio...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="glass-panel">
+                        <div class="panel-header">
+                            <h2>🎯 Radar Prospek (IDX)</h2>
+                        </div>
+                        <div class="prospect-info">
+                            <p>Volume spike + scoring fundamental</p>
+                        </div>
+                        <div class="prospect-list" id="list-prospects">
+                            <div class="text-center loading">Memindai...</div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- Ranking Semua Emiten Syariah IDX (full width) -->
+            <section class="glass-panel" style="margin-top: 1.5rem;">
+                <div class="panel-header">
+                    <h2>📊 Ranking Semua Emiten Syariah IDX</h2>
+                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                        <select id="sel-sector" class="select-input">
+                            <option value="">Semua Sektor</option>
+                        </select>
+                        <select id="sel-min-score" class="select-input">
+                            <option value="0">Min skor: 0</option>
+                            <option value="2">Min skor: 2</option>
+                            <option value="4">Min skor: 4</option>
+                            <option value="6">Min skor: 6</option>
+                        </select>
+                        <select id="sel-sort" class="select-input">
+                            <option value="score">Sort: Score</option>
+                            <option value="rsi">Sort: RSI</option>
+                            <option value="sector">Sort: Sektor</option>
+                            <option value="ticker">Sort: Ticker</option>
+                        </select>
+                        <button id="btn-load-all" class="btn primary">🔍 Scan Semua</button>
+                    </div>
+                </div>
+                <div class="all-stats" id="all-stats" style="margin-bottom:0.75rem; color:var(--text-secondary); font-size:0.85rem;"></div>
+                <div class="table-container">
+                    <table id="table-all">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>TICKER</th>
+                                <th>SEKTOR</th>
+                                <th>HARGA</th>
+                                <th>FUND</th>
+                                <th>RSI</th>
+                                <th>TECH</th>
+                                <th>MA</th>
+                                <th>SINYAL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-all">
+                            <tr><td colspan="9" class="text-center" style="color:var(--text-secondary)">Klik "Scan Semua" untuk melihat ranking semua emiten</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- TAB US STOCK — chart NDX/SPX 1Y + universe + AAOIFI screening    -->
+        <!-- ============================================================== -->
+        <div id="main-tab-usstock-content" class="hidden">
+            <div class="main-grid">
+                <!-- Kolom Kiri: Indeks US + chart + ranking -->
+                <section class="glass-panel col-span-2">
+                    <div class="panel-header">
+                        <h2>🇺🇸 US Stock Market (NYSE / NASDAQ)</h2>
+                        <span id="us-market-badge" class="badge" style="background:rgba(120,120,120,0.2);">SESI: –</span>
+                        <span id="us-timestamp" style="font-size:0.85rem; color:var(--text-secondary);"></span>
+                    </div>
+
+                    <!-- Indeks spot cards (S&P 500, NASDAQ, Dow) -->
+                    <div id="us-index-spot-cards" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
+                        <div class="text-center loading" style="grid-column: span 3;">Memuat indeks US…</div>
+                    </div>
+
+                    <!-- Selector indeks + chart -->
+                    <div class="panel-header" style="margin-top:1.5rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                        <h2>📈 Grafik Indeks US (1 Tahun)</h2>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <select id="sel-us-index" class="select-input" onchange="loadUSIndexChart(this.value)">
+                                <option value="GSPC">S&amp;P 500 (^GSPC)</option>
+                                <option value="IXIC">NASDAQ Composite (^IXIC)</option>
+                                <option value="NDX">NASDAQ 100 (^NDX)</option>
+                                <option value="DJI">Dow Jones (^DJI)</option>
+                            </select>
+                            <div class="zoom-buttons" style="display:flex; gap:0.25rem;">
+                                <button type="button" class="btn text-btn" id="btn-usindex-zoom-7d" onclick="zoomUSIndexChart(7)" style="padding:0.25rem 0.5rem; font-size:0.8rem;">7H</button>
+                                <button type="button" class="btn text-btn" id="btn-usindex-zoom-30d" onclick="zoomUSIndexChart(30)" style="padding:0.25rem 0.5rem; font-size:0.8rem;">30H</button>
+                                <button type="button" class="btn text-btn" id="btn-usindex-zoom-1y" onclick="zoomUSIndexChart(365)" style="padding:0.25rem 0.5rem; font-size:0.8rem;">1Th</button>
+                                <button type="button" class="btn text-btn active" id="btn-usindex-zoom-all" onclick="zoomUSIndexChart('all')" style="padding:0.25rem 0.5rem; font-size:0.8rem;">Semua</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="position:relative; width:100%; height:280px; margin-bottom:1.5rem; background:rgba(0,0,0,0.02); border-radius:8px; padding:0.5rem; border:1px solid rgba(255,255,255,0.05);">
+                        <canvas id="chart-us-index-history"></canvas>
+                    </div>
+
+                    <!-- Ranking US Sharia Universe -->
+                    <div class="panel-header" style="margin-top:1.5rem;">
+                        <h2>📊 US Sharia Universe (AAOIFI screening)</h2>
+                        <button id="btn-us-build-master" class="btn text-btn" onclick="triggerUSMasterBuild()">🔄 Build Master</button>
+                    </div>
+                    <p style="font-size:0.8rem; color:var(--text-secondary); margin:0.25rem 0 0.5rem;">
+                        Screening berbasis <strong>AAOIFI Shariah Standard No. 21</strong>:
+                        debt/marketcap ≤ 30%, cash+ST inv/marketcap ≤ 30%, non-permissible income ≤ 5%.
+                    </p>
+                    <div class="table-container" style="max-height:480px; overflow-y:auto;">
+                        <table id="table-us-master">
+                            <thead>
+                                <tr>
+                                    <th>TICKER</th>
+                                    <th>NAMA</th>
+                                    <th>SEKTOR</th>
+                                    <th>MCAP</th>
+                                    <th>HARGA</th>
+                                    <th>PER</th>
+                                    <th>ROE</th>
+                                    <th>DIV YIELD</th>
+                                    <th>AAOIFI</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-us-master">
+                                <tr><td colspan="9" class="text-center" style="color:var(--text-secondary)">
+                                    Master US belum di-build. Klik <strong>🔄 Build Master</strong> di atas.
+                                </td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Kolom Kanan: Portfolio US -->
+                <div style="display:flex; flex-direction:column; gap:1.5rem;">
+                    <section class="glass-panel">
+                        <div class="panel-header">
+                            <h2>🛡 Portfolio Monitor (US)</h2>
+                            <button id="btn-add-stock-us" class="btn text-btn" onclick="toggleUSAddForm()">+ Tambah Saham</button>
+                        </div>
+                        <div id="add-stock-form-us" class="hidden glass-panel form-panel">
+                            <input type="text" id="inp-ticker-us" placeholder="TICKER (e.g. AAPL)">
+                            <input type="number" step="0.01" id="inp-harga-us" placeholder="Harga Beli ($)">
+                            <input type="number" id="inp-lot-us" placeholder="Jumlah Saham">
+                            <button id="btn-submit-stock-us" class="btn primary" onclick="submitUSStock()">Simpan</button>
+                            <button class="btn secondary" onclick="toggleUSAddForm()">Batal</button>
+                        </div>
+                        <div class="table-container">
+                            <table id="table-portfolio-us">
+                                <thead>
+                                    <tr>
+                                        <th>TICKER</th>
+                                        <th>BELI ($)</th>
+                                        <th>SEKARANG ($)</th>
+                                        <th>P/L</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-portfolio-us">
+                                    <tr><td colspan="5" class="text-center loading">Memuat portofolio US...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="glass-panel">
+                        <div class="panel-header">
+                            <h2>⭐ Top 5 US Sharia</h2>
+                        </div>
+                        <ol id="us-top5-list" class="dashboard-top5-list">
+                            <li class="loading">Memuat top picks US…</li>
+                        </ol>
+                    </section>
+
+                    <section class="glass-panel" style="font-size:0.85rem;">
+                        <div class="panel-header">
+                            <h2>ℹ️ Catatan AAOIFI Screening</h2>
+                        </div>
+                        <p style="margin:0.25rem 0;">
+                            Status <code>PASS</code> = lolos rasio AAOIFI. <code>NEEDS_AUDIT</code> = rasio terhitung lolos
+                            tapi <em>non-permissible income</em> tidak tersedia di yfinance — perlu audit manual
+                            (cek <a href="https://zoya.finance" target="_blank">Zoya</a> atau <a href="https://www.spglobal.com/spdji/en/index-family/equity/shariah/" target="_blank">S&amp;P Shariah Indices</a>).
+                        </p>
+                        <p style="margin:0.25rem 0; color:var(--text-secondary);">
+                            <strong>Catatan broker:</strong> trading saham US syariah sebaiknya pakai produk
+                            <em>direct ownership</em> (bukan CFD). CFD secara akad tidak compliant menurut mayoritas ulama,
+                            meski underlying saham-nya lolos AAOIFI.
+                        </p>
+                    </section>
+                </div>
+            </div>
+        </div>
+
+        <div id="main-tab-komoditas-content" class="hidden">
+            <!-- KOMODITAS MONITOR -->
+            <div class="main-grid">
+                <!-- Kolom Kiri: Emas Spot & Logam Mulia -->
+                <section class="glass-panel col-span-2">
+                    <div class="panel-header">
+                        <h2>🪙 Harga Emas & Logam Mulia Spot</h2>
+                        <span id="commodity-timestamp" style="font-size:0.85rem; color:var(--text-secondary);"></span>
+                    </div>
+                    
+                    <!-- Spot Cards Container -->
+                    <div class="spot-cards-container" id="spot-cards-container" style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
+                        <div class="text-center loading" style="grid-column: span 2;">Memuat data spot emas...</div>
+                    </div>
+
+                    <!-- Grafik Emas Antam 1 Tahun -->
+                    <div class="panel-header" style="margin-top:1.5rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                        <h2>📈 Grafik Emas LM Antam (1 Tahun Terakhir)</h2>
+                        <div class="zoom-buttons" style="display:flex; gap:0.25rem;">
+                            <button type="button" class="btn text-btn" id="btn-gold-zoom-7d" onclick="zoomGoldChart(7)" style="padding:0.25rem 0.5rem; font-size:0.8rem;">7 Hari</button>
+                            <button type="button" class="btn text-btn" id="btn-gold-zoom-30d" onclick="zoomGoldChart(30)" style="padding:0.25rem 0.5rem; font-size:0.8rem;">30 Hari</button>
+                            <button type="button" class="btn text-btn" id="btn-gold-zoom-1y" onclick="zoomGoldChart(365)" style="padding:0.25rem 0.5rem; font-size:0.8rem;">1 Tahun</button>
+                            <button type="button" class="btn text-btn active" id="btn-gold-zoom-all" onclick="zoomGoldChart('all')" style="padding:0.25rem 0.5rem; font-size:0.8rem;">Semua</button>
+                        </div>
+                    </div>
+                    <div style="position:relative; width:100%; height:280px; margin-bottom:1.5rem; background:rgba(0,0,0,0.02); border-radius:8px; padding:0.5rem; border:1px solid rgba(255,255,255,0.05);">
+                        <canvas id="chart-gold-history"></canvas>
+                    </div>
+
+                    <div class="panel-header" style="margin-top:1.5rem;">
+                        <h2>📊 Detail Spot Emas Dunia</h2>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Satuan</th>
+                                    <th>USD</th>
+                                    <th>IDR</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-spot-table">
+                                <tr><td colspan="3" class="text-center" style="color:var(--text-secondary)">Data belum tersedia</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="panel-header" style="margin-top:2rem;">
+                        <h2>🏆 Harga Emas Batangan (Antam vs Pegadaian)</h2>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Gram</th>
+                                    <th>Antam (Rp)</th>
+                                    <th>Pegadaian (Rp)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-antam-pegadaian">
+                                <tr><td colspan="3" class="text-center" style="color:var(--text-secondary)">Data belum tersedia</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="panel-header" style="margin-top:2rem;">
+                        <h2>💎 UBS Gold 99.99%</h2>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Gram</th>
+                                    <th>Jual (Rp)</th>
+                                    <th>Beli (Rp)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-ubs">
+                                <tr><td colspan="3" class="text-center" style="color:var(--text-secondary)">Data belum tersedia</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Kolom Kanan: Aset Pluang & Kurs Bank -->
+                <div style="display:flex; flex-direction:column; gap:1.5rem;">
+                    <!-- Panel Prediksi Emas 100g -->
+                    <section class="glass-panel" id="panel-gold-prediction">
+                        <div class="panel-header" style="border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem; justify-content: space-between; align-items: center;">
+                            <h2 style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                                🔮 Prediksi Emas (100g)
+                                <span id="gold-pred-accuracy" style="font-size:0.7rem; padding:0.15rem 0.35rem; border-radius:4px; font-weight:600; display:none; background:rgba(6,182,212,0.1); color:#06b6d4; border:1px solid rgba(6,182,212,0.2);">🎯 Akurasi: --</span>
+                            </h2>
+                            <div style="display:flex; gap:0.25rem; align-items:center;">
+                                <button type="button" class="btn text-btn active" id="btn-gold-pred-1d" onclick="switchGoldPredHorizon('1d')" style="padding:0.2rem 0.4rem; font-size:0.75rem; border-radius: 4px;">1 Hari</button>
+                                <button type="button" class="btn text-btn" id="btn-gold-pred-1w" onclick="switchGoldPredHorizon('1w')" style="padding:0.2rem 0.4rem; font-size:0.75rem; border-radius: 4px;">1 Pekan</button>
+                            </div>
+                            <span id="gold-pred-date" style="font-size:0.75rem; color:var(--text-secondary); background: rgba(255,255,255,0.05); padding: 0.15rem 0.4rem; border-radius: 4px; font-weight:500;">Menganalisis...</span>
+                        </div>
+                        <div id="gold-pred-content">
+                            <div class="text-center loading" style="padding: 1.5rem 0;">Menghitung data model...</div>
+                        </div>
+                    </section>
+
+                    <section class="glass-panel">
+                        <div class="panel-header">
+                            <h2>📈 Aset Pluang (Emas/Kripto/Saham AS)</h2>
+                        </div>
+                        <div class="prospect-list" id="list-pluang-assets">
+                            <div class="text-center loading">Memuat...</div>
+                        </div>
+                    </section>
+
+                    <section class="glass-panel">
+                        <div class="panel-header">
+                            <h2>💵 Kurs Valuta Asing (IDR)</h2>
+                            <select id="sel-kurs-bank" class="select-input" onchange="switchBankKurs(this.value)">
+                                <option value="bi">Bank Indonesia</option>
+                                <option value="bca">BCA</option>
+                                <option value="mandiri">Mandiri</option>
+                            </select>
+                        </div>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Kurs</th>
+                                        <th>Beli</th>
+                                        <th>Jual</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-kurs">
+                                    <tr><td colspan="3" class="text-center" style="color:var(--text-secondary)">Memuat kurs...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB PERAK & DINAR -->
+        <div id="main-tab-perakdinar-content" class="hidden">
+            <div class="main-grid">
+                <!-- Kolom Kiri: Perak Spot & Antam -->
+                <section class="glass-panel col-span-2">
+                    <div class="panel-header">
+                        <h2>🪙 Harga Perak Spot & Antam</h2>
+                        <span id="perak-timestamp" style="font-size:0.85rem; color:var(--text-secondary);"></span>
+                    </div>
+                    
+                    <!-- Spot Cards Container -->
+                    <div class="spot-cards-container" id="silver-spot-cards" style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
+                        <div class="text-center loading" style="grid-column: span 2;">Memuat data spot perak...</div>
+                    </div>
+
+                    <!-- Grafik Perak 1 Tahun -->
+                    <div class="panel-header" style="margin-top:1.5rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                        <h2>📈 Grafik Perak Spot (1 Tahun Terakhir)</h2>
+                        <div class="zoom-buttons" style="display:flex; gap:0.25rem;">
+                            <button type="button" class="btn text-btn" id="btn-silver-zoom-7d" onclick="zoomSilverChart(7)" style="padding:0.25rem 0.5rem; font-size:0.8rem;">7 Hari</button>
+                            <button type="button" class="btn text-btn" id="btn-silver-zoom-30d" onclick="zoomSilverChart(30)" style="padding:0.25rem 0.5rem; font-size:0.8rem;">30 Hari</button>
+                            <button type="button" class="btn text-btn" id="btn-silver-zoom-1y" onclick="zoomSilverChart(365)" style="padding:0.25rem 0.5rem; font-size:0.8rem;">1 Tahun</button>
+                            <button type="button" class="btn text-btn active" id="btn-silver-zoom-all" onclick="zoomSilverChart('all')" style="padding:0.25rem 0.5rem; font-size:0.8rem;">Semua</button>
+                        </div>
+                    </div>
+                    <div style="position:relative; width:100%; height:280px; margin-bottom:1.5rem; background:rgba(0,0,0,0.02); border-radius:8px; padding:0.5rem; border:1px solid rgba(255,255,255,0.05);">
+                        <canvas id="chart-silver-history"></canvas>
+                    </div>
+
+                    <div class="panel-header" style="margin-top:1.5rem;">
+                        <h2>📊 Detail Spot Perak Dunia</h2>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Satuan</th>
+                                    <th>USD</th>
+                                    <th>IDR</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-silver-spot">
+                                <tr><td colspan="3" class="text-center" style="color:var(--text-secondary)">Data belum tersedia</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="panel-header" style="margin-top:2rem;">
+                        <h2>🏆 Harga Perak Batangan Antam</h2>
+                    </div>
+                    <div class="table-container" style="margin-bottom: 1.5rem;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Berat (Gram)</th>
+                                    <th>Harga Estimasi (Rp)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-silver-antam">
+                                <tr><td colspan="2" class="text-center" style="color:var(--text-secondary)">Data belum tersedia</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Kolom Kanan: Dinar KR -->
+                <div style="display:flex; flex-direction:column; gap:1.5rem;">
+                    <!-- Panel Prediksi Dinar KR -->
+                    <section class="glass-panel" id="panel-dinar-prediction">
+                        <div class="panel-header" style="border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem; justify-content: space-between; align-items: center;">
+                            <h2 style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                                🔮 Prediksi Dinar (10 Dinar)
+                                <span id="dinar-pred-accuracy" style="font-size:0.7rem; padding:0.15rem 0.35rem; border-radius:4px; font-weight:600; display:none; background:rgba(245,158,11,0.1); color:#f59e0b; border:1px solid rgba(245,158,11,0.2);">🎯 Akurasi: --</span>
+                            </h2>
+                            <div style="display:flex; gap:0.25rem; align-items:center;">
+                                <button type="button" class="btn text-btn active" id="btn-dinar-pred-1d" onclick="switchDinarPredHorizon('1d')" style="padding:0.2rem 0.4rem; font-size:0.75rem; border-radius: 4px;">1 Hari</button>
+                                <button type="button" class="btn text-btn" id="btn-dinar-pred-1w" onclick="switchDinarPredHorizon('1w')" style="padding:0.2rem 0.4rem; font-size:0.75rem; border-radius: 4px;">1 Pekan</button>
+                            </div>
+                            <span id="dinar-pred-date" style="font-size:0.75rem; color:var(--text-secondary); background: rgba(255,255,255,0.05); padding: 0.15rem 0.4rem; border-radius: 4px; font-weight:500;">Menganalisis...</span>
+                        </div>
+                        <div id="dinar-pred-content">
+                            <div class="text-center loading" style="padding: 1.5rem 0;">Menghitung data model...</div>
+                        </div>
+                    </section>
+
+                    <section class="glass-panel">
+                        <div class="panel-header" style="border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                            <h2>👑 Harga Dinar KR</h2>
+                            <span id="dinar-date-label" style="font-size:0.75rem; color:var(--text-secondary); background: rgba(255,255,255,0.05); padding: 0.15rem 0.4rem; border-radius: 4px; font-weight:500;">Memuat...</span>
+                        </div>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Pecahan Dinar</th>
+                                        <th>Beli (Jual Agen)</th>
+                                        <th>Jual (Buyback Agen)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-dinar-prices">
+                                    <tr><td colspan="3" class="text-center" style="color:var(--text-secondary)">Memuat...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="glass-panel">
+                        <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                            <h2>📈 Grafik Dinar KR (1 Tahun)</h2>
+                            <div class="zoom-buttons" style="display:flex; gap:0.25rem;">
+                                <button type="button" class="btn text-btn" id="btn-dinar-zoom-7d" onclick="zoomDinarChart(7)" style="padding:0.2rem 0.4rem; font-size:0.7rem;">7H</button>
+                                <button type="button" class="btn text-btn" id="btn-dinar-zoom-30d" onclick="zoomDinarChart(30)" style="padding:0.2rem 0.4rem; font-size:0.7rem;">30H</button>
+                                <button type="button" class="btn text-btn" id="btn-dinar-zoom-1y" onclick="zoomDinarChart(365)" style="padding:0.2rem 0.4rem; font-size:0.7rem;">1Th</button>
+                                <button type="button" class="btn text-btn active" id="btn-dinar-zoom-all" onclick="zoomDinarChart('all')" style="padding:0.2rem 0.4rem; font-size:0.7rem;">Semua</button>
+                            </div>
+                        </div>
+                        <div style="position:relative; width:100%; height:220px; background:rgba(0,0,0,0.02); border-radius:8px; padding:0.5rem; border:1px solid rgba(255,255,255,0.05);">
+                            <canvas id="chart-dinar-history"></canvas>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+
+        <div id="main-tab-top5-content" class="hidden">
+            <!-- TOP 5 RECOMMENDATIONS -->
+            <section class="glass-panel">
+                <div class="panel-header">
+                    <h2>⭐ Top 5 Saham Syariah (Pilihan Investasi & Trading)</h2>
+                    <span id="top5-timestamp" style="font-size:0.85rem; color:var(--text-secondary);">Menganalisis pasar...</span>
+                </div>
+                <div class="prospect-info" style="margin-bottom: 1.5rem; line-height: 1.6; color: var(--text-secondary);">
+                    <p>Daftar 5 Saham Syariah pilihan terbaik berdasarkan kombinasi <strong>Analisis Fundamental 6 Magic Numbers</strong> (untuk investasi jangka panjang yang aman) dan <strong>Tren Kenaikan Harga / Momentum Teknikal</strong> (untuk waktu masuk trading yang optimal).</p>
+                </div>
+                <div class="top5-grid" id="top5-grid" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                    <div class="text-center loading" style="padding: 2rem;">Memindai pasar syariah dan merangking emiten...</div>
+                </div>
+            </section>
+        </div>
+
+        <div id="main-tab-portfolio-content" class="hidden">
+            <!-- Sync warnings (broker_transactions vs portfolio.csv mismatch) -->
+            <div id="port-sync-warnings" class="glass-panel" style="display:none; margin-bottom: 1rem; padding: 0.85rem 1rem; border-left: 4px solid #f59e0b; background: rgba(245,158,11,.08); color: #fcd34d;"></div>
+
+            <!-- 1. OVERVIEW DASHBOARD WIDGETS -->
+            <div class="portfolio-dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                <div class="glass-panel stat-card">
+                    <span class="stat-icon">💰</span>
+                    <div class="stat-info">
+                        <h3>Total Nilai Aset</h3>
+                        <p id="port-total-value">Rp 0</p>
+                        <span id="port-total-pnl-pct" class="stat-badge">–</span>
+                    </div>
+                </div>
+                <div class="glass-panel stat-card">
+                    <span class="stat-icon">📥</span>
+                    <div class="stat-info">
+                        <h3>Total Investasi (TopUp)</h3>
+                        <p id="port-total-invested">Rp 0</p>
+                    </div>
+                </div>
+                <div class="glass-panel stat-card">
+                    <span class="stat-icon">📈</span>
+                    <div class="stat-info">
+                        <h3>Unrealized P/L</h3>
+                        <p id="port-unrealized-pnl">Rp 0</p>
+                    </div>
+                </div>
+                <div class="glass-panel stat-card">
+                    <span class="stat-icon">💵</span>
+                    <div class="stat-info">
+                        <h3>Realized P/L</h3>
+                        <p id="port-realized-pnl">Rp 0</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. PLATFORM BREAKDOWN CARDS -->
+            <div class="platform-cards-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                <!-- Bibit Card -->
+                <div class="glass-panel platform-card" id="card-plat-bibit">
+                    <div class="platform-card-header" style="border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="color:#10b981; font-weight: 800; font-size: 1.2rem; display:flex; align-items:center; gap: 0.5rem;">🥦 Bibit (Stockbit)</h3>
+                        <span class="plat-badge" id="bibit-pnl-pct" style="font-size:0.85rem; font-weight:600; padding: 0.2rem 0.5rem; border-radius: 4px;">0%</span>
+                    </div>
+                    <div class="plat-details" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Saldo Kas (RDN):</span><strong id="bibit-cash">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Nilai Portofolio Saham:</span><strong id="bibit-stock-val">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Total Aset:</span><strong id="bibit-total-val">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Total Modal:</span><strong id="bibit-invested">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Total Keuntungan (P/L):</span><strong id="bibit-pnl-rp">Rp 0</strong></div>
+                    </div>
+                </div>
+
+                <!-- Pluang Card -->
+                <div class="glass-panel platform-card" id="card-plat-pluang">
+                    <div class="platform-card-header" style="border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="color:#3b82f6; font-weight: 800; font-size: 1.2rem; display:flex; align-items:center; gap: 0.5rem;">🔵 Pluang</h3>
+                        <span class="plat-badge" id="pluang-pnl-pct" style="font-size:0.85rem; font-weight:600; padding: 0.2rem 0.5rem; border-radius: 4px;">0%</span>
+                    </div>
+                    <div class="plat-details" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Saldo Kas:</span><strong id="pluang-cash">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Nilai Portofolio Aset:</span><strong id="pluang-stock-val">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Total Aset:</span><strong id="pluang-total-val">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Total Modal:</span><strong id="pluang-invested">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Total Keuntungan (P/L):</span><strong id="pluang-pnl-rp">Rp 0</strong></div>
+                    </div>
+                </div>
+
+                <!-- Profit Anywhere Card -->
+                <div class="glass-panel platform-card" id="card-plat-profit">
+                    <div class="platform-card-header" style="border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="color:#eab308; font-weight: 800; font-size: 1.2rem; display:flex; align-items:center; gap: 0.5rem;">⭐ Profit Anywhere</h3>
+                        <span class="plat-badge" id="profit-pnl-pct" style="font-size:0.85rem; font-weight:600; padding: 0.2rem 0.5rem; border-radius: 4px;">0%</span>
+                    </div>
+                    <div class="plat-details" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Saldo Kas (RDN):</span><strong id="profit-cash">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Nilai Portofolio Saham:</span><strong id="profit-stock-val">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Total Aset:</span><strong id="profit-total-val">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Total Modal:</span><strong id="profit-invested">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Total Keuntungan (P/L):</span><strong id="profit-pnl-rp">Rp 0</strong></div>
+                    </div>
+                </div>
+
+                <!-- Pegadaian Tring Card (Emas Digital) -->
+                <div class="glass-panel platform-card" id="card-plat-pegadaian">
+                    <div class="platform-card-header" style="border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="color:#f59e0b; font-weight: 800; font-size: 1.2rem; display:flex; align-items:center; gap: 0.5rem;">🪙 Pegadaian (Tring)</h3>
+                        <span class="plat-badge" id="pegadaian-pnl-pct" style="font-size:0.85rem; font-weight:600; padding: 0.2rem 0.5rem; border-radius: 4px;">0%</span>
+                    </div>
+                    <div class="plat-details" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Total Emas:</span><strong id="pegadaian-gram">0 gram</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Nilai Emas (current):</span><strong id="pegadaian-emas-val">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Saldo Kas:</span><strong id="pegadaian-cash">Rp 0</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Avg Buy Price:</span><strong id="pegadaian-avg-price">Rp 0/gr</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-secondary)">Unrealized P/L:</span><strong id="pegadaian-pnl-rp">Rp 0</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================================== -->
+            <!-- PEGADAIAN EMAS DIGITAL — Transaksi + Form Input                -->
+            <!-- ============================================================== -->
+            <section class="glass-panel" id="pegadaian-section" style="margin-top: 1.5rem;">
+                <div class="panel-header">
+                    <h2>🪙 Pegadaian Tring — Tabungan Emas Digital</h2>
+                    <span id="pegadaian-current-price-display" style="color:var(--text-secondary); font-size:0.85rem;">Harga current: –</span>
+                    <button id="btn-refresh-pegadaian" class="btn text-btn">🔄 Refresh</button>
+                </div>
+
+                <div class="pegadaian-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; align-items: start; margin-top: 1rem;">
+                    <!-- Tabel transaksi -->
+                    <div>
+                        <h4 style="margin-bottom:0.6rem;">📜 Riwayat Transaksi</h4>
+                        <div class="table-container" style="overflow-x:auto; max-height: 480px;">
+                            <table style="width:100%; border-collapse: collapse;" id="table-pegadaian-tx">
+                                <thead>
+                                    <tr>
+                                        <th>Tanggal</th>
+                                        <th>Tipe</th>
+                                        <th style="text-align:right;">Gram</th>
+                                        <th style="text-align:right;">Harga/gr</th>
+                                        <th style="text-align:right;">Nominal</th>
+                                        <th>Catatan</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-pegadaian-tx">
+                                    <tr><td colspan="7" class="text-center" style="color:var(--text-secondary); padding: 1.5rem;">Belum ada transaksi.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Form input transaksi -->
+                    <div class="glass-panel form-entry-panel" style="padding: 1rem;">
+                        <h4 style="margin-bottom:0.7rem;">➕ Tambah Transaksi</h4>
+                        <form id="form-pegadaian-tx" style="display:flex; flex-direction:column; gap:0.6rem;">
+                            <label>Tipe Transaksi
+                                <select id="pgd-tipe" required>
+                                    <option value="BUY">BUY — Beli Emas</option>
+                                    <option value="SELL">SELL — Jual Emas</option>
+                                    <option value="TOPUP">TOPUP — Isi Saldo</option>
+                                    <option value="WITHDRAWAL">WITHDRAWAL — Tarik Saldo</option>
+                                </select>
+                            </label>
+                            <label>Tanggal
+                                <input type="date" id="pgd-tanggal" required>
+                            </label>
+                            <label id="pgd-label-gram">Gram Emas
+                                <input type="number" id="pgd-gram" step="0.0001" min="0" placeholder="0.5">
+                            </label>
+                            <label id="pgd-label-harga">Harga per Gram (Rp)
+                                <input type="number" id="pgd-harga" step="1" min="0" placeholder="auto-fill dari Pegadaian">
+                            </label>
+                            <label>Nominal (Rp) <span style="font-size:0.7rem; color:var(--text-secondary)">— auto-isi untuk BUY/SELL</span>
+                                <input type="number" id="pgd-nominal" step="1" min="0">
+                            </label>
+                            <label>Fee (Rp) <span style="font-size:0.7rem; color:var(--text-secondary)">— opsional</span>
+                                <input type="number" id="pgd-fee" step="1" min="0" value="0">
+                            </label>
+                            <label>Catatan
+                                <input type="text" id="pgd-catatan" placeholder="opsional, mis. 'Akumulasi target alokasi'">
+                            </label>
+                            <button type="submit" class="btn primary">Simpan Transaksi</button>
+                            <p id="pgd-form-msg" style="margin:0; font-size:0.78rem;"></p>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. ACTIVE HOLDINGS & INPUTS SECTION -->
+            <div class="portfolio-main-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; align-items: start;">
+                <!-- Active Holdings Table -->
+                <section class="glass-panel" style="min-height: 480px;">
+                    <div class="panel-header">
+                        <h2>📊 Saham & Aset Aktif</h2>
+                    </div>
+                    <div class="table-container" style="overflow-x:auto;">
+                        <table style="width:100%; border-collapse: collapse;">
+                            <thead>
+                                <tr>
+                                    <th>Aset / Saham</th>
+                                    <th>Platform</th>
+                                    <th style="text-align:right;">Rata-rata</th>
+                                    <th style="text-align:right;">Jumlah</th>
+                                    <th style="text-align:right;">Harga Saat Ini</th>
+                                    <th style="text-align:right;">Nilai Aset</th>
+                                    <th style="text-align:right;">Unrealized P/L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-holdings">
+                                <tr><td colspan="7" class="text-center" style="color:var(--text-secondary); padding: 2rem;">Belum ada kepemilikan saham aktif. Silakan tambahkan transaksi beli (BUY).</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Inputs (Manual Form & File Upload Dropzone) -->
+                <div style="display:flex; flex-direction:column; gap:1.5rem;">
+                    <!-- Screenshot Dropzone -->
+                    <section class="glass-panel dropzone-panel">
+                        <div class="panel-header">
+                            <h2>📸 AI Scanner Bukti Transaksi</h2>
+                        </div>
+                        <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.75rem; line-height: 1.4;">
+                            Seret & lepaskan tangkapan layar (screenshot) transaksi Stockbit, Bibit, Pluang, atau Profit Anywhere di bawah ini untuk dideteksi otomatis oleh AI.
+                        </p>
+                        <div id="screenshot-dropzone" class="dropzone">
+                            <div class="dropzone-text-wrapper">
+                                <span class="dropzone-icon">📤</span>
+                                <p>Klik atau Tarik Screenshot ke Sini</p>
+                                <span style="font-size:0.75rem; color:var(--text-secondary);">Mendukung PNG, JPG, WEBP</span>
+                            </div>
+                            <input type="file" id="screenshot-file-input" style="display:none;" accept="image/*">
+                            <!-- Visual Scanner Line overlay -->
+                            <div class="scanner-line hidden"></div>
+                        </div>
+                    </section>
+
+                    <!-- Manual Transaction Form -->
+                    <section class="glass-panel form-entry-panel">
+                        <div class="panel-header">
+                            <h2 id="form-entry-title">📝 Tambah Transaksi Manual</h2>
+                            <button id="btn-clear-form-review" class="btn text-btn hidden" style="color: var(--color-sell); padding: 0 0.5rem; font-size: 0.8rem;">Batal Review</button>
+                        </div>
+                        <!-- Alert Banner for review -->
+                        <div id="form-review-banner" class="review-banner hidden" style="background: rgba(59, 130, 246, 0.15); border: 1px dashed var(--color-brand); border-radius: 8px; padding: 0.5rem; margin-bottom: 0.75rem; font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between;">
+                            <span>🔎 Review AI: Periksa kembali data sebelum menyimpan!</span>
+                        </div>
+                        <form id="form-broker-transaction" style="display:flex; flex-direction:column; gap:0.75rem;">
+                            <div class="form-row" style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                <div class="form-group" style="display:flex; flex-direction:column; gap:0.25rem;">
+                                    <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Tanggal</label>
+                                    <input type="date" id="tx-date" required style="width:100%;">
+                                </div>
+                                <div class="form-group" style="display:flex; flex-direction:column; gap:0.25rem;">
+                                    <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Platform</label>
+                                    <select id="tx-platform" class="select-input" style="height:35px; width:100%; padding:0.4rem;">
+                                        <option value="Bibit">Bibit</option>
+                                        <option value="Pluang">Pluang</option>
+                                        <option value="Profit Anywhere">Profit Anywhere</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row" style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                <div class="form-group" style="display:flex; flex-direction:column; gap:0.25rem;">
+                                    <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Tipe</label>
+                                    <select id="tx-type" class="select-input" style="height:35px; width:100%; padding:0.4rem;">
+                                        <option value="BUY">BUY</option>
+                                        <option value="SELL">SELL</option>
+                                        <option value="TOPUP">TOPUP (Kas)</option>
+                                        <option value="WITHDRAWAL">WITHDRAWAL (Kas)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="display:flex; flex-direction:column; gap:0.25rem;">
+                                    <label id="tx-ticker-label" style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Ticker Saham</label>
+                                    <input type="text" id="tx-ticker" placeholder="misal: BRIS" style="width:100%; text-transform:uppercase;">
+                                </div>
+                            </div>
+                            <div class="form-row" style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                <div class="form-group" style="display:flex; flex-direction:column; gap:0.25rem;">
+                                    <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Harga per Lembar</label>
+                                    <input type="number" id="tx-price" placeholder="misal: 2100" style="width:100%;">
+                                </div>
+                                <div class="form-group" style="display:flex; flex-direction:column; gap:0.25rem;">
+                                    <label id="tx-amount-label" style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Jumlah (Lot)</label>
+                                    <input type="number" step="any" id="tx-amount" placeholder="misal: 5" style="width:100%;">
+                                </div>
+                            </div>
+                            <div class="form-row" style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                <div class="form-group" style="display:flex; flex-direction:column; gap:0.25rem;">
+                                    <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Broker Fee (Rp)</label>
+                                    <input type="number" id="tx-broker-fee" placeholder="misal: 1500" style="width:100%;" value="0">
+                                </div>
+                                <div class="form-group" style="display:flex; flex-direction:column; gap:0.25rem;">
+                                    <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Exchange Fee (Rp)</label>
+                                    <input type="number" id="tx-exchange-fee" placeholder="misal: 500" style="width:100%;" value="0">
+                                </div>
+                            </div>
+                            <div class="form-group" style="display:flex; flex-direction:column; gap:0.25rem;">
+                                <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary);">Nominal Transaksi (TopUp / Auto-hitung)</label>
+                                <input type="number" id="tx-nominal" placeholder="Auto-hitung jika Buy/Sell" style="width:100%;">
+                            </div>
+                            <button type="submit" class="btn primary" style="width:100%; font-weight:600; margin-top:0.5rem;">Simpan Transaksi</button>
+                        </form>
+                    </section>
+                </div>
+            </div>
+
+            <!-- 4. TRANSACTION LEDGER HISTORY -->
+            <section class="glass-panel">
+                <div class="panel-header">
+                    <h2>📋 Riwayat Transaksi</h2>
+                </div>
+                <div class="table-container" style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse: collapse;">
+                        <thead>
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>Platform</th>
+                                <th>Tipe</th>
+                                <th>Ticker</th>
+                                <th style="text-align:right;">Harga</th>
+                                <th style="text-align:right;">Jumlah</th>
+                                <th style="text-align:right;">Total Nominal</th>
+                                <th style="text-align:right;">Realisasi Untung/Rugi (P/L)</th>
+                                <th style="text-align:center;">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-transactions">
+                            <tr><td colspan="9" class="text-center" style="color:var(--text-secondary); padding: 2rem;">Belum ada riwayat transaksi.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <!-- TRADER SAKTI HUB TAB -->
+        <div id="main-tab-tradersakti-content" class="hidden">
+            <!-- Subtab Navigation -->
+            <div class="sub-tabs-nav glass-panel" style="margin-bottom: 1.5rem; display: flex; gap: 0.5rem; padding: 0.5rem; overflow-x: auto;">
+                <button id="ts-subtab-btn-mantra" class="tab-btn-sub active" onclick="switchTSSubTab('mantra')">🔮 Mantra Anti-FOMO</button>
+                <button id="ts-subtab-btn-compounding" class="tab-btn-sub" onclick="switchTSSubTab('compounding')">📊 Kalkulator Compounding</button>
+                <button id="ts-subtab-btn-risk" class="tab-btn-sub" onclick="switchTSSubTab('risk')">🛡️ Manajemen Risiko & MM</button>
+                <button id="ts-subtab-btn-checklist" class="tab-btn-sub" onclick="switchTSSubTab('checklist')">✅ Checklist Entry</button>
+                <button id="ts-subtab-btn-predictor" class="tab-btn-sub" onclick="switchTSSubTab('predictor')">🎯 Prediksi Syariah</button>
+            </div>
+
+            <!-- SUB-TAB 1: MANTRA ANTI-FOMO -->
+            <div id="ts-subtab-mantra-content" class="ts-subtab-content">
+                <div class="tradersakti-grid" style="display: grid; grid-template-columns: 1fr 2fr; gap: 1.5rem; align-items: start; margin-bottom: 1.5rem;">
+                    <!-- Left Column: Interactive Random Mantra Puller -->
+                    <div class="glass-panel" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; min-height: 400px; position: relative;">
+                        <h3 style="margin-bottom: 1.5rem; font-weight: 600;">🔮 Affirmation Booster Harian</h3>
+                        
+                        <!-- 3D Card Container -->
+                        <div class="card-container-3d" id="mantra-random-card-container" style="width: 100%; max-width: 280px; height: 350px; perspective: 1000px; margin-bottom: 1.5rem; cursor: pointer;">
+                            <div class="card-inner-3d" id="mantra-random-card-inner" style="position: relative; width: 100%; height: 100%; text-align: center; transition: transform 0.6s; transform-style: preserve-3d; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.3);">
+                                <!-- Card Front -->
+                                <div class="card-front-3d" style="position: absolute; width: 100%; height: 100%; backface-visibility: hidden; background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(59, 130, 246, 0.2)); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 1.5rem;">
+                                    <div class="card-icon" style="font-size: 4rem; margin-bottom: 1rem; filter: drop-shadow(0 0 10px rgba(59,130,246,0.5));">⚡</div>
+                                    <p style="font-size: 1.1rem; font-weight: 600; color: var(--text-primary);">TRADER SAKTI</p>
+                                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Ketuk atau Klik tombol di bawah untuk menarik Mantra Mindset Anda hari ini</p>
+                                </div>
+                                <!-- Card Back -->
+                                <div class="card-back-3d" style="position: absolute; width: 100%; height: 100%; backface-visibility: hidden; background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(16, 185, 129, 0.15)); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; display: flex; flex-direction: column; justify-content: space-between; padding: 1.5rem; transform: rotateY(180deg); text-align: center;">
+                                    <div style="font-size: 0.8rem; color: var(--color-buy); font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;" id="mantra-random-no">Mantra #--</div>
+                                    <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 1rem 0;">
+                                        <h2 style="font-size: 1.5rem; font-weight: 800; color: var(--text-primary); margin-bottom: 0.75rem; line-height: 1.3;" id="mantra-random-text">Mantra Title</h2>
+                                        <p style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5;" id="mantra-random-explain">Penjelasan singkat...</p>
+                                    </div>
+                                    <div>
+                                        <span class="badge" id="mantra-random-trigger" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); padding: 0.25rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; display: inline-block;">Kondisi</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button id="btn-draw-mantra" class="btn primary" style="width: 100%; max-width: 280px; font-weight: 600;">🔮 Tarik Mantra Mindset</button>
+                    </div>
+
+                    <!-- Right Column: Filterable Grid of 50 Mantras -->
+                    <div class="glass-panel" style="padding: 1.5rem; min-height: 400px;">
+                        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 1rem;">
+                            <div>
+                                <h3 style="font-weight: 600;">🧠 50 Mantra Anti-FOMO & Stres</h3>
+                                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.2rem;">Koleksi petuah psikologi trading untuk mengendalikan emosi</p>
+                            </div>
+                            <!-- Filters -->
+                            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                <input type="text" id="mantra-search" placeholder="Cari mantra..." style="background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text-primary); padding: 0.4rem 0.8rem; border-radius: 8px; font-size: 0.85rem; width: 180px;">
+                                <select id="mantra-filter-trigger" style="background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text-primary); padding: 0.4rem 0.8rem; border-radius: 8px; font-size: 0.85rem; outline: none; cursor: pointer;">
+                                    <option value="">Semua Pemicu/Kondisi</option>
+                                    <option value="Saat harga naik drastis">Saat harga naik drastis</option>
+                                    <option value="Sebelum entry & exit">Sebelum entry & exit</option>
+                                    <option value="Saat harga melawan posisi">Saat harga melawan posisi</option>
+                                    <option value="Sebelum entry">Sebelum entry</option>
+                                    <option value="Setiap saat">Setiap saat</option>
+                                    <option value="Saat ketinggalan entry">Saat ketinggalan entry</option>
+                                    <option value="Saat ambil profit">Saat ambil profit</option>
+                                    <option value="Saat panik atau euforia">Saat panik atau euforia</option>
+                                    <option value="Setelah cut loss">Setelah cut loss</option>
+                                    <option value="Setiap entry">Setiap entry</option>
+                                    <option value="Saat analisa arah market">Saat analisa arah market</option>
+                                    <option value="Saat ragu">Saat ragu</option>
+                                    <option value="Saat baca diskusi trader lain">Saat baca diskusi trader lain</option>
+                                    <option value="Sebelum klik buy/sell">Sebelum klik buy/sell</option>
+                                    <option value="Saat harga jatuh">Saat harga jatuh</option>
+                                    <option value="Saat profit berturut-turut">Saat profit berturut-turut</option>
+                                    <option value="Saat tergoda buka banyak entry">Saat tergoda buka banyak entry</option>
+                                    <option value="Setiap selesai trading">Setiap selesai trading</option>
+                                    <option value="Saat mood tidak stabil">Saat mood tidak stabil</option>
+                                    <option value="Saat tergoda scalping asal">Saat tergoda scalping asal</option>
+                                    <option value="Saat floating loss">Saat floating loss</option>
+                                    <option value="Setelah rugi besar">Setelah rugi besar</option>
+                                    <option value="Saat posisi rugi">Saat posisi rugi</option>
+                                    <option value="Saat posisi sudah cuan">Saat posisi sudah cuan</option>
+                                    <option value="Saat analisa chart">Saat analisa chart</option>
+                                    <option value="Saat market sideways">Saat market sideways</option>
+                                    <option value="Saat merasa minder modal kecil">Saat merasa minder modal kecil</option>
+                                    <option value="Saat kena stop loss">Saat kena stop loss</option>
+                                    <option value="Saat bosan trading">Saat bosan trading</option>
+                                    <option value="Saat mulai lengah">Saat mulai lengah</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Grid -->
+                        <div id="mantra-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; max-height: 550px; overflow-y: auto; padding-right: 0.5rem;">
+                            <!-- Dynamic Cards populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUB-TAB 2: KALKULATOR COMPOUNDING -->
+            <div id="ts-subtab-compounding-content" class="ts-subtab-content hidden">
+                <div class="glass-panel" style="margin-bottom: 1.5rem; padding: 1.5rem;">
+                    <div style="border-bottom: 1px solid var(--panel-border); padding-bottom: 1rem; margin-bottom: 1.5rem;">
+                        <h3 style="font-weight: 600;">📊 Kalkulator Cuan 2 Miliar: 18 Langkah Compounding Sakti</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.2rem;">Lacak dan rencanakan pertumbuhan dana Anda secara terstruktur langkah demi langkah</p>
+                    </div>
+
+                    <!-- Config Panel -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; background: var(--input-bg); padding: 1rem; border-radius: 12px;">
+                        <div>
+                            <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); display: block; margin-bottom: 0.4rem;">Modal Awal (Rp)</label>
+                            <input type="number" id="comp-input-modal" value="50000000" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.5rem 0.75rem; border-radius: 8px; font-weight: bold;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); display: block; margin-bottom: 0.4rem;">Target Akhir (Rp)</label>
+                            <input type="number" id="comp-input-target" value="2000000000" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.5rem 0.75rem; border-radius: 8px; font-weight: bold;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); display: block; margin-bottom: 0.4rem;">Langkah Compounding</label>
+                            <input type="number" id="comp-input-steps" value="18" min="1" max="100" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.5rem 0.75rem; border-radius: 8px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); display: block; margin-bottom: 0.4rem;">Trades per Langkah</label>
+                            <input type="number" id="comp-input-trades" value="4" min="1" max="50" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.5rem 0.75rem; border-radius: 8px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); display: block; margin-bottom: 0.4rem;">Pilih Preset Growth</label>
+                            <select id="comp-select-preset" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.5rem 0.75rem; border-radius: 8px; cursor: pointer; outline: none;">
+                                <option value="equalized">Equalized (Rata-rata Sama)</option>
+                                <option value="conservative">Konservatif (Naik Bertahap)</option>
+                                <option value="moderate">Moderate (Stabil 8-12%)</option>
+                                <option value="aggressive">Agresif (Target Cepat)</option>
+                                <option value="custom">Custom (Kustom Mandiri)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Statistics Summary row -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                        <div class="glass-panel" style="padding: 1rem; background: rgba(255, 255, 255, 0.02); display: flex; flex-direction: column;">
+                            <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em;">Rata-rata Growth / Langkah</span>
+                            <span id="comp-kpi-avg-growth" style="font-size: 1.4rem; font-weight: bold; color: #60a5fa; margin-top: 0.3rem;">--</span>
+                            <span id="comp-kpi-avg-trade-growth" style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.2rem;">Growth/Trade: --</span>
+                        </div>
+                        <div class="glass-panel" style="padding: 1rem; background: rgba(255, 255, 255, 0.02); display: flex; flex-direction: column;">
+                            <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em;">Saldo Akhir Terproyeksi</span>
+                            <span id="comp-kpi-ending-balance" style="font-size: 1.4rem; font-weight: bold; color: var(--color-buy); margin-top: 0.3rem;">Rp --</span>
+                        </div>
+                        <div class="glass-panel" style="padding: 1rem; background: rgba(255, 255, 255, 0.02); display: flex; flex-direction: column;">
+                            <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em;">Gap ke Target</span>
+                            <span id="comp-kpi-gap" style="font-size: 1.4rem; font-weight: bold; color: var(--text-primary); margin-top: 0.3rem;">Rp --</span>
+                        </div>
+                        <div class="glass-panel" style="padding: 1rem; background: rgba(255, 255, 255, 0.02); display: flex; flex-direction: column;">
+                            <span style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em;">Status Target</span>
+                            <span id="comp-kpi-status" style="font-size: 1.4rem; font-weight: bold; margin-top: 0.3rem;">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Target Progress Bar -->
+                    <div style="margin-bottom: 1.5rem; background: rgba(0,0,0,0.2); padding: 0.85rem 1.25rem; border-radius: 8px; border: 1px solid var(--panel-border);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; font-size: 0.8rem;">
+                            <span style="color: var(--text-secondary);">Progress Compounding ke Target</span>
+                            <span id="comp-progress-pct" style="font-weight: bold; color: var(--color-buy);">0%</span>
+                        </div>
+                        <div style="width: 100%; height: 10px; background: rgba(255,255,255,0.05); border-radius: 9999px; overflow: hidden;">
+                            <div id="comp-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #60a5fa, #34d399); transition: width 0.5s ease; box-shadow: 0 0 10px rgba(52, 211, 153, 0.5);"></div>
+                        </div>
+                    </div>
+
+                    <!-- Steps Table -->
+                    <div class="table-container" style="overflow-x: auto; max-height: 480px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem; text-align: left;" id="comp-table">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--panel-border);">
+                                    <th style="padding: 0.75rem 0.5rem; text-align: center; width: 40px;">#</th>
+                                    <th style="padding: 0.75rem 0.5rem; width: 140px;">Growth/Langkah (%)</th>
+                                    <th style="padding: 0.75rem 0.5rem; text-align: right;">Saldo Awal (Rp)</th>
+                                    <th style="padding: 0.75rem 0.5rem; text-align: right;">Saldo Akhir (Rp)</th>
+                                    <th style="padding: 0.75rem 0.5rem; text-align: center; width: 100px;">Trades/Langkah</th>
+                                    <th style="padding: 0.75rem 0.5rem; text-align: right; width: 150px;">Growth/Trade (Butuh)</th>
+                                    <th style="padding: 0.75rem 0.5rem; text-align: center; width: 80px;">Status</th>
+                                    <th style="padding: 0.75rem 0.5rem;">Catatan Target Emiten / Setup</th>
+                                </tr>
+                            </thead>
+                            <tbody id="comp-tbody">
+                                <!-- Populated dynamically by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div style="margin-top: 1rem; display: flex; justify-content: flex-end; gap: 0.5rem;">
+                        <button id="btn-comp-reset-checks" class="btn secondary">🔓 Reset Centang</button>
+                        <button id="btn-comp-reset-all" class="btn icon-btn" style="color: var(--color-sell); border-color: rgba(239, 68, 68, 0.3);" title="Kembalikan ke Setelan Awal">🗑️ Reset Total</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUB-TAB 3: RISK MANAGEMENT & MM -->
+            <div id="ts-subtab-risk-content" class="ts-subtab-content hidden">
+                <div class="tradersakti-grid" style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 1.5rem; align-items: start; margin-bottom: 1.5rem;">
+                    <!-- Column Left: Risk & Position Sizing Calculator -->
+                    <div class="glass-panel" style="padding: 1.5rem;">
+                        <div style="border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+                            <h3 style="font-weight: 600;">🛡️ Kalkulator Risk Management & Position Size</h3>
+                            <button id="btn-sync-portfolio-risk" class="btn secondary" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;" title="Ambil Modal dari Tab Portofolio">🔄 Sinkron Kas</button>
+                        </div>
+
+                        <!-- MM Inputs -->
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1rem;">
+                            <div>
+                                <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Modal/Equity Saat Ini (Rp)</label>
+                                <input type="number" id="risk-input-capital" value="50000000" style="background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.4rem 0.6rem; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Risk per Trade (%)</label>
+                                <input type="number" id="risk-input-risk-pct" value="1.0" min="0.1" max="10" step="0.1" style="background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.4rem 0.6rem; border-radius: 6px;">
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1.25rem;">
+                            <div>
+                                <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Risk/Reward Ratio (R:R)</label>
+                                <input type="number" id="risk-input-rr" value="2.0" min="0.5" max="20" step="0.5" style="background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.4rem 0.6rem; border-radius: 6px;">
+                            </div>
+                            <div style="display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: 0.2rem;">
+                                <span style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Risk Amount per Trade</span>
+                                <span id="risk-display-amount" style="font-weight: bold; color: var(--color-sell); font-size: 1rem;">Rp 500.000</span>
+                            </div>
+                        </div>
+
+                        <!-- Target Profit display -->
+                        <div style="background: rgba(16, 185, 129, 0.05); border: 1px dashed rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.85rem; color: var(--text-secondary);">Target Profit per Posisi (Rp):</span>
+                            <strong id="risk-display-target-profit" style="color: var(--color-buy); font-size: 1.05rem;">Rp 1.000.000</strong>
+                        </div>
+
+                        <!-- Stock Info Form -->
+                        <h4 style="font-size: 0.85rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.75rem; letter-spacing: 0.05em; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.25rem;">Emiten Analisis</h4>
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1.25rem;">
+                            <div>
+                                <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Harga Entry (Beli)</label>
+                                <input type="number" id="risk-input-entry" value="5000" style="background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.4rem 0.6rem; border-radius: 6px; font-weight: bold;">
+                            </div>
+                            <div>
+                                <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Harga Stop Loss (SL)</label>
+                                <input type="number" id="risk-input-sl" value="4850" style="background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.4rem 0.6rem; border-radius: 6px; font-weight: bold;">
+                            </div>
+                        </div>
+
+                        <!-- Results Card -->
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--panel-border); border-radius: 10px; padding: 1rem; font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.6rem;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-secondary);">Risiko per Lembar Saham:</span>
+                                <span id="risk-display-share-risk" style="font-weight: bold;">Rp 150 (3.00%)</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-secondary);">Ukuran Posisi Aman (Lembar):</span>
+                                <span id="risk-display-shares" style="font-weight: bold; color: #60a5fa;">3.333 lembar</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.6rem;">
+                                <span style="color: var(--text-secondary); font-weight: 600;">Ukuran Posisi Aman (Lot):</span>
+                                <strong id="risk-display-lots" style="font-size: 1.1rem; color: #60a5fa;">33 Lot</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-top: 0.2rem;">
+                                <span style="color: var(--text-secondary);">Dana yang Diperlukan:</span>
+                                <span id="risk-display-required-cap" style="font-weight: bold;">Rp 16.500.000</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-secondary);">Persentase Alokasi Modal:</span>
+                                <span id="risk-display-allocation-pct" style="font-weight: bold;">33.00% dari modal</span>
+                            </div>
+                        </div>
+
+                        <!-- Warnings panel -->
+                        <div id="risk-warning-container" class="hidden" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 0.75rem 1rem; margin-top: 1rem; color: #fca5a5; font-size: 0.8rem; line-height: 1.4;">
+                            <!-- Warnings rendered by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Column Right: Projections & Warning Systems -->
+                    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        <!-- Projections Section -->
+                        <div class="glass-panel" style="padding: 1.5rem;">
+                            <h3 style="font-weight: 600; margin-bottom: 1rem;">📈 Proyeksi Skenario Bulanan ke Rp 2 Miliar</h3>
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1rem;">
+                                <div>
+                                    <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Target Besar (Rp)</label>
+                                    <input type="number" id="mm-projection-target" value="2000000000" style="background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.4rem 0.6rem; border-radius: 6px;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Target Growth Bulanan (%)</label>
+                                    <input type="number" id="mm-projection-growth" value="10.0" min="1" max="100" step="0.5" style="background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.4rem 0.6rem; border-radius: 6px;">
+                                </div>
+                            </div>
+                            
+                            <div style="background: rgba(59, 130, 246, 0.05); border: 1px dashed rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
+                                <span style="color: var(--text-secondary);">Estimasi Waktu untuk Mencapai Target:</span>
+                                <strong id="mm-projection-months-needed" style="color: #60a5fa; font-size: 1.05rem;">-- Bulan</strong>
+                            </div>
+
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid var(--panel-border); color: var(--text-secondary);">
+                                        <th style="padding: 0.5rem;">Skenario</th>
+                                        <th style="padding: 0.5rem; text-align: center;">Growth Bulanan</th>
+                                        <th style="padding: 0.5rem; text-align: right;">Bulan ke- Target</th>
+                                        <th style="padding: 0.5rem; text-align: right;">Estimasi Saldo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.5rem 0.5rem; color: #a3e635;">Konservatif</td>
+                                        <td style="padding: 0.5rem 0.5rem; text-align: center;">5%</td>
+                                        <td style="padding: 0.5rem 0.5rem; text-align: right;" id="scenario-months-cons">--</td>
+                                        <td style="padding: 0.5rem 0.5rem; text-align: right;" id="scenario-val-cons">Rp 2M</td>
+                                    </tr>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                                        <td style="padding: 0.5rem 0.5rem; color: #60a5fa;">Moderate</td>
+                                        <td style="padding: 0.5rem 0.5rem; text-align: center;">10%</td>
+                                        <td style="padding: 0.5rem 0.5rem; text-align: right;" id="scenario-months-mod">--</td>
+                                        <td style="padding: 0.5rem 0.5rem; text-align: right;" id="scenario-val-mod">Rp 2M</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 0.5rem 0.5rem; color: #f87171;">Agresif</td>
+                                        <td style="padding: 0.5rem 0.5rem; text-align: center;">15%</td>
+                                        <td style="padding: 0.5rem 0.5rem; text-align: right;" id="scenario-months-aggr">--</td>
+                                        <td style="padding: 0.5rem 0.5rem; text-align: right;" id="scenario-val-aggr">Rp 2M</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Warning System & Affirmations -->
+                        <div class="glass-panel" style="padding: 1.5rem;">
+                            <h3 style="font-weight: 600; margin-bottom: 1rem;">⚠️ Warning System (Anti Margin Call)</h3>
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1rem;">
+                                <div>
+                                    <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Loss Beruntun Saat Ini</label>
+                                    <input type="number" id="mm-input-consecutive-losses" value="0" min="0" max="20" style="background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.4rem 0.6rem; border-radius: 6px;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.3rem;">Batas Maksimal Loss</label>
+                                    <input type="number" id="mm-input-max-losses" value="5" min="1" max="10" style="background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text-primary); width: 100%; padding: 0.4rem 0.6rem; border-radius: 6px;">
+                                </div>
+                            </div>
+
+                            <!-- Consecutive Loss Warning banner -->
+                            <div id="mm-loss-warning-banner" class="hidden" style="background: rgba(239, 68, 68, 0.2); border: 2px solid #ef4444; border-radius: 8px; padding: 0.75rem 1rem; color: #f87171; font-weight: bold; font-size: 0.85rem; text-align: center; margin-bottom: 1rem; animation: pulseRed 1.5s infinite;">
+                                🚨 BATAS LOSS BERUNTUN TERCAPAI!<br>BERHENTI TRADING SEJENAK & EVALUASI STRATEGI!
+                            </div>
+
+                            <!-- Daily Affirmations Checklist -->
+                            <h4 style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.5rem; letter-spacing: 0.05em; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.75rem;">Daily Affirmation & Disiplin</h4>
+                            <div style="display: flex; flex-direction: column; gap: 0.5rem;" id="mm-affirmations-container">
+                                <label style="display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; color: var(--text-primary);">
+                                    <input type="checkbox" id="affirm-1" style="margin-top: 0.2rem;">
+                                    <span>Saya disiplin mengikuti trading plan yang telah dibuat.</span>
+                                </label>
+                                <label style="display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; color: var(--text-primary);">
+                                    <input type="checkbox" id="affirm-2" style="margin-top: 0.2rem;">
+                                    <span>Saya menerima loss kecil untuk menghindari loss besar.</span>
+                                </label>
+                                <label style="display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; color: var(--text-primary);">
+                                    <input type="checkbox" id="affirm-3" style="margin-top: 0.2rem;">
+                                    <span>Saya tidak akan balas dendam (revenge trade) pada market.</span>
+                                </label>
+                                <label style="display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; color: var(--text-primary);">
+                                    <input type="checkbox" id="affirm-4" style="margin-top: 0.2rem;">
+                                    <span>Saya hanya akan entry ketika ada setup A+ yang valid sesuai strategi.</span>
+                                </label>
+                                <label style="display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.85rem; cursor: pointer; color: var(--text-primary);">
+                                    <input type="checkbox" id="affirm-5" style="margin-top: 0.2rem;">
+                                    <span>Profit besar adalah akumulasi dari konsistensi disiplin jangka panjang.</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUB-TAB 4: CHECKLIST ENTRY -->
+            <div id="ts-subtab-checklist-content" class="ts-subtab-content hidden">
+                <div class="tradersakti-grid" style="display: grid; grid-template-columns: 1.2fr 2fr; gap: 1.5rem; align-items: start; margin-bottom: 1.5rem;">
+                    <!-- Left Column: Status Widget & Checklist selector -->
+                    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        <!-- Checklist Type Selector -->
+                        <div class="glass-panel" style="padding: 1.5rem; text-align: center;">
+                            <h3 style="font-weight: 600; margin-bottom: 1rem;">📋 Pilih Checklist Trader Sakti</h3>
+                            <div style="display: flex; background: var(--input-bg); border-radius: 8px; padding: 0.25rem;">
+                                <button id="btn-chk-type-12" class="btn primary" style="flex: 1; font-size: 0.85rem; padding: 0.4rem;" onclick="switchChecklistType(12)">12 Poin Wajib Sebelum Entry</button>
+                                <button id="btn-chk-type-30" class="btn secondary" style="flex: 1; font-size: 0.85rem; padding: 0.4rem;" onclick="switchChecklistType(30)">30 Checklist Toolkit</button>
+                            </div>
+                        </div>
+
+                        <!-- Real-time Status Indicator Widget -->
+                        <div class="glass-panel" id="checklist-verdict-card" style="padding: 2rem; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 250px; transition: all 0.3s ease;">
+                            <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em; margin-bottom: 0.5rem;">Evaluasi Disiplin Pre-Entry</span>
+                            <div id="checklist-verdict-status" style="font-size: 1.8rem; font-weight: 800; padding: 0.75rem 1.5rem; border-radius: 12px; margin-bottom: 1.25rem; transition: all 0.3s ease; text-transform: uppercase;">
+                                Loading...
+                            </div>
+                            
+                            <div style="width: 100%; max-width: 250px; margin-bottom: 0.5rem;">
+                                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.3rem;">
+                                    <span>Poin Tercentang</span>
+                                    <span id="checklist-progress-text" style="font-weight: bold;">0 / 12 (0%)</span>
+                                </div>
+                                <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.05); border-radius: 9999px; overflow: hidden; border: 1px solid var(--panel-border);">
+                                    <div id="checklist-progress-bar" style="width: 0%; height: 100%; transition: width 0.3s ease;"></div>
+                                </div>
+                            </div>
+                            <span id="checklist-verdict-tip" style="font-size: 0.75rem; color: var(--text-secondary); max-width: 280px; line-height: 1.4; margin-top: 0.5rem;">
+                                Centang semua poin wajib sebelum Anda menekan tombol beli (BUY) saham!
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Interactive Checklist Box -->
+                    <div class="glass-panel" style="padding: 1.5rem;">
+                        <div style="border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h3 id="checklist-title" style="font-weight: 600;">12 Poin Wajib Sebelum Entry (Anti Boncos 24 Jam)</h3>
+                                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.2rem;" id="checklist-desc">Instruksi: Pilih centang pada kolom Checklist. ENTRY AMAN jika seluruh poin terpenuhi.</p>
+                            </div>
+                            <button id="btn-reset-checklists" class="btn icon-btn" style="color: var(--text-secondary);" title="Kosongkan Semua Centang">🔄 Clear</button>
+                        </div>
+
+                        <!-- Checkboxes List Container -->
+                        <div id="checklist-items-container" style="display: flex; flex-direction: column; gap: 0.85rem; max-height: 500px; overflow-y: auto; padding-right: 0.5rem;">
+                            <!-- Populated dynamically by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUB-TAB 5: SHARIA PREDICTOR -->
+            <div id="ts-subtab-predictor-content" class="ts-subtab-content hidden">
+                <div class="tradersakti-grid" style="display: grid; grid-template-columns: 1.3fr 1fr; gap: 1.5rem; align-items: start; margin-bottom: 1.5rem;">
+                    <!-- Column Left: Interactive Predictor Engine -->
+                    <div class="glass-panel" style="padding: 1.5rem;">
+                        <div style="border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 1.25rem;">
+                            <h3 style="font-weight: 600;">🎯 Sharia Stock Predictor Engine</h3>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.2rem;">Analisis kepatuhan Syariah & kalkulasi skor akurasi trading plan secara real-time</p>
+                        </div>
+
+                        <!-- Search and Quick Tickers -->
+                        <div style="margin-bottom: 1.25rem;">
+                            <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 0.4rem;">Cari Ticker Saham (IDX)</label>
+                            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+                                <input type="text" id="pred-input-ticker" placeholder="Contoh: BRIS, ANTM, PTBA..." style="background: var(--input-bg); border: 1px solid var(--panel-border); color: var(--text-primary); flex: 1; padding: 0.5rem 0.75rem; border-radius: 8px; font-weight: bold; text-transform: uppercase;">
+                                <button id="btn-run-prediction" class="btn primary" style="font-weight: 600; padding: 0.5rem 1.25rem;">🔮 Analisis</button>
+                            </div>
+                            <!-- Popular options -->
+                            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;">
+                                <span style="font-size: 0.7rem; color: var(--text-secondary);">Populer:</span>
+                                <button class="btn secondary pred-quick-ticker" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;">BRIS</button>
+                                <button class="btn secondary pred-quick-ticker" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;">ANTM</button>
+                                <button class="btn secondary pred-quick-ticker" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;">PGAS</button>
+                                <button class="btn secondary pred-quick-ticker" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;">PTBA</button>
+                                <button class="btn secondary pred-quick-ticker" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;">TLKM</button>
+                                <button class="btn secondary pred-quick-ticker" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;">ADRO</button>
+                                <button class="btn secondary pred-quick-ticker" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;">ASII</button>
+                                <button class="btn secondary pred-quick-ticker" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;">SMGR</button>
+                            </div>
+                        </div>
+
+                        <!-- Loading Indicator -->
+                        <div id="pred-loading" class="hidden text-center" style="padding: 2rem;">
+                            <div class="loading">Memproses data pasar dan menganalisis aturan...</div>
+                        </div>
+
+                        <!-- Results Dashboard -->
+                        <div id="pred-result-container" class="hidden" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 1.25rem;">
+                            <!-- Final Verdict Banner -->
+                            <div id="pred-verdict-card" style="padding: 1.25rem; border-radius: 10px; text-align: center; transition: all 0.3s ease; cursor: pointer;" title="Klik untuk penjelasan rekomendasi & parameter">
+                                <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.7); display: block; margin-bottom: 0.3rem;">Rekomendasi Prediksi Akhir</span>
+                                <h3 id="pred-verdict-title" style="font-size: 1.6rem; font-weight: 800; margin: 0; text-transform: uppercase;">--</h3>
+                                <div id="pred-verdict-score-badge" style="font-size: 0.8rem; margin-top: 0.4rem; display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; background: rgba(0,0,0,0.2);">Skor Akurasi: --/6</div>
+                            </div>
+
+                            <!-- Financial details table -->
+                            <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--panel-border); border-radius: 8px; padding: 0.75rem 1rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.4rem; margin-bottom: 0.4rem;">
+                                    <span style="font-weight: bold; font-size: 0.9rem;" id="pred-stock-name">PT Bank Syariah Indonesia Tbk</span>
+                                    <span id="pred-stock-price" style="font-weight: bold; color: var(--text-primary);">Rp 2.400</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary);">
+                                    <span>Sektor: <span id="pred-stock-sector" style="color: var(--text-primary);">Banks—Regional</span></span>
+                                    <span>Kepatuhan DSN-MUI: <span id="pred-stock-sharia-status" style="font-weight: bold;">HALAL</span></span>
+                                </div>
+                            </div>
+
+                            <!-- Part 1: Sharia Compliance Checklist -->
+                            <div>
+                                <h4 style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.5rem; letter-spacing: 0.05em; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.25rem;">I. Koridor Kepatuhan Syariah</h4>
+                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    <div class="pred-check-item" style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.4rem 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02);">
+                                        <span>🚫 Sektor Usaha Halal (Bukan Tembakau/Judi/Alkohol/Riba)</span>
+                                        <strong id="pred-sharia-chk-sector">--</strong>
+                                    </div>
+                                    <div class="pred-check-item" style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.4rem 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02);">
+                                        <span>📉 Debt to Asset Ratio (Utang Berbunga / Aset ≤ 45%)</span>
+                                        <strong id="pred-sharia-chk-debt">--</strong>
+                                    </div>
+                                    <div class="pred-check-item" style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.4rem 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02);">
+                                        <span>💰 Pendapatan Non-Halal / Total Revenue ≤ 10%</span>
+                                        <strong id="pred-sharia-chk-income">--</strong>
+                                    </div>
+                                    <div class="pred-check-item" style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.4rem 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02);">
+                                        <span>🛡️ Trading Cash Basis (Tanpa Pinjaman Margin / Riba)</span>
+                                        <strong style="color: var(--color-buy);">PASSED (Akun Syariah)</strong>
+                                    </div>
+                                    <div class="pred-check-item" style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.4rem 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02);">
+                                        <span>🔒 Tanpa Short Selling (Menjual Barang Yang Tidak Dimiliki)</span>
+                                        <strong style="color: var(--color-buy);">PASSED (Bebas Short-sell)</strong>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Part 2: Prediction Accuracy Checklist -->
+                            <div>
+                                <h4 style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 0.5rem; letter-spacing: 0.05em; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.25rem;">II. Parameter Akurasi Prediksi (Skor Maksimal: 6)</h4>
+                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    <div class="pred-check-item" style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.4rem 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02);">
+                                        <span>🌐 Arah Pasar Favorable (IHSG > SMA50 - Uptrend)</span>
+                                        <strong id="pred-accuracy-chk-market">--</strong>
+                                    </div>
+                                    <div class="pred-check-item" style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.4rem 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02);">
+                                        <span>📈 Pertumbuhan Laba EPS QnQ > 25% (CANSLIM 'C')</span>
+                                        <strong id="pred-accuracy-chk-eps">--</strong>
+                                    </div>
+                                    <div class="pred-check-item" style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.4rem 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02);">
+                                        <span>⭐ Profitabilitas Tinggi ROE > 15% (CANSLIM 'A')</span>
+                                        <strong id="pred-accuracy-chk-roe">--</strong>
+                                    </div>
+                                    <div class="pred-check-item" style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.4rem 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02);">
+                                        <span>📊 Tren Kenaikan Sehat (Harga > MA20 / MA50 / Golden Cross)</span>
+                                        <strong id="pred-accuracy-chk-trend">--</strong>
+                                    </div>
+                                    <div class="pred-check-item" style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.4rem 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02);">
+                                        <span>⏱️ Momentum RSI Sehat (RSI < 70 - Tidak Overbought)</span>
+                                        <strong id="pred-accuracy-chk-rsi">--</strong>
+                                    </div>
+                                    <div class="pred-check-item" style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.4rem 0.5rem; border-radius: 6px; background: rgba(255,255,255,0.02);">
+                                        <span>⚡ Volume Spike (>1.2x Rata-rata) / Setup Jalur 7% Terdeteksi</span>
+                                        <strong id="pred-accuracy-chk-vol">--</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column Right: Education & Philosophy Guide -->
+                    <div class="glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem;">
+                        <h3 style="font-weight: 600; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 0;">💡 Panduan Kepatuhan & Akurasi</h3>
+                        
+                        <!-- Section Sharia Corridor -->
+                        <div>
+                            <h4 style="font-size: 0.85rem; color: #34d399; margin-bottom: 0.4rem; font-weight: 600;">I. Pilar Kepatuhan Syariah</h4>
+                            <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; margin: 0;">
+                                Trading saham syariah diatur oleh <strong>Fatwa DSN-MUI No. 80/2011</strong>. Prinsip utama adalah menjauhi unsur riba, judi (maysir), ketidakjelasan (gharar), dan haram (sektor terlarang).
+                            </p>
+                            <ul style="font-size: 0.8rem; color: var(--text-secondary); padding-left: 1.25rem; margin-top: 0.4rem; line-height: 1.4;">
+                                <li style="margin-bottom: 0.25rem;"><strong>Tanpa Margin:</strong> Leverage berbayar bunga dilarang.</li>
+                                <li style="margin-bottom: 0.25rem;"><strong>Tanpa Short Selling:</strong> Anda tidak boleh menjual sesuatu yang belum ada di bawah kekuasaan kepemilikan Anda.</li>
+                                <li style="margin-bottom: 0.25rem;"><strong>Constructive Settlement (Qabd Hukmi):</strong> Pembelian saham langsung sah setelah kliring kustodian.</li>
+                            </ul>
+                        </div>
+
+                        <!-- Section Prediction Accuracy -->
+                        <div>
+                            <h4 style="font-size: 0.85rem; color: #60a5fa; margin-bottom: 0.4rem; font-weight: 600;">II. Aturan Peningkatan Akurasi</h4>
+                            <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; margin: 0;">
+                                Akurasi trading plan meningkat drastis jika kita menggabungkan kekuatan <strong>Analisis Fundamental (CANSLIM)</strong> dengan <strong>Momentum Tren</strong>.
+                            </p>
+                            <ul style="font-size: 0.8rem; color: var(--text-secondary); padding-left: 1.25rem; margin-top: 0.4rem; line-height: 1.4;">
+                                <li style="margin-bottom: 0.25rem;"><strong>Arah Pasar (IHSG):</strong> 75% saham bergerak mengikuti IHSG. Berdagang di saat pasar melemah (bearish) memperbesar risiko cut loss.</li>
+                                <li style="margin-bottom: 0.25rem;"><strong>Konfirmasi Volume:</strong> Breakout atau pullback yang valid ditandai dengan partisipasi institutional buy (lonjakan volume).</li>
+                                <li style="margin-bottom: 0.25rem;"><strong>Disiplin Risk/Reward:</strong> Kepatuhan pada risk per trade max 1-2% modal menjamin modal berlipat melalui deret compounding.</li>
+                            </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RULES & PEDOMAN TAB -->
+        <div id="main-tab-rules-content" class="hidden">
+            <!-- Header Banner -->
+            <div class="glass-panel" style="padding: 1.5rem 2rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(59, 130, 246, 0.05) 100%); border-left: 5px solid #10b981;">
+                <div>
+                    <h2 style="font-weight: 800; font-size: 1.6rem; color: var(--text-primary); margin: 0;">📜 Portal Regulasi & Panduan Trading Syariah</h2>
+                    <p style="font-size: 0.9rem; color: var(--text-secondary); margin-top: 0.3rem; line-height: 1.4;">
+                        Panduan lengkap regulasi syariah (Fatwa DSN-MUI No. 80/2011), metodologi CAN SLIM, serta parameter manajemen risiko untuk mengoptimalkan performa portofolio Anda secara berkah dan aman.
+                    </p>
+                </div>
+                <div style="font-size: 3rem; filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.3));">☪</div>
+            </div>
+
+            <!-- Two Column Main Grid -->
+            <div class="rules-main-grid">
+                
+                <!-- COLUMN 1: PEDOMAN SYARIAH DSN-MUI -->
+                <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                    
+                    <!-- Card 1: Skrining Kuantitatif & Kualitatif -->
+                    <div class="glass-panel" style="padding: 1.5rem; border-top: 3px solid #10b981;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                            <span style="font-size: 1.5rem;">📊</span>
+                            <h3 style="font-weight: 600; margin: 0; color: #10b981;">Kriteria Skrining Saham Syariah (DES)</h3>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 1rem;">
+                            Berdasarkan kriteria Otoritas Jasa Keuangan (OJK) dan Dewan Syariah Nasional (DSN-MUI), emiten yang masuk dalam Daftar Efek Syariah (DES) wajib memenuhi kriteria berikut:
+                        </p>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--panel-border); border-radius: 8px; padding: 0.75rem 1rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                    <span style="font-weight: bold; font-size: 0.85rem; color: var(--text-primary);">1. Rasio Utang Berbunga (DAR)</span>
+                                    <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 0.75rem; font-weight: bold; padding: 0.1rem 0.5rem; border-radius: 9999px;">≤ 45%</span>
+                                </div>
+                                <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; margin: 0;">
+                                    Total utang yang berbasis bunga (Interest Bearing Debt) dibandingkan dengan total aset emiten tidak boleh melebihi 45%.
+                                </p>
+                            </div>
+                            
+                            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--panel-border); border-radius: 8px; padding: 0.75rem 1rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                    <span style="font-weight: bold; font-size: 0.85rem; color: var(--text-primary);">2. Rasio Pendapatan Non-Halal</span>
+                                    <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 0.75rem; font-weight: bold; padding: 0.1rem 0.5rem; border-radius: 9999px;">≤ 10%</span>
+                                </div>
+                                <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; margin: 0;">
+                                    Total pendapatan bunga ribawi dan pendapatan tidak halal lainnya dibandingkan dengan total pendapatan usaha (revenue) tidak boleh melebihi 10%.
+                                </p>
+                            </div>
+
+                            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--panel-border); border-radius: 8px; padding: 0.75rem 1rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                                    <span style="font-weight: bold; font-size: 0.85rem; color: var(--text-primary);">3. Sektor Usaha Inti (Core Business)</span>
+                                    <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 0.75rem; font-weight: bold; padding: 0.1rem 0.5rem; border-radius: 9999px;">Halal 100%</span>
+                                </div>
+                                <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; margin: 0;">
+                                    Usaha emiten tidak boleh memproduksi, mendistribusikan, atau memfasilitasi riba (bank konvensional), judi, rokok/tembakau, alkohol, makanan/minuman haram, serta pornografi.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 2: Jenis Transaksi Terlarang -->
+                    <div class="glass-panel" style="padding: 1.5rem; border-top: 3px solid #ef4444;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                            <span style="font-size: 1.5rem;">🚫</span>
+                            <h3 style="font-weight: 600; margin: 0; color: #ef4444;">Jenis Transaksi Terlarang (Fatwa No. 80)</h3>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 1rem;">
+                            Meskipun saham yang dibeli termasuk kategori halal, transaksi Anda dapat menjadi haram jika melibatkan praktik manipulatif atau pinjaman riba:
+                        </p>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                            <div style="background: rgba(239, 68, 68, 0.03); border: 1px solid rgba(239, 68, 68, 0.15); border-radius: 8px; padding: 0.75rem;">
+                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: #f87171; font-weight: bold;">💸 Margin Trading</h4>
+                                <p style="margin: 0; font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
+                                    Membeli saham menggunakan utang berbunga (leverage) dari broker. Ini mengandung unsur riba yang berat.
+                                </p>
+                            </div>
+                            
+                            <div style="background: rgba(239, 68, 68, 0.03); border: 1px solid rgba(239, 68, 68, 0.15); border-radius: 8px; padding: 0.75rem;">
+                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: #f87171; font-weight: bold;">📉 Short Selling</h4>
+                                <p style="margin: 0; font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
+                                    Menjual saham yang belum dimiliki (bai' al-ma'dum) untuk mendapatkan profit dari penurunan harga. Dilarang keras.
+                                </p>
+                            </div>
+                            
+                            <div style="background: rgba(239, 68, 68, 0.03); border: 1px solid rgba(239, 68, 68, 0.15); border-radius: 8px; padding: 0.75rem;">
+                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: #f87171; font-weight: bold;">🎣 Najsy (Pump & Dump)</h4>
+                                <p style="margin: 0; font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
+                                    Melakukan penawaran palsu (order bid/offer palsu) untuk mengelabui publik agar harga saham naik atau turun secara artifisial.
+                                </p>
+                            </div>
+
+                            <div style="background: rgba(239, 68, 68, 0.03); border: 1px solid rgba(239, 68, 68, 0.15); border-radius: 8px; padding: 0.75rem;">
+                                <h4 style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: #f87171; font-weight: bold;">📦 Ikhtikar & Tagrir</h4>
+                                <p style="margin: 0; font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
+                                    Penimbunan saham secara sengaja untuk merekayasa kelangkaan pasar, atau transaksi yang mengandung ketidakjelasan (gharar/tagrir).
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 3: Qabd Hukmi -->
+                    <div class="glass-panel" style="padding: 1.5rem; border-top: 3px solid #60a5fa;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                            <span style="font-size: 1.5rem;">🤝</span>
+                            <h3 style="font-weight: 600; margin: 0; color: #60a5fa;">Konsep Qabd Hukmi (Serah Terima Hukum)</h3>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin: 0;">
+                            Banyak pemula ragu: <strong>"Bolehkah menjual kembali saham di hari yang sama (T+0)?"</strong> Jawabannya adalah <strong>BOLEH</strong>.
+                        </p>
+                        <div style="margin-top: 0.75rem; background: rgba(96, 165, 250, 0.05); border: 1px solid rgba(96, 165, 250, 0.2); border-radius: 8px; padding: 0.75rem 1rem;">
+                            <p style="font-size: 0.8rem; color: var(--text-primary); line-height: 1.45; margin: 0;">
+                                DSN-MUI memperbolehkan hal ini melalui konsep <strong>Qabd Hukmi</strong> (serah terima secara hukum). Ketika transaksi beli dikonfirmasi di bursa saham, Anda secara hukum telah memiliki hak atas saham tersebut dan tercatat di kustodian (KSEI). Meskipun penyelesaian fisik (Qabd Haqiqi) memakan waktu T+2, hak kepemilikan Anda sudah sah dan dapat dipindahtangankan (dijual) seketika itu juga.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COLUMN 2: ATURAN & DISIPLIN TRADING -->
+                <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                    
+                    <!-- Card 1: CAN SLIM Framework -->
+                    <div class="glass-panel" style="padding: 1.5rem; border-top: 3px solid #f59e0b;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                            <span style="font-size: 1.5rem;">📈</span>
+                            <h3 style="font-weight: 600; margin: 0; color: #f59e0b;">Strategi CAN SLIM (William O'Neil)</h3>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 1rem;">
+                            Metode analisis fundamental dan teknikal teruji yang digunakan oleh Trading Assistant untuk menyaring emiten super:
+                        </p>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                            <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                                <strong style="color: #f59e0b; font-family: monospace; font-size: 0.95rem; min-width: 15px;">C</strong>
+                                <div><strong style="color: var(--text-primary);">Current Quarterly Earnings:</strong> Kenaikan laba per saham (EPS) kuartal terakhir minimal 25% dibandingkan kuartal yang sama tahun lalu.</div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                                <strong style="color: #f59e0b; font-family: monospace; font-size: 0.95rem; min-width: 15px;">A</strong>
+                                <div><strong style="color: var(--text-primary);">Annual Earnings Increases:</strong> Pertumbuhan laba tahunan yang konsisten selama 3 tahun terakhir dan ROE (Return on Equity) > 15%.</div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                                <strong style="color: #f59e0b; font-family: monospace; font-size: 0.95rem; min-width: 15px;">N</strong>
+                                <div><strong style="color: var(--text-primary);">New Product, Service, Management, or Highs:</strong> Beli saham yang memiliki katalis baru atau sedang breakout menembus harga tertinggi baru (New Highs).</div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                                <strong style="color: #f59e0b; font-family: monospace; font-size: 0.95rem; min-width: 15px;">S</strong>
+                                <div><strong style="color: var(--text-primary);">Supply and Demand:</strong> Volume beli yang besar saat breakout (Spike > 1.2x rata-rata) menunjukkan akumulasi investor institusi.</div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                                <strong style="color: #f59e0b; font-family: monospace; font-size: 0.95rem; min-width: 15px;">L</strong>
+                                <div><strong style="color: var(--text-primary);">Leader or Laggard:</strong> Pilih saham pemimpin pasar (market leader) dengan Relative Strength (RS) yang kuat, bukan saham pengekor (laggard).</div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                                <strong style="color: #f59e0b; font-family: monospace; font-size: 0.95rem; min-width: 15px;">I</strong>
+                                <div><strong style="color: var(--text-primary);">Institutional Sponsorship:</strong> Memiliki kepemilikan oleh investor institusional berkualitas (reksa dana syariah, dana pensiun) yang terus bertambah.</div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                                <strong style="color: #f59e0b; font-family: monospace; font-size: 0.95rem; min-width: 15px;">M</strong>
+                                <div><strong style="color: var(--text-primary);">Market Direction:</strong> Trading hanya ketika indeks pasar (IHSG) sedang berada dalam kondisi uptrend (berada di atas garis SMA 50).</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 2: Manajemen Risiko & Money Management -->
+                    <div class="glass-panel" style="padding: 1.5rem; border-top: 3px solid #8b5cf6;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                            <span style="font-size: 1.5rem;">🛡️</span>
+                            <h3 style="font-weight: 600; margin: 0; color: #8b5cf6;">Manajemen Risiko & Money Management</h3>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 1rem;">
+                            Kunci utama bertahan hidup dan mencetak profit konsisten di bursa saham adalah kedisiplinan mengelola risiko per trade:
+                        </p>
+
+                        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                            <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+                                <div style="background: rgba(139, 92, 246, 0.15); color: #a78bfa; font-weight: bold; border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.75rem; min-width: 70px; text-align: center;">Cut Loss</div>
+                                <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">
+                                    Batas kerugian maksimum per posisi dibatasi ketat di kisaran <strong>7% s.d. 8%</strong>. Segera keluar tanpa ragu jika batas ini tersentuh.
+                                </div>
+                            </div>
+
+                            <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+                                <div style="background: rgba(139, 92, 246, 0.15); color: #a78bfa; font-weight: bold; border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.75rem; min-width: 70px; text-align: center;">Risk/Reward</div>
+                                <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">
+                                    Gunakan rasio minimal <strong>1:2 atau 1:3</strong>. Jika mengambil risiko cut loss 7%, target profit minimal harus berada di kisaran 14% - 21%.
+                                </div>
+                            </div>
+
+                            <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+                                <div style="background: rgba(139, 92, 246, 0.15); color: #a78bfa; font-weight: bold; border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.75rem; min-width: 70px; text-align: center;">Max Risk</div>
+                                <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">
+                                    Batasi risiko kerugian modal keseluruhan (total equity risk) maksimal <strong>1% s.d. 2%</strong> dari total modal portofolio per satu transaksi.
+                                </div>
+                            </div>
+
+                            <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+                                <div style="background: rgba(139, 92, 246, 0.15); color: #a78bfa; font-weight: bold; border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.75rem; min-width: 70px; text-align: center;">Fokus</div>
+                                <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">
+                                    Jangan terlalu banyak menyebarkan modal. Miliki maksimal <strong>3 s.d. 5 saham terpilih</strong> dalam portofolio agar pengawasan momentum tren tetap terjaga prima.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 3: Mantra Trading & Psikologi -->
+                    <div class="glass-panel" style="padding: 1.5rem; border-top: 3px solid #14b8a6;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                            <span style="font-size: 1.5rem;">🧘</span>
+                            <h3 style="font-weight: 600; margin: 0; color: #14b8a6;">Mantra Anti-FOMO & Psikologi Trading</h3>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0.75rem;">
+                            Pasar saham adalah cerminan psikologi manusia. Kegagalan trading 90% disebabkan oleh ketidakmampuan mengendalikan keserakahan dan ketakutan:
+                        </p>
+                        <blockquote style="border-left: 3px solid #14b8a6; padding-left: 0.75rem; margin: 0.5rem 0; font-style: italic; font-size: 0.8rem; color: var(--text-primary); line-height: 1.4;">
+                            "Saya tidak akan membiarkan emosi mendikte keputusan investasi saya. Saya hanya akan entry ketika ada setup yang valid, dan keluar dengan disiplin sesuai garis pertahanan."
+                        </blockquote>
+                        <ul style="font-size: 0.8rem; color: var(--text-secondary); padding-left: 1.2rem; margin-top: 0.5rem; line-height: 1.45;">
+                            <li style="margin-bottom: 0.25rem;"><strong>Anti-FOMO:</strong> Ketinggalan kereta (saham terbang) adalah hal biasa. Masih ada ratusan peluang esok hari. Jangan mengejar harga tinggi secara impulsif.</li>
+                            <li style="margin-bottom: 0.25rem;"><strong>Sabar Menunggu Setup:</strong> Lebih baik tidak memiliki posisi (cash basis) daripada memaksakan entry pada saham yang tidak memiliki setup teknikal kuat.</li>
+                            <li style="margin-bottom: 0.25rem;"><strong>Terima Kerugian Kecil:</strong> Cut loss kecil adalah biaya operasional bisnis trading. Mengabaikan cut loss kecil akan melahirkan kerugian raksasa yang merusak mental.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>v2.0 • <span id="cache-info">cache --</span> • <a href="#" id="link-clear-cache">clear cache</a></p>
+        </footer>
+    </div>
+
+    <!-- Modal Detail Saham -->
+    <div id="modal-detail" class="modal hidden">
+        <div class="modal-content glass-panel">
+            <div class="modal-header">
+                <h2 id="modal-title">–</h2>
+                <button id="modal-close" class="btn icon-btn">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-meta" id="modal-meta">–</div>
+
+                <div class="modal-tabs">
+                    <button class="tab-btn active" data-tab="chart">Chart</button>
+                    <button class="tab-btn" data-tab="fundamental">Fundamental</button>
+                    <button class="tab-btn" data-tab="technical">Technical</button>
+                    <button class="tab-btn" data-tab="backtest">Backtest</button>
+                    <button class="tab-btn" data-tab="jalur7">Jalur 7%</button>
+                </div>
+
+                <div class="tab-pane active" data-tab-pane="chart">
+                    <canvas id="chart-price"></canvas>
+                    <canvas id="chart-rsi" style="margin-top: 1rem;"></canvas>
+                </div>
+
+                <div class="tab-pane" data-tab-pane="fundamental">
+                    <div id="fund-detail">–</div>
+                </div>
+
+                <div class="tab-pane" data-tab-pane="technical">
+                    <div id="tech-detail">–</div>
+                </div>
+
+                <div class="tab-pane" data-tab-pane="backtest">
+                    <button id="btn-run-backtest" class="btn primary">▶ Jalankan Backtest 1 Tahun</button>
+                    <div id="backtest-result"></div>
+                </div>
+
+                <div class="tab-pane" data-tab-pane="jalur7">
+                    <div id="jalur7-detail">–</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Penjelasan Rekomendasi -->
+    <div id="modal-recommendation" class="modal hidden">
+        <div class="modal-content glass-panel" style="max-width: 600px; padding: 1.5rem; border-radius: 12px; border: 1px solid var(--panel-border); box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+            <div class="modal-header" style="margin-bottom: 1.25rem;">
+                <h2 style="font-size: 1.2rem; display: flex; align-items: center; gap: 0.5rem; color: var(--text-primary); margin: 0;">ℹ️ Panduan Parameter & Sinyal Rekomendasi</h2>
+                <button id="modal-rec-close" class="btn icon-btn" style="font-size: 1.1rem; padding: 0.2rem; color: var(--text-secondary); cursor: pointer;">✕</button>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 1.25rem; font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary);">
+                <div>
+                    <h3 style="color: var(--color-brand); margin: 0 0 0.5rem 0; font-size: 0.95rem; font-weight: 700; border-left: 3px solid var(--color-brand); padding-left: 0.5rem;">1. Koridor Kepatuhan Syariah (DSN-MUI)</h3>
+                    <p style="margin: 0 0 0.5rem 0;">Setiap emiten wajib lolos filter syariah sebelum dianalisis lebih lanjut:</p>
+                    <ul style="padding-left: 1.2rem; margin: 0; list-style-type: disc; display: flex; flex-direction: column; gap: 0.3rem;">
+                        <li><strong>Sektor Usaha Halal</strong>: Tidak bergerak di sektor judi, perbankan ribawi, rokok, minuman keras, babi, atau hiburan non-syariah.</li>
+                        <li><strong>Rasio Utang (DAR) ≤ 45%</strong>: Total utang berbunga dibandingkan total aset perusahaan maksimal 45%.</li>
+                        <li><strong>Pendapatan Non-Halal ≤ 10%</strong>: Pendapatan dari aktivitas non-halal dibandingkan total pendapatan bersih maksimal 10%.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 style="color: var(--color-brand); margin: 0 0 0.5rem 0; font-size: 0.95rem; font-weight: 700; border-left: 3px solid var(--color-brand); padding-left: 0.5rem;">2. Parameter Akurasi Prediksi (Skor Maksimal: 6)</h3>
+                    <p style="margin: 0 0 0.5rem 0;">Akurasi sinyal didasarkan pada 6 aturan terukur (analisis fundamental & teknikal):</p>
+                    <ol style="padding-left: 1.2rem; margin: 0; list-style-type: decimal; display: flex; flex-direction: column; gap: 0.3rem;">
+                        <li><strong>Arah Pasar IHSG</strong>: IHSG berada di atas SMA 50 (Uptrend). Menghindari beli saat pasar keseluruhan sedang bearish parah.</li>
+                        <li><strong>Laba Kuartalan (CANSLIM 'C')</strong>: Pertumbuhan EPS kuartal terbaru dibandingkan kuartal tahun lalu (QnQ) > 25%.</li>
+                        <li><strong>ROE Tahunan (CANSLIM 'A')</strong>: Return on Equity (kemampuan menghasilkan laba atas modal sendiri) > 15%.</li>
+                        <li><strong>Tren Harga Saham</strong>: Harga saat ini berada di atas garis MA20 atau MA50, atau terdeteksi Golden Cross (MA20 > MA50).</li>
+                        <li><strong>RSI Momentum</strong>: Nilai RSI 14-hari berada di rentang sehat (30 - 70) dan tidak overbought (> 70) yang rentan koreksi.</li>
+                        <li><strong>Konfirmasi Volume / Setup</strong>: Adanya lonjakan volume transaksi > 1.2x rata-rata, atau terdeteksi setup aktif di Jalur 7%.</li>
+                    </ol>
+                </div>
+
+                <div>
+                    <h3 style="color: var(--color-brand); margin: 0 0 0.5rem 0; font-size: 0.95rem; font-weight: 700; border-left: 3px solid var(--color-brand); padding-left: 0.5rem;">3. Arti Label Rekomendasi</h3>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
+                        <div style="display: flex; align-items: start; gap: 0.75rem;">
+                            <span class="badge buy" style="padding: 0.15rem 0.5rem; font-size: 0.7rem; width: 100px; text-align: center; font-weight: bold; flex-shrink: 0;">STRONG BUY</span>
+                            <span style="color: var(--text-secondary);"><strong>Skor 5 - 6</strong>: Emiten syariah berkinerja unggul, tren harga sangat sehat dengan konfirmasi volume/setup kuat di tengah pasar kondusif.</span>
+                        </div>
+                        <div style="display: flex; align-items: start; gap: 0.75rem;">
+                            <span class="badge buy" style="padding: 0.15rem 0.5rem; font-size: 0.7rem; width: 100px; text-align: center; font-weight: bold; flex-shrink: 0; filter: hue-rotate(30deg);">ACCUMULATE</span>
+                            <span style="color: var(--text-secondary);"><strong>Skor 3 - 4</strong>: Emiten syariah prospektif yang berada dalam fase akumulasi dengan fundamental yang terbukti sehat. Cocok untuk cicil beli.</span>
+                        </div>
+                        <div style="display: flex; align-items: start; gap: 0.75rem;">
+                            <span class="badge hold" style="padding: 0.15rem 0.5rem; font-size: 0.7rem; width: 100px; text-align: center; font-weight: bold; flex-shrink: 0; color: var(--color-hold); border-color: var(--color-hold);">WATCHLIST</span>
+                            <span style="color: var(--text-secondary);"><strong>Skor 1 - 2</strong>: Saham syariah yang patut diamati/dimasukkan radar pantau. Beberapa parameter belum ideal, tunggu konfirmasi setup.</span>
+                        </div>
+                        <div style="display: flex; align-items: start; gap: 0.75rem;">
+                            <span class="badge hold" style="padding: 0.15rem 0.5rem; font-size: 0.7rem; width: 100px; text-align: center; font-weight: bold; flex-shrink: 0;">HOLD</span>
+                            <span style="color: var(--text-secondary);"><strong>Skor 0</strong>: Tidak memiliki momentum tren, volume, atau pemicu fundamental yang memadai saat ini. Cenderung tunggu dan lihat.</span>
+                        </div>
+                        <div style="display: flex; align-items: start; gap: 0.75rem;">
+                            <span class="badge sell" style="padding: 0.15rem 0.5rem; font-size: 0.7rem; width: 100px; text-align: center; font-weight: bold; flex-shrink: 0;">AVOID</span>
+                            <span style="color: var(--text-secondary);"><strong>Tidak Syariah / Haram</strong>: Saham melanggar rasio keuangan syariah atau memiliki sektor usaha non-halal. Wajib dihindari bagi investor syariah.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='tradersakti_data.js') }}?v=1"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=10"></script>
+</body>
+</html>

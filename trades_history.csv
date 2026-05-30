@@ -1,0 +1,2 @@
+Tanggal,Ticker,Aksi,Harga Beli,Harga Jual,Lot,Lembar,Modal,Hasil,Realized PnL Rp,Realized PnL %,Alasan,Catatan
+2026-04-30,BRMS,SELL,851.27,795,10,1000,851270,795000,-56270,-6.61,CUT LOSS — Tech SELL + Death cross + P/L tembus -3% (Taichi rule),Disiplin cut-loss sesuai panduan

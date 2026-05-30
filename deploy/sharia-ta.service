@@ -1,0 +1,35 @@
+[Unit]
+Description=Sharia Trading Assistant (Flask + Gunicorn)
+After=network.target
+
+[Service]
+Type=notify
+User=hanif
+Group=hanif
+WorkingDirectory=/home/hanif/Saham
+Environment="PATH=/home/hanif/Saham/venv/bin:/usr/bin:/usr/local/bin"
+Environment="PYTHONUNBUFFERED=1"
+
+# Optional: SMTP untuk alert email
+# Environment="SMTP_HOST=smtp.gmail.com"
+# Environment="SMTP_USER=your@gmail.com"
+# Environment="SMTP_PASS=your-app-password"
+# Environment="ALERT_TO=hanif0208@gmail.com"
+
+ExecStart=/home/hanif/Saham/venv/bin/gunicorn -c deploy/gunicorn_config.py app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=20
+
+# Hardening
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/hanif/Saham
+
+[Install]
+WantedBy=multi-user.target
