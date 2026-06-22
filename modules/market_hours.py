@@ -90,8 +90,17 @@ IDX_HOLIDAYS_ALL = IDX_HOLIDAYS_2026 | IDX_HOLIDAYS_2027
 # -------------------- Time helpers -------------------- #
 
 def _now_wib() -> datetime:
-    """Sekarang dalam timezone WIB (UTC+7)."""
-    return datetime.now(timezone.utc).astimezone(TZ_WIB)
+    """Sekarang dalam timezone WIB (UTC+7), merujuk waktu nasional BMKG.
+
+    Memakai modules.time_sync (NTP ntp.bmkg.go.id) agar keputusan jam bursa tidak
+    bergantung pada jam sistem yang bisa drift. Fallback ke jam sistem bila modul
+    time_sync tak tersedia atau NTP gagal (offset 0).
+    """
+    try:
+        from modules.time_sync import now_wib as _bmkg_now_wib
+        return _bmkg_now_wib()
+    except Exception:
+        return datetime.now(timezone.utc).astimezone(TZ_WIB)
 
 
 def _to_wib(dt: Optional[datetime]) -> datetime:
@@ -183,6 +192,33 @@ def is_market_open(now: Optional[datetime] = None) -> bool:
     if _force_open():
         return True
     return current_session_name(now) in {"SESI_1", "SESI_2"}
+
+
+# Menit buffer sebelum buka & sesudah tutup untuk interkoneksi eksternal.
+CONNECTIVITY_BUFFER_MIN = int(os.environ.get("CONNECTIVITY_BUFFER_MIN", "60"))
+
+
+def is_connectivity_window(now: Optional[datetime] = None) -> bool:
+    """
+    True bila waktu sekarang berada dalam jendela interkoneksi eksternal
+    (TradingView / Claude): mulai CONNECTIVITY_BUFFER_MIN menit SEBELUM bursa buka
+    s/d CONNECTIVITY_BUFFER_MIN menit SESUDAH bursa tutup (akhir post-trading),
+    pada hari bursa saja. Default buffer 60 menit → ~08:00–17:15 WIB.
+
+    Dipakai untuk membatasi poll TradingView & panggilan Claude hanya di sekitar
+    jam bursa, bukan sepanjang hari.
+    """
+    if _force_open():
+        return True
+    n = _to_wib(now)
+    if not is_trading_day(n.date()):
+        return False
+    s1, s2, pre_close_end, post_end = _session_bounds(n.date())
+    buf = timedelta(minutes=CONNECTIVITY_BUFFER_MIN)
+    base = n.date()
+    open_dt = datetime.combine(base, s1[0], tzinfo=TZ_WIB) - buf
+    close_dt = datetime.combine(base, post_end, tzinfo=TZ_WIB) + buf
+    return open_dt <= n <= close_dt
 
 
 def is_trading_window(now: Optional[datetime] = None) -> bool:

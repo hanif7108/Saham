@@ -169,11 +169,11 @@ def poll_and_store(force: bool = False) -> dict:
     run_scheduler.py) memicu bersamaan, hanya SATU yang jalan — sisanya skip.
     Mencegah dua poll berebut satu chart TradingView.
     """
-    from modules.market_hours import is_market_open
+    from modules.market_hours import is_connectivity_window
 
-    if not force and not is_market_open():
-        logger.info("di luar jam bursa — skip poll TradingView")
-        return {"status": "skipped_market_closed", "count": 0}
+    if not force and not is_connectivity_window():
+        logger.info("di luar jendela koneksi (±60mnt jam bursa) — skip poll TradingView")
+        return {"status": "skipped_outside_window", "count": 0}
 
     symbols = get_symbols()
     if not symbols:

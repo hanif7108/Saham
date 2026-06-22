@@ -27,12 +27,15 @@ except ImportError:
 # Kalau modul belum ada (versi lama tanpa patch), fallback ke "selalu open"
 # untuk kompatibilitas mundur.
 try:
-    from modules.market_hours import is_market_open, is_trading_day
+    from modules.market_hours import is_market_open, is_trading_day, is_connectivity_window
 except Exception:  # pragma: no cover
     def is_market_open() -> bool:  # type: ignore
         return True
 
     def is_trading_day(_d=None) -> bool:  # type: ignore
+        return True
+
+    def is_connectivity_window(now=None) -> bool:  # type: ignore
         return True
 
 
@@ -361,8 +364,8 @@ def start_scheduler(refresh_callback: Optional[Callable] = None):
             tv_interval = 5
 
         def tv_intraday_poll():
-            if not is_market_open():
-                logger.debug("tv_intraday_poll skipped: market closed")
+            if not is_connectivity_window():
+                logger.debug("tv_intraday_poll skipped: di luar jendela koneksi")
                 return
             try:
                 from modules.tv_collector import poll_and_store
@@ -373,7 +376,7 @@ def start_scheduler(refresh_callback: Optional[Callable] = None):
 
         scheduler.add_job(
             tv_intraday_poll,
-            CronTrigger(minute=f"*/{tv_interval}", hour="9-15", day_of_week="mon-fri"),
+            CronTrigger(minute=f"*/{tv_interval}", hour="7-17", day_of_week="mon-fri"),
             id="tv_intraday_poll",
             replace_existing=True,
             max_instances=1,  # cegah tumpang-tindih bila 1 siklus > interval
@@ -390,7 +393,7 @@ def start_scheduler(refresh_callback: Optional[Callable] = None):
             ai_interval = 30
 
         def ai_narrative_run():
-            if not is_market_open():
+            if not is_connectivity_window():
                 return
             try:
                 from modules.ai_narrative import generate_and_store
@@ -402,7 +405,7 @@ def start_scheduler(refresh_callback: Optional[Callable] = None):
 
         scheduler.add_job(
             ai_narrative_run,
-            CronTrigger(minute=f"*/{ai_interval}", hour="9-15", day_of_week="mon-fri"),
+            CronTrigger(minute=f"*/{ai_interval}", hour="7-17", day_of_week="mon-fri"),
             id="ai_narrative",
             replace_existing=True,
             max_instances=1,

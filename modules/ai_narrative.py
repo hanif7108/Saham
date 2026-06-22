@@ -147,10 +147,10 @@ def _atomic_write(data: dict):
 
 def generate_and_store(force: bool = False) -> dict:
     """Satu siklus: gate jam bursa + key → generate narasi holding → cache. Lock lintas-proses."""
-    from modules.market_hours import is_market_open
+    from modules.market_hours import is_connectivity_window
 
-    if not force and not is_market_open():
-        return {"status": "skipped_market_closed", "count": 0}
+    if not force and not is_connectivity_window():
+        return {"status": "skipped_outside_window", "count": 0}
     if not _have_key():
         return {"status": "no_api_key", "count": 0}
 

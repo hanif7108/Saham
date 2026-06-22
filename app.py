@@ -1992,6 +1992,25 @@ def trigger_tv_poll():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/time/status", methods=["GET"])
+def get_time_status():
+    """Status sinkronisasi waktu nasional BMKG (WIB) + jendela koneksi saat ini."""
+    out = {"success": True}
+    try:
+        from modules.time_sync import status as ts_status
+        out["bmkg"] = ts_status()
+    except Exception as e:
+        out["bmkg_error"] = str(e)
+    try:
+        from modules.market_hours import is_connectivity_window, is_market_open, current_session_name
+        out["connectivity_window"] = is_connectivity_window()
+        out["market_open"] = is_market_open()
+        out["session"] = current_session_name()
+    except Exception as e:
+        out["market_error"] = str(e)
+    return jsonify(out)
+
+
 @app.route("/api/ai/status", methods=["GET"])
 def get_ai_status():
     """Diagnostik narasi AI (aktif? model? saham? kapan terakhir)."""
