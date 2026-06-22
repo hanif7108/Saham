@@ -146,6 +146,8 @@ class Cache:
     def _read_cached_history(self, path: str) -> Optional[pd.DataFrame]:
         try:
             df = pd.read_csv(path, index_col=0, parse_dates=True)
+            if "Close" in df.columns:
+                df = df.dropna(subset=["Close"])  # buang bar kosong (lihat get_history)
             if not df.empty:
                 return df
         except Exception as e:
@@ -189,6 +191,12 @@ class Cache:
             # auto_adjust=True yang menggeser harga historis karena dividen, sehingga
             # MA/level/sinyal jadi melenceng & tidak match harga yang dilihat user.
             df = stock.history(period=period, auto_adjust=False)
+            if df is not None and not df.empty:
+                # Buang baris bar "kosong": yfinance kadang mengembalikan baris
+                # trailing untuk hari berjalan dgn OHLC=NaN (pasar belum ada
+                # transaksi tercatat). Jika dibiarkan, close.iloc[-1] jadi NaN dan
+                # merusak seluruh perhitungan sinyal teknikal.
+                df = df.dropna(subset=["Close"])
             if df is not None and not df.empty:
                 df.to_csv(path)
                 return df
