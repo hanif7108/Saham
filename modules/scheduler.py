@@ -351,6 +351,65 @@ def start_scheduler(refresh_callback: Optional[Callable] = None):
     )
     _log(f"Intraday alert scan setiap {interval} menit (mode-aware)")
 
+    # Collector intraday TradingView — enrich harga saat jam bursa IDX.
+    # Polling serial ~3 mnt/15 simbol → jalankan tiap 5 menit, gate jam bursa di dalam.
+    # Dimatikan via env TV_COLLECTOR_ENABLED=0.
+    if os.environ.get("TV_COLLECTOR_ENABLED", "1").strip() not in {"0", "false", "no"}:
+        try:
+            tv_interval = int(os.environ.get("TV_POLL_INTERVAL_MIN", "5"))
+        except ValueError:
+            tv_interval = 5
+
+        def tv_intraday_poll():
+            if not is_market_open():
+                logger.debug("tv_intraday_poll skipped: market closed")
+                return
+            try:
+                from modules.tv_collector import poll_and_store
+                result = poll_and_store()
+                _log(f"TV intraday poll: {result}")
+            except Exception as e:
+                _log(f"TV intraday poll FAILED: {e}")
+
+        scheduler.add_job(
+            tv_intraday_poll,
+            CronTrigger(minute=f"*/{tv_interval}", hour="9-15", day_of_week="mon-fri"),
+            id="tv_intraday_poll",
+            replace_existing=True,
+            max_instances=1,  # cegah tumpang-tindih bila 1 siklus > interval
+            coalesce=True,
+        )
+        _log(f"TV intraday collector setiap {tv_interval} menit (jam bursa)")
+
+    # Narasi AI terjadwal (Claude API) — lingkup holding, cadence lambat (mahal).
+    # Aktif hanya bila ANTHROPIC_API_KEY ada; dimatikan via AI_NARRATIVE_ENABLED=0.
+    if os.environ.get("AI_NARRATIVE_ENABLED", "1").strip() not in {"0", "false", "no"}:
+        try:
+            ai_interval = int(os.environ.get("AI_NARRATIVE_INTERVAL_MIN", "30"))
+        except ValueError:
+            ai_interval = 30
+
+        def ai_narrative_run():
+            if not is_market_open():
+                return
+            try:
+                from modules.ai_narrative import generate_and_store
+                result = generate_and_store()
+                if result.get("status") != "no_api_key":
+                    _log(f"AI narrative: {result}")
+            except Exception as e:
+                _log(f"AI narrative FAILED: {e}")
+
+        scheduler.add_job(
+            ai_narrative_run,
+            CronTrigger(minute=f"*/{ai_interval}", hour="9-15", day_of_week="mon-fri"),
+            id="ai_narrative",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        _log(f"AI narrative setiap {ai_interval} menit (jam bursa, bila API key ada)")
+
     # Hook lama untuk refresh callback (kalau dipanggil eksternal)
     if refresh_callback is not None:
         scheduler.add_job(

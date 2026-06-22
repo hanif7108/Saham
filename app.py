@@ -24,6 +24,8 @@ import threading
 import time
 import json
 import requests
+from concurrent.futures import ThreadPoolExecutor
+from functools import wraps
 
 import pandas as pd
 from flask import Flask, jsonify, render_template, request
@@ -51,6 +53,7 @@ from modules.scoring import compute_trading_score, TS_ENTRY, TS_WATCHLIST
 from modules.rotation_advisor import generate_rotation_suggestions
 from modules import pegadaian as pgd
 from modules.asset_aggregator import aggregate_all_assets
+from modules import portfolio_snapshot as snap
 
 # Optional scheduler
 try:
@@ -93,7 +96,19 @@ JII_FILE = os.path.join(BASE_DIR, "daftar_saham_syariah.csv")
 MASTER_FILE = os.path.join(BASE_DIR, "master_data_syariah.csv")
 PEGADAIAN_FILE = os.path.join(BASE_DIR, "pegadaian_transactions.csv")
 BROKER_TX_FILE = os.path.join(BASE_DIR, "broker_transactions.csv")
+SNAPSHOT_FILE = os.path.join(BASE_DIR, "portfolio_snapshots.csv")
 CACHE_DIR = os.path.join(BASE_DIR, "cache")
+
+# ----------------------------- CACHE TTL / PERIOD (tersentral) ----------------------------- #
+# Disentralkan agar konsisten lintas endpoint & mudah di-tune via env. Saat
+# pasar IDX tutup, TTL otomatis diperpanjang min 6 jam oleh cache._effective_ttl.
+#   SCAN_PERIOD : window history untuk scoring teknikal (MA50/MACD butuh >= 50
+#                 bar; 6mo (~126 bar) lebih robust dekat hari libur daripada 3mo).
+#   SCAN_TTL_MIN: TTL menit untuk history scan saat pasar buka.
+SCAN_PERIOD = os.environ.get("SCAN_PERIOD", "6mo")
+SCAN_TTL_MIN = int(os.environ.get("SCAN_TTL_MIN", "60"))
+# Minimum bar agar indikator (terutama MA50/MACD) dianggap reliabel.
+MIN_BARS_RELIABLE = 50
 
 
 # ----------------------------- PORTFOLIO I/O SAFETY ----------------------------- #
@@ -196,6 +211,128 @@ def _load_master() -> pd.DataFrame:
     return pd.read_csv(MASTER_FILE, keep_default_na=False)
 
 
+def _data_freshness() -> dict:
+    """Umur data harga (history cache) untuk indikator freshness di UI.
+
+    Mengambil file cache history TERBARU yang ditulis dan menghitung umurnya.
+    Saat pasar tutup, cache sengaja diperpanjang (lihat cache._effective_ttl),
+    jadi 'umur' bisa beberapa jam — itu wajar dan ditandai market_open=False.
+    """
+    history_dir = os.path.join(CACHE_DIR, "history")
+    newest_mtime = 0.0
+    try:
+        with os.scandir(history_dir) as it:
+            for entry in it:
+                if entry.name.endswith(".csv"):
+                    m = entry.stat().st_mtime
+                    if m > newest_mtime:
+                        newest_mtime = m
+    except Exception:
+        pass
+
+    age_min = None
+    label = "Tidak diketahui"
+    if newest_mtime > 0:
+        age_min = max(0.0, (time.time() - newest_mtime) / 60.0)
+        if age_min < 1:
+            label = "Baru saja"
+        elif age_min < 60:
+            label = f"{int(age_min)} menit lalu"
+        elif age_min < 24 * 60:
+            label = f"{age_min / 60:.1f} jam lalu"
+        else:
+            label = f"{age_min / (24 * 60):.1f} hari lalu"
+
+    try:
+        mkt_open = bool(is_market_open())
+    except Exception:
+        mkt_open = False
+
+    return {
+        "age_minutes": round(age_min, 1) if age_min is not None else None,
+        "label": label,
+        "market_open": mkt_open,
+        "scan_period": SCAN_PERIOD,
+    }
+
+
+def _usdidr_rate() -> float:
+    """Kurs USD→IDR terkini (cache 60 menit, fallback 16000)."""
+    try:
+        fx = cache.get_history("USDIDR=X", period="5d", ttl_minutes=60)
+        if fx is not None and not fx.empty:
+            return float(fx["Close"].iloc[-1])
+    except Exception:
+        pass
+    return 16000.0
+
+
+def _compute_us_portfolio() -> dict:
+    """Hitung nilai portofolio saham US (dari portfolio_us.csv) dalam USD & Rp.
+
+    Reusable oleh /api/dashboard dan /api/portfolio/global supaya konsisten.
+    Mengembalikan dict: holdings, value_rp, invested_rp, pnl_rp, pnl_pct, usdidr.
+    """
+    out = {
+        "holdings": [], "value_usd": 0.0, "value_rp": 0.0,
+        "invested_usd": 0.0, "invested_rp": 0.0,
+        "pnl_rp": 0.0, "pnl_pct": 0.0, "usdidr": _usdidr_rate(),
+    }
+    if not os.path.exists(US_PORTFOLIO_FILE):
+        return out
+    try:
+        usdf = pd.read_csv(US_PORTFOLIO_FILE)
+    except Exception:
+        return out
+    if usdf.empty:
+        return out
+
+    usdidr = out["usdidr"]
+    try:
+        _prefetch_histories(usdf["Ticker"].tolist(), period="5d",
+                            ttl_minutes=60, market="US")
+    except Exception:
+        pass
+
+    value_usd = 0.0
+    invested_usd = 0.0
+    holdings = []
+    for _, row in usdf.iterrows():
+        tk = str(row["Ticker"]).upper()
+        harga_beli = float(row.get("Harga Beli", 0) or 0)
+        lot = float(row.get("Jumlah Lot", 0) or 0)
+        try:
+            h = cache.get_history(tk, period="5d", ttl_minutes=60, market="US")
+            cur = float(h["Close"].iloc[-1]) if h is not None and not h.empty else harga_beli
+        except Exception:
+            cur = harga_beli
+        val = cur * lot
+        cost = harga_beli * lot
+        value_usd += val
+        invested_usd += cost
+        pnl_usd = val - cost
+        holdings.append({
+            "ticker": tk,
+            "platform": "Saham US",
+            "lot": lot,
+            "avg_price_usd": round(harga_beli, 2),
+            "current_price_usd": round(cur, 2),
+            "value_usd": round(val, 2),
+            "value_rp": round(val * usdidr, 0),
+            "pnl_rp": round(pnl_usd * usdidr, 0),
+            "pnl_pct": round((pnl_usd / cost * 100) if cost > 0 else 0, 2),
+        })
+
+    out["holdings"] = holdings
+    out["value_usd"] = round(value_usd, 2)
+    out["value_rp"] = round(value_usd * usdidr, 0)
+    out["invested_usd"] = round(invested_usd, 2)
+    out["invested_rp"] = round(invested_usd * usdidr, 0)
+    out["pnl_rp"] = round((value_usd - invested_usd) * usdidr, 0)
+    out["pnl_pct"] = round(((value_usd - invested_usd) / invested_usd * 100) if invested_usd > 0 else 0, 2)
+    return out
+
+
 def _master_row(master_df: pd.DataFrame, ticker: str) -> dict:
     if master_df.empty:
         return {}
@@ -228,7 +365,7 @@ def _evaluate(ticker: str, master_df: pd.DataFrame, benchmarks: dict) -> dict:
 
     fund = score_fundamentals(metrics, sector=sector, benchmarks=benchmarks)
 
-    hist = cache.get_history(ticker, period="3mo", ttl_minutes=60)
+    hist = cache.get_history(ticker, period=SCAN_PERIOD, ttl_minutes=SCAN_TTL_MIN)
     if hist is not None and not hist.empty:
         tech = compute_signals(hist)
     else:
@@ -246,6 +383,89 @@ def _evaluate(ticker: str, master_df: pd.DataFrame, benchmarks: dict) -> dict:
         "current_price": tech.get("last_close"),
         "metrics": metrics
     }
+
+
+# Jumlah worker untuk prefetch concurrent. Dibatasi agar tidak memicu rate-limit
+# Yahoo Finance. Override via env PREFETCH_WORKERS.
+_PREFETCH_WORKERS = int(os.environ.get("PREFETCH_WORKERS", "8"))
+
+
+def _prefetch_histories(
+    tickers,
+    period: str = "3mo",
+    ttl_minutes: int = 60,
+    market=None,
+) -> None:
+    """Warming cache history secara concurrent.
+
+    Memanggil cache.get_history() paralel agar fetch yfinance (I/O-bound) untuk
+    banyak ticker tidak dilakukan satu-per-satu (sequential). Aman karena tiap
+    ticker menulis file cache berbeda; kalau cache masih fresh, call ini langsung
+    return dari disk (murah). Exception per-ticker ditelan supaya satu ticker
+    gagal tidak menggagalkan keseluruhan warming.
+    """
+    uniq = []
+    seen = set()
+    for t in tickers:
+        if not t:
+            continue
+        key = str(t).upper().strip()
+        if key and key not in seen:
+            seen.add(key)
+            uniq.append(t)
+    if not uniq:
+        return
+
+    def _warm(tk):
+        try:
+            cache.get_history(tk, period=period, ttl_minutes=ttl_minutes, market=market)
+        except Exception as e:  # pragma: no cover — defensive
+            log.debug("prefetch %s failed: %s", tk, e)
+
+    workers = max(1, min(_PREFETCH_WORKERS, len(uniq)))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        list(ex.map(_warm, uniq))
+
+
+# ----------------------------- SHORT-TTL RESPONSE MEMOIZE ----------------------------- #
+# Endpoint agregat dashboard memanggil /api/all_stocks (3x), /api/decisions (2x),
+# /api/prospects via test_client dalam SATU request → recompute berulang yang mahal.
+# Memoize body JSON per (endpoint, query-string) selama beberapa detik agar
+# panggilan duplikat di dalam satu siklus dashboard (dan refresh browser yang
+# berdekatan) langsung di-serve dari memori. Aman untuk GET idempoten.
+_RESP_MEMO: dict = {}
+_RESP_MEMO_LOCK = threading.Lock()
+
+
+def memoize_json(ttl_seconds: int = 20):
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                key = (fn.__name__, request.full_path)
+            except Exception:
+                return fn(*args, **kwargs)
+            now = time.time()
+            with _RESP_MEMO_LOCK:
+                hit = _RESP_MEMO.get(key)
+                if hit is not None and (now - hit[1]) < ttl_seconds:
+                    return app.response_class(hit[0], mimetype="application/json")
+            resp = fn(*args, **kwargs)
+            try:
+                body = resp.get_data(as_text=True)
+                with _RESP_MEMO_LOCK:
+                    _RESP_MEMO[key] = (body, now)
+            except Exception:
+                pass
+            return resp
+        return wrapper
+    return decorator
+
+
+def _invalidate_response_memo():
+    """Bersihkan memo (dipanggil setelah mutasi data portfolio/transaksi)."""
+    with _RESP_MEMO_LOCK:
+        _RESP_MEMO.clear()
 
 
 # ----------------------------- ROUTES: PAGES ----------------------------- #
@@ -526,6 +746,7 @@ def add_portfolio():
             df = pd.concat([df, new_row], ignore_index=True) if not df.empty else new_row
 
         _atomic_write_csv(df, PORTFOLIO_FILE)
+    _invalidate_response_memo()
     return jsonify({"success": True})
 
 
@@ -537,7 +758,148 @@ def delete_portfolio(ticker):
         df = pd.read_csv(PORTFOLIO_FILE)
         df = df[df["Ticker"] != ticker.upper()]
         _atomic_write_csv(df, PORTFOLIO_FILE)
+    _invalidate_response_memo()
     return jsonify({"success": True})
+
+
+def _compute_cash_flow() -> dict:
+    """Ringkasan arus kas / sirkulasi modal lintas broker + Pegadaian.
+
+    deposit_rp  : total TopUp (modal masuk)
+    withdrawal_rp: total Withdrawal (modal keluar)
+    buy_rp / sell_rp: nilai pembelian / penjualan aset
+    realized_pnl_rp : realized P/L dari transaksi SELL saham
+    net_modal_rp: deposit - withdrawal (modal bersih yang disetor)
+    """
+    cf = {
+        "deposit_rp": 0.0, "withdrawal_rp": 0.0,
+        "buy_rp": 0.0, "sell_rp": 0.0, "realized_pnl_rp": 0.0,
+        "n_buy": 0, "n_sell": 0, "by_platform": {},
+    }
+    # ---- Broker transactions ----
+    if os.path.exists(BROKER_TX_FILE):
+        try:
+            df = pd.read_csv(BROKER_TX_FILE)
+            for _, r in df.iterrows():
+                plat = str(r.get("platform") or "Bibit")
+                tipe = str(r.get("tipe") or "").upper()
+                nominal = float(r.get("nominal") or 0) if pd.notna(r.get("nominal")) else 0.0
+                pnl = float(r.get("pnl_rp") or 0) if pd.notna(r.get("pnl_rp")) else 0.0
+                bucket = cf["by_platform"].setdefault(
+                    plat, {"deposit_rp": 0.0, "withdrawal_rp": 0.0,
+                           "buy_rp": 0.0, "sell_rp": 0.0, "realized_pnl_rp": 0.0})
+                if tipe == "TOPUP":
+                    cf["deposit_rp"] += nominal; bucket["deposit_rp"] += nominal
+                elif tipe == "WITHDRAWAL":
+                    cf["withdrawal_rp"] += nominal; bucket["withdrawal_rp"] += nominal
+                elif tipe == "BUY":
+                    cf["buy_rp"] += nominal; cf["n_buy"] += 1; bucket["buy_rp"] += nominal
+                elif tipe == "SELL":
+                    cf["sell_rp"] += nominal; cf["n_sell"] += 1; bucket["sell_rp"] += nominal
+                    cf["realized_pnl_rp"] += pnl; bucket["realized_pnl_rp"] += pnl
+        except Exception as e:
+            log.warning("cash flow broker parse failed: %s", e)
+
+    # ---- Pegadaian (emas) ----
+    try:
+        pgd_sum = pgd.summarize(PEGADAIAN_FILE, current_price_per_gram=0.0)
+        topup = float(pgd_sum.get("total_topup_rp") or 0)
+        wd = float(pgd_sum.get("total_withdrawal_rp") or 0)
+        buy = float(pgd_sum.get("total_invested_rp") or 0)
+        sell = float(pgd_sum.get("total_received_sell_rp") or 0)
+        cf["deposit_rp"] += topup
+        cf["withdrawal_rp"] += wd
+        cf["buy_rp"] += buy
+        cf["sell_rp"] += sell
+        cf["by_platform"]["Pegadaian"] = {
+            "deposit_rp": topup, "withdrawal_rp": wd,
+            "buy_rp": buy, "sell_rp": sell, "realized_pnl_rp": 0.0,
+        }
+    except Exception as e:
+        log.warning("cash flow pegadaian failed: %s", e)
+
+    cf["net_modal_rp"] = round(cf["deposit_rp"] - cf["withdrawal_rp"], 0)
+    for k in ("deposit_rp", "withdrawal_rp", "buy_rp", "sell_rp", "realized_pnl_rp"):
+        cf[k] = round(cf[k], 0)
+    return cf
+
+
+@app.route("/api/portfolio/global", methods=["GET"])
+def get_portfolio_global():
+    """Pandangan GLOBAL semua aset: alokasi kelas aset (Saham IDX/US, Emas, Kas)
+    dengan bobot % & pertumbuhan (P/L), arus kas, dan time-series net worth.
+    """
+    canonical = get_canonical_assets()
+    breakdown = canonical.get("breakdown", {})
+    stocks_idx_rp = float(breakdown.get("stocks_rp") or 0)
+    gold_rp = float(breakdown.get("gold_rp") or 0)
+    cash_rp = float(breakdown.get("cash_rp") or 0)
+
+    # P/L per kelas
+    idx_pnl = sum(float(h.get("pnl_rp") or 0) for h in canonical.get("holdings", []))
+    gold_pnl = float((canonical.get("platforms", {}).get("Pegadaian", {}) or {}).get("unrealized_pnl_rp") or 0)
+
+    # Saham US
+    us = _compute_us_portfolio()
+    us_rp = float(us.get("value_rp") or 0)
+    us_pnl = float(us.get("pnl_rp") or 0)
+    us_inv = float(us.get("invested_rp") or 0)
+
+    def _cls(value, pnl, invested=None):
+        inv = invested if invested is not None else max(0.0, value - pnl)
+        return {
+            "value_rp": round(value, 0),
+            "invested_rp": round(inv, 0),
+            "pnl_rp": round(pnl, 0),
+            "pnl_pct": round((pnl / inv * 100) if inv > 0 else 0, 2),
+        }
+
+    classes = {
+        "saham_idx": _cls(stocks_idx_rp, idx_pnl),
+        "saham_us": _cls(us_rp, us_pnl, invested=us_inv),
+        "emas": _cls(gold_rp, gold_pnl),
+        "kas": {"value_rp": round(cash_rp, 0), "invested_rp": round(cash_rp, 0),
+                "pnl_rp": 0, "pnl_pct": 0},
+    }
+
+    net_worth = stocks_idx_rp + us_rp + gold_rp + cash_rp
+    # bobot %
+    for c in classes.values():
+        c["weight_pct"] = round((c["value_rp"] / net_worth * 100) if net_worth > 0 else 0, 1)
+
+    # Pertumbuhan investasi (kelas berisiko saja, kas dikecualikan)
+    risk_invested = classes["saham_idx"]["invested_rp"] + classes["saham_us"]["invested_rp"] + classes["emas"]["invested_rp"]
+    risk_pnl = idx_pnl + us_pnl + gold_pnl
+    growth_pct = round((risk_pnl / risk_invested * 100) if risk_invested > 0 else 0, 2)
+
+    cash_flow = _compute_cash_flow()
+
+    # ---- Snapshot harian (upsert) + time-series ----
+    snap.record_snapshot(SNAPSHOT_FILE, {
+        "net_worth_rp": net_worth,
+        "saham_idx_rp": stocks_idx_rp,
+        "saham_us_rp": us_rp,
+        "emas_rp": gold_rp,
+        "kas_rp": cash_rp,
+        "invested_rp": risk_invested,
+        "pnl_rp": risk_pnl,
+    })
+    snapshots = snap.load_snapshots(SNAPSHOT_FILE)
+    growth = snap.compute_growth(snapshots)
+
+    return jsonify({
+        "net_worth_rp": round(net_worth, 0),
+        "risk_invested_rp": round(risk_invested, 0),
+        "risk_pnl_rp": round(risk_pnl, 0),
+        "growth_pct": growth_pct,
+        "asset_classes": classes,
+        "cash_flow": cash_flow,
+        "us_holdings": us.get("holdings", []),
+        "usdidr": us.get("usdidr"),
+        "snapshots": snapshots,
+        "growth_timeseries": growth,
+        "warnings": canonical.get("warnings", []),
+    })
 BROKER_TRANSACTIONS_FILE = os.path.join(BASE_DIR, "broker_transactions.csv")
 
 # ----------------------------- ROUTES: BROKER PORTFOLIO ----------------------------- #
@@ -890,6 +1252,7 @@ def add_broker_transaction():
         df_all = df_new
         
     df_all.to_csv(BROKER_TRANSACTIONS_FILE, index=False)
+    _invalidate_response_memo()
     return jsonify({"success": True, "id": tx_id})
 
 @app.route("/api/broker_portfolio/transaction/<tx_id>", methods=["DELETE"])
@@ -900,6 +1263,7 @@ def delete_broker_transaction(tx_id):
     df = pd.read_csv(BROKER_TRANSACTIONS_FILE)
     df = df[df["id"] != tx_id]
     df.to_csv(BROKER_TRANSACTIONS_FILE, index=False)
+    _invalidate_response_memo()
     return jsonify({"success": True})
 
 @app.route("/api/broker_portfolio/upload_screenshot", methods=["POST"])
@@ -1128,6 +1492,7 @@ def upload_portfolio_screenshot():
 # ----------------------------- ROUTES: PROSPECTS ----------------------------- #
 
 @app.route("/api/prospects", methods=["GET"])
+@memoize_json(ttl_seconds=20)
 def get_prospects():
     if not os.path.exists(JII_FILE):
         return jsonify([])
@@ -1136,15 +1501,33 @@ def get_prospects():
     master_df = _load_master()
     benchmarks = compute_sector_benchmarks(master_df) if not master_df.empty else {}
 
+    tickers = df_input["Ticker"].tolist()
+    # Prefetch concurrent: warming cache history dulu agar loop di bawah (dan
+    # _evaluate) hit disk, bukan fetch yfinance satu-per-satu (sequential).
+    _prefetch_histories(tickers, period=SCAN_PERIOD, ttl_minutes=SCAN_TTL_MIN)
+
+    # Intraday-aware: saat pasar BUKA, bar terakhir adalah sesi parsial hari
+    # berjalan → volume-nya belum penuh sehingga rasio spike akan understated.
+    # Maka pakai sesi penuh terakhir (bar kemarin) sebagai acuan "today".
+    market_open_now = False
+    try:
+        market_open_now = bool(is_market_open())
+    except Exception:
+        market_open_now = False
+
     results = []
-    for ticker in df_input["Ticker"].tolist():
-        hist = cache.get_history(ticker, period="3mo", ttl_minutes=120)
-        if hist is None or hist.empty or "Volume" not in hist.columns or len(hist) < 11:
+    for ticker in tickers:
+        hist = cache.get_history(ticker, period=SCAN_PERIOD, ttl_minutes=SCAN_TTL_MIN)
+        if hist is None or hist.empty or "Volume" not in hist.columns or len(hist) < 12:
             continue
 
-        # Volume spike detection: hari ini > 1.5x rata-rata 10 hari + > 1jt
-        today_vol = float(hist["Volume"].iloc[-1])
-        avg_vol = float(hist["Volume"].iloc[-11:-1].mean())
+        # Pilih indeks "hari ini" untuk deteksi spike: kalau market buka, abaikan
+        # bar parsial terakhir dan pakai sesi penuh sebelumnya.
+        last_idx = -2 if market_open_now else -1
+        today_vol = float(hist["Volume"].iloc[last_idx])
+        # Rata-rata 10 sesi penuh SEBELUM hari acuan.
+        window = hist["Volume"].iloc[last_idx - 10:last_idx]
+        avg_vol = float(window.mean()) if len(window) > 0 else 0.0
         if avg_vol <= 0:
             continue
         ratio = today_vol / avg_vol
@@ -1153,6 +1536,7 @@ def get_prospects():
 
         evaluation = _evaluate(ticker, master_df, benchmarks)
         evaluation["volume_spike"] = round(ratio, 2)
+        evaluation["volume_basis"] = "prev_full_session" if market_open_now else "latest"
         results.append(evaluation)
 
     # Urutkan: prioritas sinyal rekomendasi beli teratas, lalu skor fundamental, teknikal, dan volume spike
@@ -1180,6 +1564,7 @@ def get_prospects():
 # ----------------------------- ROUTES: ALL STOCKS RANKING ----------------------------- #
 
 @app.route("/api/all_stocks", methods=["GET"])
+@memoize_json(ttl_seconds=20)
 def get_all_stocks():
     """
     Scan SEMUA ticker di daftar_saham_syariah.csv tanpa filter volume.
@@ -1203,8 +1588,12 @@ def get_all_stocks():
     master_df = _load_master()
     benchmarks = compute_sector_benchmarks(master_df) if not master_df.empty else {}
 
+    tickers = df_input["Ticker"].tolist()
+    # Prefetch concurrent: warming cache sebelum _evaluate dipanggil per ticker.
+    _prefetch_histories(tickers, period="3mo", ttl_minutes=60)
+
     results = []
-    for ticker in df_input["Ticker"].tolist():
+    for ticker in tickers:
         evaluation = _evaluate(ticker, master_df, benchmarks)
 
         # Filter by sektor
@@ -1235,6 +1624,8 @@ def get_all_stocks():
             "der": evaluation["metrics"].get("der"),
             "pbv": evaluation["metrics"].get("pbv"),
             "jalur7": evaluation["technical"].get("jalur7"),
+            "reliable": evaluation["technical"].get("reliable", True),
+            "data_points": evaluation["technical"].get("data_points"),
         })
 
     # Sorting
@@ -1271,10 +1662,27 @@ def get_signal(ticker):
     hist = cache.get_history(ticker, period="6mo", ttl_minutes=60)
     chart = chart_payload(hist, lookback=120) if hist is not None else {}
 
+    # Enrichment: harga intraday TradingView (delayed) bila tersedia saat jam bursa.
+    # Additif — tidak mengubah sinyal berbasis yfinance. None bila TV mati/di luar jam.
+    try:
+        from modules.tv_collector import get_intraday
+        intraday = get_intraday(ticker)
+    except Exception:
+        intraday = None
+
+    # Narasi AI (Claude API) bila tersedia di cache. None bila fitur nonaktif/tak ada.
+    try:
+        from modules.ai_narrative import get_narrative
+        ai_narrative = get_narrative(ticker)
+    except Exception:
+        ai_narrative = None
+
     return jsonify({
         "ticker": ticker.upper(),
         "evaluation": evaluation,
-        "chart": chart
+        "chart": chart,
+        "intraday": intraday,
+        "ai_narrative": ai_narrative
     })
 
 
@@ -1561,6 +1969,48 @@ def get_trading_mode():
 def get_market():
     """Status IHSG (untuk filter CAN SLIM 'M')."""
     return jsonify(get_ihsg_status(cache))
+
+
+@app.route("/api/tv/status", methods=["GET"])
+def get_tv_status():
+    """Diagnostik collector intraday TradingView (CDP hidup? umur cache? simbol?)."""
+    try:
+        from modules.tv_collector import status
+        return jsonify({"success": True, **status()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/tv/poll", methods=["POST"])
+def trigger_tv_poll():
+    """Trigger manual satu siklus poll TradingView (force mengabaikan gate jam bursa)."""
+    try:
+        from modules.tv_collector import poll_and_store
+        force = request.args.get("force", "0") == "1"
+        return jsonify({"success": True, **poll_and_store(force=force)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/ai/status", methods=["GET"])
+def get_ai_status():
+    """Diagnostik narasi AI (aktif? model? saham? kapan terakhir)."""
+    try:
+        from modules.ai_narrative import status
+        return jsonify({"success": True, **status()})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/ai/generate", methods=["POST"])
+def trigger_ai_narrative():
+    """Trigger manual generate narasi AI (force mengabaikan gate jam bursa)."""
+    try:
+        from modules.ai_narrative import generate_and_store
+        force = request.args.get("force", "0") == "1"
+        return jsonify({"success": True, **generate_and_store(force=force)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/commodities", methods=["GET"])
@@ -2475,6 +2925,7 @@ def generate_metric_narratives(ticker, sector, metrics, tech):
 
 
 @app.route("/api/top5_recommendations", methods=["GET"])
+@memoize_json(ttl_seconds=20)
 def get_top5_recommendations():
     """
     Saring & rank top 5 Saham Syariah berdasarkan kombinasi skor fundamental,
@@ -2607,6 +3058,7 @@ def calc_avg_endpoint():
 
 
 @app.route("/api/decisions", methods=["GET"])
+@memoize_json(ttl_seconds=20)
 def get_decisions():
     """
     REKOMENDASI FINAL — gabungan portfolio + ranking + prospects.
@@ -3358,6 +3810,12 @@ def get_dashboard():
             "suggestions": [],
         }
 
+    # ---- Data freshness (umur cache harga) untuk badge di UI ----
+    try:
+        out["data_freshness"] = _data_freshness()
+    except Exception as e:
+        out["data_freshness"] = {"label": "Tidak diketahui", "error": str(e)}
+
     return jsonify(out)
 
 
@@ -3579,6 +4037,15 @@ def api_us_action_plan():
     if os.path.exists(US_PORTFOLIO_FILE):
         try:
             usdf = pd.read_csv(US_PORTFOLIO_FILE)
+            # Prefetch concurrent harga 5d untuk semua holding US sekaligus,
+            # agar loop di bawah hit cache (bukan fetch yfinance sekuensial).
+            try:
+                _prefetch_histories(
+                    usdf["Ticker"].tolist(), period="5d",
+                    ttl_minutes=60, market="US",
+                )
+            except Exception:
+                pass
             for _, row in usdf.iterrows():
                 tk = str(row["Ticker"]).upper()
                 harga_beli = float(row.get("Harga Beli", 0) or 0)
@@ -3797,6 +4264,7 @@ def api_us_portfolio_add():
             new_row = pd.DataFrame([{"Ticker": ticker, "Harga Beli": harga, "Jumlah Lot": lot}])
             df = pd.concat([df, new_row], ignore_index=True) if not df.empty else new_row
         _atomic_write_csv(df, US_PORTFOLIO_FILE)
+    _invalidate_response_memo()
     return jsonify({"success": True})
 
 
@@ -3808,6 +4276,7 @@ def api_us_portfolio_delete(ticker):
         df = pd.read_csv(US_PORTFOLIO_FILE)
         df = df[df["Ticker"] != ticker.upper()]
         _atomic_write_csv(df, US_PORTFOLIO_FILE)
+    _invalidate_response_memo()
     return jsonify({"success": True})
 
 

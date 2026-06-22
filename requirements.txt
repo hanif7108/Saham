@@ -1,0 +1,37 @@
+# Sharia Trading Assistant — Dependencies
+# Install: pip install -r requirements.txt
+
+# Web framework
+flask>=3.0,<4.0
+
+# Data & computation
+pandas>=2.0
+numpy>=1.24
+yfinance>=0.2
+
+# Scheduling
+apscheduler>=3.10
+
+# HTTP & scraping
+requests>=2.31
+beautifulsoup4>=4.12
+
+# Excel export
+openpyxl>=3.1
+
+# PDF export
+reportlab>=4.0
+
+# Google Drive integration (opsional)
+google-auth>=2.0
+google-auth-oauthlib>=1.0
+google-api-python-client>=2.100
+
+# TradingView technical analysis (opsional)
+tradingview-ta>=3.3
+
+# Narasi AI terjadwal via Claude API (opsional — butuh ANTHROPIC_API_KEY)
+anthropic>=0.40
+
+# WSGI server
+gunicorn>=21.0
