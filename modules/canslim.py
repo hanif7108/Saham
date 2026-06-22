@@ -247,7 +247,7 @@ def get_ihsg_status(cache_obj) -> Dict:
         if df is None:
             # Fallback langsung yfinance
             import yfinance as yf
-            df = yf.Ticker("^JKSE").history(period="6mo")
+            df = yf.Ticker("^JKSE").history(period="6mo", auto_adjust=False)
         if df is None or df.empty or "Close" not in df.columns:
             return {"ihsg_close": None, "ihsg_ma50": None}
 

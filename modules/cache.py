@@ -184,7 +184,11 @@ class Cache:
         try:
             yf_ticker = _resolve_yf_ticker(ticker, market=market)
             stock = yf.Ticker(yf_ticker)
-            df = stock.history(period=period)
+            # auto_adjust=False → pakai harga ASLI (raw OHLC) agar cocok dengan
+            # TradingView & aplikasi broker. Tanpa flag ini, yfinance>=0.2 default
+            # auto_adjust=True yang menggeser harga historis karena dividen, sehingga
+            # MA/level/sinyal jadi melenceng & tidak match harga yang dilihat user.
+            df = stock.history(period=period, auto_adjust=False)
             if df is not None and not df.empty:
                 df.to_csv(path)
                 return df

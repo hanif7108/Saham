@@ -31,7 +31,7 @@ def check_portfolio(portfolio_csv):
         
         try:
             stock = yf.Ticker(yf_ticker)
-            hist = stock.history(period="1d")
+            hist = stock.history(period="1d", auto_adjust=False)
             if not hist.empty:
                 current_price = hist['Close'].iloc[-1]
                 
@@ -74,7 +74,7 @@ def scan_prospects(jii_csv):
         
         try:
             stock = yf.Ticker(yf_ticker)
-            hist = stock.history(period="1mo")
+            hist = stock.history(period="1mo", auto_adjust=False)
             
             if len(hist) > 10:
                 current_price = hist['Close'].iloc[-1]

@@ -88,7 +88,7 @@ def run_screener(input_csv, output_csv):
             pbv = info.get('priceToBook', None)
             
             # Technical (from YF history for 52W high and avg volume)
-            hist = stock.history(period="1y")
+            hist = stock.history(period="1y", auto_adjust=False)
             high_52w = hist['High'].max() if not hist.empty else current_price
             avg_vol_50d = hist['Volume'].tail(50).mean() if not hist.empty else volume
             
