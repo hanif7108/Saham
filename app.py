@@ -357,8 +357,82 @@ def _master_row(master_df: pd.DataFrame, ticker: str) -> dict:
     }
 
 
-def _evaluate(ticker: str, master_df: pd.DataFrame, benchmarks: dict) -> dict:
-    """Hitung sinyal fundamental + teknikal untuk satu ticker."""
+def _apply_intraday(hist, iq):
+    """Suntik bar intraday TradingView (delayed) ke deret harga agar sinyal teknikal
+    memakai data terkini. Aman: hanya jika harga valid; bar hari ini di-update,
+    selainnya di-append sebagai bar baru. Mengembalikan DataFrame baru (tak mutasi asli)."""
+    if hist is None or hist.empty or not iq:
+        return hist
+    try:
+        last = float(iq.get("last") if iq.get("last") is not None else iq.get("close"))
+    except (TypeError, ValueError):
+        return hist
+    if last <= 0:
+        return hist
+    try:
+        from modules.time_sync import now_wib
+        today = now_wib().date()
+    except Exception:
+        today = None
+
+    h = hist.copy()
+    cols = h.columns
+    idx_last = h.index[-1]
+    last_date = idx_last.date() if hasattr(idx_last, "date") else None
+
+    def _f(x):
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return None
+
+    o, hi, lo, vol = _f(iq.get("open")), _f(iq.get("high")), _f(iq.get("low")), _f(iq.get("volume"))
+
+    if today is not None and last_date == today:
+        # Update bar hari ini dengan data TradingView terkini
+        if "Close" in cols:
+            h.loc[idx_last, "Close"] = last
+        if "High" in cols and hi is not None:
+            h.loc[idx_last, "High"] = max(float(h.loc[idx_last, "High"]), hi, last)
+        if "Low" in cols and lo is not None:
+            h.loc[idx_last, "Low"] = min(float(h.loc[idx_last, "Low"]), lo, last)
+        if "Volume" in cols and vol is not None:
+            h.loc[idx_last, "Volume"] = vol
+    elif today is not None:
+        # Tambah bar baru untuk hari ini (mis. pra-pembukaan yfinance belum ada)
+        try:
+            import pandas as _pd
+            new_idx = _pd.Timestamp(today)
+            tzinfo = getattr(idx_last, "tz", None) or getattr(idx_last, "tzinfo", None)
+            if tzinfo is not None:
+                new_idx = new_idx.tz_localize(tzinfo)
+            row = {}
+            for c in cols:
+                if c == "Open":
+                    row[c] = o if o is not None else last
+                elif c == "High":
+                    row[c] = hi if hi is not None else last
+                elif c == "Low":
+                    row[c] = lo if lo is not None else last
+                elif c == "Close":
+                    row[c] = last
+                elif c == "Volume":
+                    row[c] = vol if vol is not None else 0.0
+                else:
+                    row[c] = float("nan")
+            h.loc[new_idx] = row
+        except Exception:
+            # Gagal append → minimal update close bar terakhir agar harga terkini terpakai
+            if "Close" in cols:
+                h.loc[idx_last, "Close"] = last
+    return h
+
+
+def _evaluate(ticker: str, master_df: pd.DataFrame, benchmarks: dict, intraday=None) -> dict:
+    """Hitung sinyal fundamental + teknikal untuk satu ticker.
+
+    intraday: quote TradingView (delayed) opsional. Bila ada, disuntik ke deret harga
+    agar sinyal & current_price memakai data terkini (Funnel mode live)."""
     info = _master_row(master_df, ticker)
     sector = info.get("sector")
     metrics = info.get("metrics", {})
@@ -366,6 +440,8 @@ def _evaluate(ticker: str, master_df: pd.DataFrame, benchmarks: dict) -> dict:
     fund = score_fundamentals(metrics, sector=sector, benchmarks=benchmarks)
 
     hist = cache.get_history(ticker, period=SCAN_PERIOD, ttl_minutes=SCAN_TTL_MIN)
+    if intraday:
+        hist = _apply_intraday(hist, intraday)
     if hist is not None and not hist.empty:
         tech = compute_signals(hist)
     else:
@@ -381,6 +457,7 @@ def _evaluate(ticker: str, master_df: pd.DataFrame, benchmarks: dict) -> dict:
         "technical": tech,
         "combined": combined,
         "current_price": tech.get("last_close"),
+        "price_source": "tradingview_delayed" if intraday else "yfinance",
         "metrics": metrics
     }
 
@@ -1588,13 +1665,28 @@ def get_all_stocks():
     master_df = _load_master()
     benchmarks = compute_sector_benchmarks(master_df) if not master_df.empty else {}
 
+    # Mode LIVE: pakai data intraday TradingView (cache + on-demand utk saham
+    # yang belum ter-cache, dibatasi). Tanpa live → tetap pakai cache TV bila ada
+    # (gratis), tanpa on-demand → scan tetap cepat.
+    live = request.args.get("live", "0") == "1"
+
     tickers = df_input["Ticker"].tolist()
     # Prefetch concurrent: warming cache sebelum _evaluate dipanggil per ticker.
     _prefetch_histories(tickers, period="3mo", ttl_minutes=60)
 
+    intraday_map = {}
+    try:
+        from modules.tv_collector import get_intraday_bulk
+        intraday_map = get_intraday_bulk(tickers, allow_ondemand=live)
+    except Exception as e:
+        app.logger.warning("intraday enrichment gagal: %s", e)
+
     results = []
     for ticker in tickers:
-        evaluation = _evaluate(ticker, master_df, benchmarks)
+        evaluation = _evaluate(
+            ticker, master_df, benchmarks,
+            intraday=intraday_map.get(str(ticker).upper()),
+        )
 
         # Filter by sektor
         if sector_filter and evaluation["sector"] != sector_filter:
@@ -1609,6 +1701,7 @@ def get_all_stocks():
             "name": evaluation["name"],
             "sector": evaluation["sector"],
             "current_price": evaluation["current_price"],
+            "price_source": evaluation.get("price_source", "yfinance"),
             "fundamental_score": evaluation["fundamental"]["score"],
             "fundamental_max": evaluation["fundamental"]["max_score"],
             "stars": evaluation["fundamental"]["stars"],
@@ -1641,12 +1734,15 @@ def get_all_stocks():
     # Sektor list untuk filter dropdown di UI
     sectors = sorted(set(r["sector"] for r in results if r["sector"] not in ("N/A", "")))
 
+    n_tv = sum(1 for r in results if r.get("price_source") == "tradingview_delayed")
     return jsonify({
         "stocks": results,
         "total": len(results),
         "sectors": sectors,
         "sort_by": sort_by,
-        "filters": {"sector": sector_filter, "min_score": min_score}
+        "filters": {"sector": sector_filter, "min_score": min_score},
+        "live": live,
+        "n_tradingview": n_tv,
     })
 
 

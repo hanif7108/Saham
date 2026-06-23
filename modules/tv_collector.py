@@ -40,6 +40,8 @@ CDP_PORT = int(os.environ.get("TV_CDP_PORT", "9222"))
 CDP_URL = f"http://127.0.0.1:{CDP_PORT}/json/version"
 EXCHANGE_PREFIX = os.environ.get("TV_EXCHANGE", "IDX")  # IDX:TICKER
 MAX_SYMBOLS = int(os.environ.get("TV_MAX_SYMBOLS", "15"))
+# Batas saham yang di-poll ON-DEMAND saat Funnel live (jaga agar scan tak terlalu lama).
+MAX_ONDEMAND = int(os.environ.get("FUNNEL_TV_ONDEMAND_MAX", "12"))
 POLL_TIMEOUT_S = int(os.environ.get("TV_POLL_TIMEOUT_S", "300"))
 AUTO_RELAUNCH = os.environ.get("TV_AUTO_RELAUNCH", "1").strip() not in {"0", "false", "no"}
 TV_APP = os.environ.get("TV_APP_NAME", "TradingView")
@@ -252,6 +254,87 @@ def get_intraday(ticker: str, max_age_s: int = 1200):
     if max_age_s and (int(time.time()) - int(q.get("ts", 0))) > max_age_s:
         return None
     return q
+
+
+def _record_from_poll(r: dict):
+    """Ubah satu record poller → dict quote standar, atau None."""
+    if not r or not r.get("ok"):
+        return None
+    q = r.get("quote") or {}
+    sym = str(q.get("symbol", "")).split(":")[-1].upper()
+    if not sym:
+        return None
+    return sym, {
+        "last": q.get("last"), "close": q.get("close"), "open": q.get("open"),
+        "high": q.get("high"), "low": q.get("low"), "volume": q.get("volume"),
+        "ts": r.get("ts") or int(time.time()), "source": "tradingview_delayed",
+    }
+
+
+def poll_symbols_now(tickers: list) -> dict:
+    """Poll daftar simbol SPESIFIK sekarang (on-demand), tanpa gate jam bursa.
+
+    Dipakai Funnel mode live untuk saham yang belum ada di cache. Dibatasi
+    MAX_ONDEMAND. Pakai lock yang SAMA dgn poll terjadwal → bila poll terjadwal
+    sedang jalan, on-demand di-skip (return {}) agar tak berebut chart.
+    Return {TICKER: quote}. Hasil juga ditulis ke cache agar scan berikutnya hemat.
+    """
+    tickers = [str(t).strip().upper() for t in (tickers or []) if str(t).strip()][:MAX_ONDEMAND]
+    if not tickers:
+        return {}
+    os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
+    lock_fd = os.open(LOCK_PATH, os.O_CREAT | os.O_RDWR)
+    try:
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError):
+            logger.info("poll terjadwal sedang jalan — skip on-demand %d simbol", len(tickers))
+            return {}
+        if not ensure_tradingview_up():
+            return {}
+        records = _run_poller(tickers)
+        out = {}
+        for r in records:
+            rec = _record_from_poll(r)
+            if rec:
+                out[rec[0]] = rec[1]
+        if out:
+            store = _read_store()
+            store.setdefault("quotes", {}).update(out)
+            store["updated_at"] = int(time.time())
+            _atomic_write(CACHE_PATH, store)
+        logger.info("on-demand poll: %d/%d simbol ok", len(out), len(tickers))
+        return out
+    finally:
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        finally:
+            os.close(lock_fd)
+
+
+def get_intraday_bulk(tickers: list, allow_ondemand: bool = False, max_age_s: int = 1200) -> dict:
+    """Ambil quote intraday untuk banyak ticker. Pakai cache dulu; bila allow_ondemand
+    dan dalam jendela koneksi, saham yang belum ter-cache di-poll on-demand (dibatasi).
+
+    Return {TICKER: quote}. Ticker tanpa data tidak masuk dict (caller fallback yfinance).
+    """
+    result = {}
+    missing = []
+    for t in tickers:
+        q = get_intraday(t, max_age_s=max_age_s)
+        if q:
+            result[str(t).upper()] = q
+        else:
+            missing.append(str(t).upper())
+    if allow_ondemand and missing:
+        try:
+            from modules.market_hours import is_connectivity_window
+            in_window = is_connectivity_window()
+        except Exception:
+            in_window = False
+        if in_window:
+            result.update(poll_symbols_now(missing))
+    return result
 
 
 def status() -> dict:

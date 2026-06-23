@@ -352,18 +352,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const tbodyAll = document.getElementById('tbody-all');
     const allStats = document.getElementById('all-stats');
 
-    btnLoadAll.addEventListener('click', loadAllStocks);
-    selSector.addEventListener('change', loadAllStocks);
-    selMinScore.addEventListener('change', loadAllStocks);
-    selSort.addEventListener('change', loadAllStocks);
+    const btnLoadLive = document.getElementById('btn-load-live');
+    btnLoadAll.addEventListener('click', () => loadAllStocks(false));
+    if (btnLoadLive) btnLoadLive.addEventListener('click', () => loadAllStocks(true));
+    selSector.addEventListener('change', () => loadAllStocks(false));
+    selMinScore.addEventListener('change', () => loadAllStocks(false));
+    selSort.addEventListener('change', () => loadAllStocks(false));
 
-    function loadAllStocks() {
+    function loadAllStocks(live = false) {
         const params = new URLSearchParams({
             sort_by: selSort.value,
             sector: selSector.value,
             min_score: selMinScore.value
         });
-        tbodyAll.innerHTML = '<tr><td colspan="9" class="text-center loading">Memindai 75 emiten... (~5 detik)</td></tr>';
+        if (live) params.set('live', '1');
+        const loadMsg = live
+            ? 'Scan LIVE: ambil data terkini TradingView... (~2 menit)'
+            : 'Memindai 75 emiten... (~5 detik)';
+        tbodyAll.innerHTML = `<tr><td colspan="9" class="text-center loading">${loadMsg}</td></tr>`;
         allStats.textContent = '';
         fetch(`/api/all_stocks?${params}`)
             .then(r => r.json())
@@ -385,7 +391,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                allStats.textContent = `${d.total} emiten ditampilkan • Sort: ${d.sort_by}`;
+                const tvNote = d.n_tradingview
+                    ? ` • 🔴 ${d.n_tradingview} pakai data TradingView terkini${d.live ? ' (live)' : ''}`
+                    : '';
+                allStats.textContent = `${d.total} emiten ditampilkan • Sort: ${d.sort_by}${tvNote}`;
 
                 d.stocks.forEach((s, idx) => {
                     const rankClass = idx < 3 ? 'rank-badge top3' : 'rank-badge';

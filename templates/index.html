@@ -11,7 +11,7 @@
     <meta name="format-detection" content="telephone=no">
     <meta name="color-scheme" content="dark">
     <title>Sharia Trading Assistant v2</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=11">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=14">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -300,6 +300,7 @@
                             <option value="ticker">Sort: Ticker</option>
                         </select>
                         <button id="btn-load-all" class="btn primary">🔍 Scan Semua</button>
+                        <button id="btn-load-live" class="btn" title="Ambil data terkini dari TradingView saat scan (lebih lambat, ~2 menit, hanya jam bursa)">🔴 Scan Live (TradingView)</button>
                     </div>
                 </div>
                 <div class="all-stats" id="all-stats" style="margin-bottom:0.75rem; color:var(--text-secondary); font-size:0.85rem;"></div>
@@ -743,6 +744,61 @@
         <div id="main-tab-portfolio-content" class="hidden">
             <!-- Sync warnings (broker_transactions vs portfolio.csv mismatch) -->
             <div id="port-sync-warnings" class="glass-panel" style="display:none; margin-bottom: 1rem; padding: 0.85rem 1rem; border-left: 4px solid #f59e0b; background: rgba(245,158,11,.08); color: #fcd34d;"></div>
+
+            <!-- ============================================================== -->
+            <!-- 0. GLOBAL — SIRKULASI INVESTASI (semua kelas aset)             -->
+            <!-- ============================================================== -->
+            <section class="glass-panel global-panel" style="margin-bottom: 1.5rem;">
+                <div class="panel-header">
+                    <h2>🌐 Global — Sirkulasi Investasi</h2>
+                    <button id="btn-refresh-global" class="btn text-btn">🔄 Refresh</button>
+                </div>
+
+                <!-- Hero: Net worth + growth -->
+                <div class="global-hero">
+                    <div class="global-hero-main">
+                        <span class="global-hero-label">Total Kekayaan Bersih (Net Worth)</span>
+                        <span class="global-hero-value" id="global-networth">Rp 0</span>
+                        <span class="global-hero-sub">
+                            Modal investasi: <strong id="global-invested">Rp 0</strong>
+                            &nbsp;•&nbsp; P/L belum direalisasi:
+                            <strong id="global-pnl">Rp 0</strong>
+                            <span class="global-growth-badge" id="global-growth-pct">0%</span>
+                        </span>
+                    </div>
+                    <div class="global-hero-chart">
+                        <canvas id="global-alloc-chart" height="150"></canvas>
+                    </div>
+                </div>
+
+                <!-- Alokasi per kelas aset -->
+                <h4 class="global-subhead">📊 Alokasi Kelas Aset</h4>
+                <div class="global-alloc-grid" id="global-alloc-list">
+                    <div class="muted text-center loading" style="grid-column:1/-1; padding:1rem;">Memuat alokasi…</div>
+                </div>
+
+                <!-- Arus kas (cash flow) -->
+                <h4 class="global-subhead">💵 Arus Kas / Sirkulasi Modal</h4>
+                <div class="global-cashflow-grid" id="global-cashflow">
+                    <div class="muted text-center loading" style="grid-column:1/-1; padding:1rem;">Memuat arus kas…</div>
+                </div>
+
+                <!-- Pertumbuhan time-series -->
+                <div class="global-growth-header">
+                    <h4 class="global-subhead" style="margin:0;">📈 Pertumbuhan Net Worth</h4>
+                    <div class="global-period-toggle" id="global-period-toggle">
+                        <button data-period="7" class="gp-btn">7H</button>
+                        <button data-period="30" class="gp-btn active">30H</button>
+                        <button data-period="90" class="gp-btn">90H</button>
+                        <button data-period="0" class="gp-btn">Semua</button>
+                    </div>
+                </div>
+                <div class="global-growth-chips" id="global-growth-chips"></div>
+                <div style="position:relative; height:220px; margin-top:0.5rem;">
+                    <canvas id="global-growth-chart"></canvas>
+                </div>
+                <p class="muted" id="global-growth-note" style="font-size:0.75rem; margin-top:0.5rem;"></p>
+            </section>
 
             <!-- 1. OVERVIEW DASHBOARD WIDGETS -->
             <div class="portfolio-dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
@@ -1978,6 +2034,6 @@
     </div>
 
     <script src="{{ url_for('static', filename='tradersakti_data.js') }}?v=1"></script>
-    <script src="{{ url_for('static', filename='app.js') }}?v=10"></script>
+    <script src="{{ url_for('static', filename='app.js') }}?v=13"></script>
 </body>
 </html>
