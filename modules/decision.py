@@ -505,6 +505,59 @@ def decide_for_watchlist(
     return None
 
 
+# ----------------------------- Harga rekomendasi BELI ----------------------------- #
+
+def _round_tick(price: float) -> int:
+    """Bulatkan ke fraksi harga (tick size) IDX agar harga bisa dipasang di order book."""
+    p = float(price)
+    if p < 200:
+        tick = 1
+    elif p < 500:
+        tick = 2
+    elif p < 2000:
+        tick = 5
+    elif p < 5000:
+        tick = 10
+    else:
+        tick = 25
+    return int(round(p / tick) * tick)
+
+
+def _enrich_buy_price(decision: Dict, raw_price) -> None:
+    """Tambahkan harga beli (entry), target, dan stop loss ke rekomendasi BUY.
+
+    entry  = harga terkini (dibulatkan ke fraksi IDX)
+    target = entry × (1 + expected_return_pct)   — default 7% bila tak ada
+    stop   = entry × 0.93                          — aturan cut-loss O'Neil −7%
+    """
+    if not decision or decision.get("action") != "BUY":
+        return
+    try:
+        price = float(raw_price)
+    except (TypeError, ValueError):
+        price = 0.0
+    if price <= 0:
+        return
+
+    details = decision.setdefault("details", {})
+    exp_ret = details.get("expected_return_pct") or 7.0
+    entry = _round_tick(price)
+    target = _round_tick(price * (1 + exp_ret / 100.0))
+    stop = _round_tick(price * 0.93)
+
+    details["entry_price"] = entry
+    details["target_price"] = target
+    details["stop_price"] = stop
+
+    # Sisipkan ke next_step juga agar tetap terlihat di UI/Telegram yang hanya baca teks.
+    base = (decision.get("next_step") or "").rstrip()
+    if base and not base.endswith("."):
+        base += "."
+    decision["next_step"] = (
+        f"{base} 💰 Harga beli ±Rp {entry:,} · 🎯 Target Rp {target:,} · 🛑 Stop Rp {stop:,}."
+    ).strip()
+
+
 # ----------------------------- Aggregator ----------------------------- #
 
 def build_decisions(
@@ -552,6 +605,7 @@ def build_decisions(
         if decision["action"] == "SELL":
             sell_list.append(decision)
         elif decision["action"] == "BUY":
+            _enrich_buy_price(decision, p.get("current_price") or p.get("price") or p.get("harga"))
             buy_list.append(decision)
         elif decision["action"] == "HOLD":
             hold_list.append(decision)
@@ -571,6 +625,7 @@ def build_decisions(
         if decision is None:
             continue
         if decision["action"] == "BUY":
+            _enrich_buy_price(decision, s.get("current_price"))
             buy_list.append(decision)
         elif decision["action"] == "SELL":
             sell_list.append(decision)

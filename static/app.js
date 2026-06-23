@@ -158,12 +158,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const card = document.createElement('div');
         const urgClass = (item.urgency || 'MEDIUM').toLowerCase();
         card.className = `decision-card ${urgClass}`;
+
+        // Baris harga untuk rekomendasi BELI (harga beli / target / stop)
+        let priceRow = '';
+        const det = item.details || {};
+        if (item.action === 'BUY' && det.entry_price) {
+            const rp = v => 'Rp ' + Number(v).toLocaleString('id-ID');
+            priceRow = `
+            <div class="price-row">
+                <span class="price-chip entry">Beli ±${rp(det.entry_price)}</span>
+                ${det.target_price ? `<span class="price-chip target">🎯 ${rp(det.target_price)}</span>` : ''}
+                ${det.stop_price ? `<span class="price-chip stop">🛑 ${rp(det.stop_price)}</span>` : ''}
+            </div>`;
+        }
+
         card.innerHTML = `
             <div class="ticker-line">
                 <strong>${item.ticker}</strong>
                 <span class="urgency-tag ${item.urgency}">${item.urgency}</span>
             </div>
             <div class="reason">${item.reason}</div>
+            ${priceRow}
             <div class="next-step">→ ${item.next_step}</div>
         `;
         card.addEventListener('click', () => openModal(item.ticker));
@@ -375,7 +390,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 d.stocks.forEach((s, idx) => {
                     const rankClass = idx < 3 ? 'rank-badge top3' : 'rank-badge';
                     const rsiColor = (s.rsi >= 70) ? 'var(--color-sell)' : (s.rsi <= 30 ? 'var(--color-buy)' : '');
-                    const maStr = s.ma_cross === 'GOLDEN' ? '🟢 Golden' : '🔴 Death';
+                    const maStr = s.ma_cross === 'GOLDEN' ? '🟢 Golden'
+                                : s.ma_cross === 'DEATH'  ? '🔴 Death'
+                                : '–';
+                    // Badge "data terbatas" bila indikator MA50/MACD belum reliabel
+                    const limitedBadge = (s.reliable === false)
+                        ? ` <span class="badge-limited" title="Data harga terbatas (${s.data_points || '?'} bar) — MA50/MACD belum reliabel">⚠ data terbatas</span>`
+                        : '';
 
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
@@ -385,7 +406,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td>${formatRp(s.current_price || 0)}</td>
                         <td>${s.stars} <small>(${s.fundamental_score}/${s.fundamental_max})</small></td>
                         <td style="color:${rsiColor}; font-weight:600;">${s.rsi || '–'}</td>
-                        <td><span class="tech-badge ${techCss(s.technical_signal)}">${s.technical_signal || '–'}</span></td>
+                        <td><span class="tech-badge ${techCss(s.technical_signal)}">${s.technical_signal || '–'}</span>${limitedBadge}</td>
                         <td><small>${maStr}</small></td>
                         <td><span class="badge ${s.css_class} rec-trigger" style="cursor:pointer;" title="Klik untuk penjelasan">${s.final_signal}</span></td>
                     `;
@@ -471,8 +492,17 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch('/api/dashboard')
             .then(r => r.json())
             .then(d => {
-                // ----- Timestamp -----
-                if (tsEl) tsEl.textContent = d.timestamp ? `Update: ${d.timestamp.replace('T', ' ')}` : '–';
+                // ----- Timestamp + freshness data harga -----
+                if (tsEl) {
+                    let tsText = d.timestamp ? `Update: ${d.timestamp.replace('T', ' ')}` : '–';
+                    const fr = d.data_freshness;
+                    if (fr && fr.label) {
+                        const dot = fr.market_open ? '🟢' : '🌙';
+                        const mktTxt = fr.market_open ? 'pasar buka' : 'pasar tutup';
+                        tsText += `  •  ${dot} Data harga: ${fr.label} (${mktTxt})`;
+                    }
+                    tsEl.textContent = tsText;
+                }
 
                 // ----- Verdict harian (gabungan decision + allocation) -----
                 const decisionVerdict = (d.action_plan && d.action_plan.verdict) || '';
@@ -830,6 +860,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     .then(res => {
                                         if (res.success) {
                                             loadPegadaianPortfolio();
+                                            if (window.loadGlobalPortfolio) window.loadGlobalPortfolio();
                                             if (window.loadDashboard) window.loadDashboard();
                                         } else {
                                             alert('Gagal hapus: ' + (res.error || '?'));
@@ -923,6 +954,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     pgdForm.reset();
                     document.getElementById('pgd-tanggal').value = new Date().toISOString().slice(0, 10);
                     loadPegadaianPortfolio();
+                    if (window.loadGlobalPortfolio) window.loadGlobalPortfolio();
                     if (window.loadDashboard) window.loadDashboard();
                 } else {
                     if (msgEl) {
@@ -1157,14 +1189,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderTechnical(t) {
+        const limitedRow = (t.reliable === false)
+            ? `<div class="metric-row"><span>Reliabilitas</span><span class="badge-limited" title="MA50/MACD belum reliabel">⚠ data terbatas (${t.data_points || '?'} bar)</span></div>`
+            : '';
         let html = `
             <div class="metric-row"><span>Sinyal</span><span class="tech-badge ${techCss(t.signal)}">${t.signal}</span></div>
             <div class="metric-row"><span>Score</span><strong>${t.score}</strong></div>
             <div class="metric-row"><span>RSI</span><strong>${t.rsi}</strong></div>
             <div class="metric-row"><span>MACD Hist</span><strong>${t.macd_hist}</strong></div>
-            <div class="metric-row"><span>MA20 / MA50</span><strong>${t.ma20} / ${t.ma50}</strong></div>
-            <div class="metric-row"><span>MA Cross</span><strong>${t.ma_cross}</strong></div>
+            <div class="metric-row"><span>MA20 / MA50</span><strong>${t.ma20 ?? '–'} / ${t.ma50 ?? '–'}</strong></div>
+            <div class="metric-row"><span>MA Cross</span><strong>${t.ma_cross ?? '–'}</strong></div>
             <div class="metric-row"><span>Volume Spike</span><strong>${t.volume_spike || '–'}x</strong></div>
+            ${limitedRow}
             <h4 style="margin-top:1rem;">Catatan</h4>
             <ul class="reason-list">${(t.reasons || []).map(r => `<li class="reason-info">${r}</li>`).join('')}</ul>
         `;
@@ -1285,7 +1321,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'komoditas': { btnId: 'main-tab-btn-komoditas', contentId: 'main-tab-komoditas-content', onLoad: loadCommodityData },
             'perakdinar': { btnId: 'main-tab-btn-perakdinar', contentId: 'main-tab-perakdinar-content', onLoad: loadSilverDinarData },
             'top5': { btnId: 'main-tab-btn-top5', contentId: 'main-tab-top5-content', onLoad: loadTop5Recommendations },
-            'portfolio': { btnId: 'main-tab-btn-portfolio', contentId: 'main-tab-portfolio-content', onLoad: () => { loadBrokerPortfolio(); if (window.loadPegadaianPortfolio) window.loadPegadaianPortfolio(); } },
+            'portfolio': { btnId: 'main-tab-btn-portfolio', contentId: 'main-tab-portfolio-content', onLoad: () => { if (window.loadGlobalPortfolio) window.loadGlobalPortfolio(); loadBrokerPortfolio(); if (window.loadPegadaianPortfolio) window.loadPegadaianPortfolio(); } },
             'tradersakti': { btnId: 'main-tab-btn-tradersakti', contentId: 'main-tab-tradersakti-content', onLoad: () => { if (window.initTraderSaktiHub) window.initTraderSaktiHub(); } },
             'rules': { btnId: 'main-tab-btn-rules', contentId: 'main-tab-rules-content' }
         };
@@ -2570,6 +2606,180 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
+    // ---------- GLOBAL PORTFOLIO (Sirkulasi Investasi) ----------
+    let _globalAllocChart = null;
+    let _globalGrowthChart = null;
+    let _globalData = null;
+    let _globalPeriod = 30;
+
+    const CLASS_META = {
+        saham_idx: { label: 'Saham IDX', color: '#10b981', icon: '📈' },
+        saham_us:  { label: 'Saham US',  color: '#3b82f6', icon: '🌎' },
+        emas:      { label: 'Emas',      color: '#f59e0b', icon: '🪙' },
+        kas:       { label: 'Kas',       color: '#94a3b8', icon: '💵' },
+    };
+
+    function _setText(id, txt) { const el = document.getElementById(id); if (el) el.textContent = txt; }
+
+    function loadGlobalPortfolio() {
+        fetch('/api/portfolio/global')
+            .then(r => r.json())
+            .then(d => { _globalData = d; renderGlobalPortfolio(d); })
+            .catch(err => console.error('[global] load failed', err));
+    }
+    window.loadGlobalPortfolio = loadGlobalPortfolio;
+
+    function renderGlobalPortfolio(d) {
+        _setText('global-networth', rupiah(d.net_worth_rp));
+        _setText('global-invested', rupiah(d.risk_invested_rp));
+        const pnlEl = document.getElementById('global-pnl');
+        if (pnlEl) { pnlEl.textContent = rupiah(d.risk_pnl_rp); pnlEl.className = d.risk_pnl_rp >= 0 ? 'text-positive' : 'text-negative'; }
+        const gEl = document.getElementById('global-growth-pct');
+        if (gEl) { gEl.textContent = pctFmt(d.growth_pct, true); gEl.className = 'global-growth-badge ' + (d.growth_pct >= 0 ? 'positive' : 'negative'); }
+
+        renderAllocChart(d.asset_classes || {});
+        renderAllocList(d.asset_classes || {});
+        renderCashFlow(d.cash_flow || {});
+        renderGrowthChips(d.growth_timeseries || {});
+        renderGrowthChart(d.snapshots || [], _globalPeriod);
+    }
+
+    function renderAllocChart(classes) {
+        const canvas = document.getElementById('global-alloc-chart');
+        if (!canvas || typeof Chart === 'undefined') return;
+        const keys = Object.keys(CLASS_META).filter(k => (classes[k] && classes[k].value_rp > 0));
+        const labels = keys.map(k => CLASS_META[k].label);
+        const data = keys.map(k => classes[k].value_rp);
+        const colors = keys.map(k => CLASS_META[k].color);
+        if (_globalAllocChart) _globalAllocChart.destroy();
+        if (keys.length === 0) return;
+        _globalAllocChart = new Chart(canvas.getContext('2d'), {
+            type: 'doughnut',
+            data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '62%',
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#cbd5e1', boxWidth: 12, font: { size: 11 } } },
+                    tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${rupiah(ctx.parsed)}` } }
+                }
+            }
+        });
+    }
+
+    function renderAllocList(classes) {
+        const wrap = document.getElementById('global-alloc-list');
+        if (!wrap) return;
+        const keys = Object.keys(CLASS_META);
+        wrap.innerHTML = keys.map(k => {
+            const c = classes[k] || { value_rp: 0, weight_pct: 0, pnl_rp: 0, pnl_pct: 0 };
+            const m = CLASS_META[k];
+            const isCash = (k === 'kas');
+            const pnlClass = c.pnl_rp >= 0 ? 'text-positive' : 'text-negative';
+            const growthHtml = isCash ? '<span class="muted">—</span>'
+                : `<span class="${pnlClass}">${pctFmt(c.pnl_pct, true)}</span>`;
+            return `
+                <div class="global-alloc-card" style="border-left:4px solid ${m.color};">
+                    <div class="gac-top">
+                        <span class="gac-label">${m.icon} ${m.label}</span>
+                        <span class="gac-weight">${(c.weight_pct || 0).toFixed(1)}%</span>
+                    </div>
+                    <div class="gac-value">${rupiah(c.value_rp)}</div>
+                    <div class="gac-bar"><span style="width:${Math.min(100, c.weight_pct || 0)}%; background:${m.color};"></span></div>
+                    <div class="gac-foot">
+                        <span class="muted">Pertumbuhan</span> ${growthHtml}
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    function renderCashFlow(cf) {
+        const wrap = document.getElementById('global-cashflow');
+        if (!wrap) return;
+        const cards = [
+            { label: 'Modal Masuk (TopUp)', val: cf.deposit_rp, cls: 'text-positive', icon: '📥' },
+            { label: 'Modal Keluar (Tarik)', val: cf.withdrawal_rp, cls: 'text-negative', icon: '📤' },
+            { label: 'Net Modal Disetor', val: cf.net_modal_rp, cls: 'text-neutral', icon: '🏦' },
+            { label: 'Total Pembelian', val: cf.buy_rp, cls: 'text-neutral', icon: '🛒' },
+            { label: 'Total Penjualan', val: cf.sell_rp, cls: 'text-neutral', icon: '💱' },
+            { label: 'Realized P/L', val: cf.realized_pnl_rp, cls: (cf.realized_pnl_rp >= 0 ? 'text-positive' : 'text-negative'), icon: '✅' },
+        ];
+        wrap.innerHTML = cards.map(c => `
+            <div class="global-cf-card">
+                <span class="gcf-icon">${c.icon}</span>
+                <div class="gcf-info">
+                    <span class="gcf-label">${c.label}</span>
+                    <span class="gcf-value ${c.cls}">${rupiah(c.val)}</span>
+                </div>
+            </div>`).join('');
+    }
+
+    function renderGrowthChips(g) {
+        const wrap = document.getElementById('global-growth-chips');
+        if (!wrap) return;
+        const chip = (label, v) => {
+            const cls = (v > 0) ? 'positive' : (v < 0 ? 'negative' : 'neutral');
+            return `<span class="growth-chip ${cls}">${label}: ${pctFmt(v, true)}</span>`;
+        };
+        wrap.innerHTML = chip('Harian', g.daily || 0) + chip('Mingguan', g.weekly || 0)
+            + chip('Bulanan', g.monthly || 0) + chip('Total', g.all || 0);
+        const note = document.getElementById('global-growth-note');
+        if (note) {
+            note.textContent = g.n_points
+                ? `Berdasarkan ${g.n_points} snapshot harian sejak ${g.since_date}. Snapshot terekam otomatis tiap kali tab dibuka.`
+                : 'Snapshot pertumbuhan akan terkumpul seiring waktu (1 titik/hari).';
+        }
+    }
+
+    function renderGrowthChart(snapshots, periodDays) {
+        const canvas = document.getElementById('global-growth-chart');
+        if (!canvas || typeof Chart === 'undefined') return;
+        let snaps = (snapshots || []).slice();
+        if (periodDays && periodDays > 0 && snaps.length > periodDays) {
+            snaps = snaps.slice(-periodDays);
+        }
+        const labels = snaps.map(s => String(s.date).slice(5)); // MM-DD
+        const data = snaps.map(s => Number(s.net_worth_rp) || 0);
+        if (_globalGrowthChart) _globalGrowthChart.destroy();
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createLinearGradient(0, 0, 0, 220);
+        grad.addColorStop(0, 'rgba(59,130,246,0.35)');
+        grad.addColorStop(1, 'rgba(59,130,246,0.02)');
+        _globalGrowthChart = new Chart(ctx, {
+            type: 'line',
+            data: { labels, datasets: [{
+                label: 'Net Worth', data, borderColor: '#3b82f6', backgroundColor: grad,
+                fill: true, tension: 0.3, pointRadius: snaps.length > 60 ? 0 : 2,
+                pointHoverRadius: 4, borderWidth: 2,
+            }]},
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: (c) => rupiah(c.parsed.y) } }
+                },
+                scales: {
+                    x: { ticks: { color: '#64748b', maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+                    y: { ticks: { color: '#64748b', font: { size: 10 }, callback: (v) => rupiah(v) }, grid: { color: 'rgba(148,163,184,0.08)' } }
+                }
+            }
+        });
+    }
+
+    // Period toggle
+    const _gpToggle = document.getElementById('global-period-toggle');
+    if (_gpToggle) {
+        _gpToggle.addEventListener('click', (e) => {
+            const btn = e.target.closest('.gp-btn');
+            if (!btn) return;
+            _gpToggle.querySelectorAll('.gp-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            _globalPeriod = parseInt(btn.dataset.period) || 0;
+            if (_globalData) renderGrowthChart(_globalData.snapshots || [], _globalPeriod);
+        });
+    }
+    const _btnRefreshGlobal = document.getElementById('btn-refresh-global');
+    if (_btnRefreshGlobal) _btnRefreshGlobal.addEventListener('click', loadGlobalPortfolio);
+
     // ---------- PORTFOLIO TAB LOGIC ----------
     function loadBrokerPortfolio() {
         fetch('/api/broker_portfolio')
@@ -2751,6 +2961,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(data => {
                 if (data.success) {
                     loadBrokerPortfolio();
+                    if (window.loadGlobalPortfolio) window.loadGlobalPortfolio();
                 } else {
                     alert('Gagal menghapus transaksi: ' + (data.error || 'Unknown error'));
                 }
@@ -2900,6 +3111,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     clearReviewMode();
                     updateFormFieldsStatus();
                     loadBrokerPortfolio();
+                    if (window.loadGlobalPortfolio) window.loadGlobalPortfolio();
                 } else {
                     alert('Gagal menyimpan transaksi: ' + (data.error || 'Error tidak dikenal'));
                 }
