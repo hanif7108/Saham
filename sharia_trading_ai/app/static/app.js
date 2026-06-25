@@ -753,15 +753,17 @@ async function loadEngines(){
   try{ const s=await api('/api/advisor/status'); const e=s.engines; const sel=$('#adv-engine');
     const opt=(v,l)=>`<option value="${v}">${l}</option>`;
     let html=opt('auto','⚙ Auto');
+    // Claude selalu tampil (walau belum aktif) — labeli bila perlu API key.
+    html+=opt('claude', e.claude.tersedia ? '✦ Claude' : '✦ Claude (perlu API key)');
     if(e.gemini.tersedia) html+=opt('gemini','✧ Gemini (gratis)');
     if(e.ollama.tersedia) html+=opt('ollama','🖥 Ollama (gratis)');
     html+=opt('lokal','⚡ Lokal (instan)');
-    if(e.claude.tersedia) html+=opt('claude','✦ Claude');
     sel.innerHTML=html; sel.value=s.default;
     const notes=[];
     if(e.gemini.tersedia) notes.push(`Gemini: <b>${esc(e.gemini.model)}</b>`);
     if(e.ollama.tersedia) notes.push(`Ollama: <b>${esc(e.ollama.model)}</b>`);
     if(notes.length) $('#adv-hint').innerHTML += ` · <span class="dim">${notes.join(' · ')} (gratis)</span>`;
+    if(!e.claude.tersedia) $('#adv-hint').innerHTML += ` · <span class="dim">Claude (${esc(e.claude.model)}) perlu <code>ANTHROPIC_API_KEY</code> di .env</span>`;
   }catch(e){}
 }
 async function advisor(){

@@ -55,7 +55,9 @@ def advisor(ticker: str, engine: str = "auto"):
     report = funnel.analyze_stock(ticker)
     eng = _auto_engine() if engine == "auto" else engine
 
-    if eng == "claude" and ai_advisor.is_enabled():
+    if eng == "claude":
+        # advise() otomatis kembalikan pesan "set ANTHROPIC_API_KEY" bila belum aktif
+        # (jangan diam-diam jatuh ke Lokal saat user sengaja memilih Claude).
         result = ai_advisor.advise(report)
     elif eng == "gemini":
         result = gemini_advisor.advise(report)
