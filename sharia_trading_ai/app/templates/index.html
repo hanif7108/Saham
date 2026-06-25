@@ -66,6 +66,17 @@
       </div>
     </section>
 
+    <section class="glass-panel" id="crosscheck-panel" style="margin-bottom:1.4rem">
+      <div class="panel-header">
+        <h2>🚦 Radar Kontradiksi TradingView</h2>
+        <div class="flex" style="gap:.7rem;align-items:center">
+          <span class="mut" style="font-size:.74rem">Fundamental BELI ✕ Teknikal TradingView SELL</span>
+          <button class="btn primary" id="cc-run" onclick="loadCrossCheck()">▶ Muat Radar</button>
+        </div>
+      </div>
+      <div id="crosscheck-body"><p class="sub" style="margin:.4rem 0 0">Klik “Muat Radar” untuk memindai saham yang direkomendasikan BELI oleh mesin namun teknikal TradingView memberi sinyal SELL — penanda risiko false positive / timing beli yang buruk.</p></div>
+    </section>
+
     <div style="display:grid;grid-template-columns:minmax(280px,1fr) minmax(0,1.7fr);gap:1.2rem;margin-bottom:1.4rem;align-items:start">
       <section class="glass-panel" id="dash-roi" style="margin:0">
         <div class="between"><h3 class="sec" style="margin:0">🎯 ROI Integral <span class="mut" style="font-size:.72rem;font-weight:600">(realized+unrealized)</span></h3>

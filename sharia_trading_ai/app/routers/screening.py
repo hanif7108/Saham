@@ -120,3 +120,49 @@ def screen(
         stoch_rsi_range=stoch_rsi_range,
         golden_cross=golden_cross,
     )
+
+
+@router.get("/cross-check")
+def cross_check(limit: int | None = Query(None, ge=1, le=100)):
+    """Radar kontradiksi: saham yang direkomendasikan BELI oleh mesin tapi teknikal
+    TradingView memberi sinyal SELL (risiko false positive / timing beli buruk).
+
+    Aktif bila settings.data_source memakai TradingView (hybrid/tradingview);
+    tiap hasil membawa `tv_cross_check` dari funnel.
+    """
+    data = funnel.screen_universe(min_magic=0, min_canslim=0,
+                                  require_uptrend=False, limit=limit)
+    rows = data.get("hasil", [])
+
+    items: list[dict] = []
+    for r in rows:
+        cc = r.get("tv_cross_check")
+        if not cc or not cc.get("recommend_label"):
+            continue
+        items.append({
+            "ticker": r["ticker"],
+            "name": r.get("name"),
+            "sector": r.get("sector"),
+            "aksi": r.get("aksi"),
+            "final_signal": r.get("final_signal"),
+            "css": r.get("css"),
+            "fundamental_label": r.get("fundamental_label"),
+            "magic_score": r.get("magic_score"),
+            "skor": r.get("skor"),
+            "price": r.get("price"),
+            "tv_recommend": cc.get("recommend_label"),
+            "tv_recommend_all": cc.get("recommend_all"),
+            "contradiction": bool(cc.get("contradiction")),
+        })
+
+    contradictions = [i for i in items if i["contradiction"]]
+    contradictions.sort(key=lambda x: x.get("skor") or 0, reverse=True)
+
+    return {
+        "enabled": len(items) > 0,    # False jika data_source bukan TradingView/hybrid
+        "total_lolos": len(rows),
+        "with_tv": len(items),
+        "contradiction_count": len(contradictions),
+        "contradictions": contradictions,
+        "all": items,
+    }

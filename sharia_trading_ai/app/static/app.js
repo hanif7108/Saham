@@ -798,11 +798,48 @@ function screenTable(rows){
       <td style="font-weight:700;font-size:.78rem;color:${tc}">${s.trend||'—'}</td>
       <td><span class="num" style="font-weight:700">${s.stoch_k != null ? Math.round(s.stoch_k) : '—'}</span><span class="dim" style="font-size:.7rem">%</span></td>
       <td><div class="flex" style="gap:.2rem">${crosses}</div></td>
-      <td><span class="badge ${s.css||'na'}">${esc(s.final_signal||s.aksi)}</span></td>
+      <td><span class="badge ${s.css||'na'}">${esc(s.final_signal||s.aksi)}</span>${s.tv_cross_check&&s.tv_cross_check.contradiction?' <span class="badge sell" style="padding:.1rem .3rem;font-size:.6rem;margin-left:.2rem" title="Teknikal TradingView SELL — timing beli berisiko">⚠️TV</span>':''}</td>
       <td style="text-align:right"><b class="num" style="font-size:.95rem">${s.skor}</b></td></tr>`; });
   return r+'</tbody></table>';
 }
 function gotoAnalyze(tk){ if(tk==='🪙 EMAS'||tk==='EMAS'){ document.querySelector('.tab-btn-main[data-p="emas"]').click(); window.scrollTo({top:0,behavior:'smooth'}); return; } $('#tk').value=tk; document.querySelector('.tab-btn-main[data-p="analyze"]').click(); analyze(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+/* ===================== RADAR KONTRADIKSI TRADINGVIEW ===================== */
+async function loadCrossCheck(){
+  const body=$('#crosscheck-body'), btn=$('#cc-run');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Memindai…'; }
+  body.innerHTML='<div class="empty"><span class="spin"></span> Memindai universe syariah dengan data TradingView live… (±15-30 dtk)</div>';
+  let d;
+  try{ d=await api('/api/cross-check'); }
+  catch(e){ body.innerHTML='<div class="empty">Gagal memuat radar kontradiksi.</div>'; if(btn){btn.disabled=false;btn.textContent='▶ Muat Radar';} return; }
+  if(btn){ btn.disabled=false; btn.textContent='🔄 Segarkan Radar'; }
+  if(!d.enabled || !d.with_tv){
+    body.innerHTML='<p class="sub" style="margin:.4rem 0 0">Cross-check TradingView tidak aktif (mode data bukan <b>hybrid</b>/<b>tradingview</b>). Aktifkan via <code>DATA_SOURCE</code> untuk memunculkan radar ini.</p>';
+    return;
+  }
+  const cons=d.contradictions||[];
+  let h=`<div class="cc-summary">
+    <div class="cc-stat"><div class="cc-num ${d.contradiction_count?'warn':'ok'}">${d.contradiction_count}</div><div class="cc-lbl">Kontradiksi</div></div>
+    <div class="cc-stat"><div class="cc-num">${d.with_tv}</div><div class="cc-lbl">Saham dgn cross-check</div></div>
+    <div class="cc-stat"><div class="cc-num">${d.total_lolos}</div><div class="cc-lbl">Lolos funnel</div></div>
+  </div>`;
+  if(!cons.length){
+    h+='<div class="cc-ok-banner">✅ Tidak ada kontradiksi — semua rekomendasi BELI selaras dengan teknikal TradingView saat ini.</div>';
+  } else {
+    h+='<div class="cc-note-top">⚠️ Saham berikut direkomendasikan <b>BELI</b> oleh mesin, namun teknikal TradingView memberi sinyal <b>SELL</b>. Timing beli berisiko — pertimbangkan menunggu konfirmasi.</div>';
+    h+='<div class="cc-grid">'+cons.map(ccCard).join('')+'</div>';
+  }
+  body.innerHTML=h;
+}
+function ccCard(x){
+  const ra=(x.tv_recommend_all!=null)?Number(x.tv_recommend_all).toFixed(2):'n/a';
+  return `<div class="cc-card" onclick="gotoAnalyze('${x.ticker}')" title="Klik untuk analisa lengkap">
+    <div class="cc-card-head"><span class="tkr">${x.ticker}</span><span class="cc-flag">⚠️ KONTRADIKSI</span></div>
+    <div class="cc-line"><span class="mut">Rekomendasi sistem</span><span class="badge ${x.css||'buy'}">${esc(x.aksi||x.final_signal||'-')}</span></div>
+    <div class="cc-line"><span class="mut">Teknikal TradingView</span><span class="badge sell">${esc(x.tv_recommend)} (${ra})</span></div>
+    <div class="cc-line"><span class="mut">Fundamental · Skor</span><span>${esc(x.fundamental_label||'-')} · <b class="num">${x.skor!=null?x.skor:'-'}</b></span></div>
+  </div>`;
+}
 
 /* ===================== SCREENER UNDERVALUE ===================== */
 async function runUndervalue(){

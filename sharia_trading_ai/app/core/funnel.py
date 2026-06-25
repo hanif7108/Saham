@@ -261,6 +261,7 @@ def screen_universe(
                 "final_signal": rec["final_signal"],
                 "css": rec["css"],
                 "skor": rec["skor"],
+                "tv_cross_check": rec.get("tv_cross_check"),
             }
             return res, None
         except Exception as e:
