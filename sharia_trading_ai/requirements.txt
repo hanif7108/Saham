@@ -14,6 +14,12 @@ httpx==0.28.1
 # AI Advisor (opsional — fitur aktif jika ANTHROPIC_API_KEY di-set)
 anthropic>=0.73.0
 
+# Data TradingView (opsional — aktif bila data_source = tradingview/hybrid):
+#   tradingview-ta : fundamental scanner + snapshot teknikal (PyPI)
+#   tvdatafeed     : OHLCV history penuh (TIDAK di PyPI — pasang dari git):
+#       pip install "git+https://github.com/rongardF/tvdatafeed.git"
+tradingview-ta>=3.3.0
+
 # dev/test
 pytest==8.3.4
 python-multipart>=0.0.9

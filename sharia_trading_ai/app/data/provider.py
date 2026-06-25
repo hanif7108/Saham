@@ -95,6 +95,87 @@ def _fresh(path: Path, ttl: Optional[int] = None) -> bool:
 
 
 # --------------------------------------------------------------------------- #
+#  Fallback OHLCV via TradingView (tvdatafeed) — saat yfinance kosong          #
+# --------------------------------------------------------------------------- #
+_TV_CLIENT = None
+_TV_CLIENT_FAILED = False
+
+
+def _tv_client():
+    """Singleton TvDatafeed (guest mode). False bila lib tak ada / gagal init."""
+    global _TV_CLIENT, _TV_CLIENT_FAILED
+    if _TV_CLIENT_FAILED:
+        return None
+    if _TV_CLIENT is None:
+        try:
+            import logging as _lg
+            _lg.getLogger("tvDatafeed").setLevel(_lg.CRITICAL)
+            from tvDatafeed import TvDatafeed
+            _TV_CLIENT = TvDatafeed()  # guest (tanpa login)
+        except Exception:
+            _TV_CLIENT_FAILED = True
+            return None
+    return _TV_CLIENT
+
+
+def _tv_symbol_exchange(ticker: str) -> tuple[Optional[str], Optional[str]]:
+    """Petakan ticker app -> (symbol, exchange) TradingView. (None,None) = lewati."""
+    t = ticker.strip().upper()
+    if t in ("^JKSE", "_IDX_JKSE"):
+        return "COMPOSITE", "IDX"        # IHSG
+    if t.startswith("^") or "=" in t or "-" in t:
+        return None, None                # komoditas/forex/indeks lain: lewati
+    return t.replace(".JK", ""), "IDX"   # saham BEI
+
+
+def _tv_history(ticker: str, period: str, interval: str) -> pd.DataFrame:
+    """OHLCV dari TradingView (tvdatafeed), format selaras yfinance. Empty bila gagal.
+
+    Dipakai sebagai fallback HISTORY penuh saat yfinance kosong, supaya seluruh
+    mesin teknikal (S/R, Fibonacci, candle) tetap jalan. Aktif hanya pada
+    settings.data_source = tradingview/hybrid. Retry utk atasi flakiness guest mode.
+    """
+    if (settings.data_source or "").lower() not in ("tradingview", "hybrid"):
+        return pd.DataFrame()
+    if interval not in ("1d", "1wk", "1mo"):   # fallback fokus pada timeframe harian/dst
+        return pd.DataFrame()
+    sym, exch = _tv_symbol_exchange(ticker)
+    if sym is None:
+        return pd.DataFrame()
+    client = _tv_client()
+    if client is None:
+        return pd.DataFrame()
+
+    try:
+        from tvDatafeed import Interval as _TvInt
+    except Exception:
+        return pd.DataFrame()
+    imap = {"1d": _TvInt.in_daily, "1wk": _TvInt.in_weekly, "1mo": _TvInt.in_monthly}
+    nbars = {"1mo": 30, "3mo": 80, "6mo": 150, "1y": 280, "2y": 560, "5y": 1300}.get(period, 560)
+
+    df = None
+    for _ in range(3):  # guest mode kadang balas None pada panggilan beruntun
+        try:
+            df = client.get_hist(symbol=sym, exchange=exch,
+                                 interval=imap[interval], n_bars=nbars)
+        except Exception:
+            df = None
+        if df is not None and not df.empty:
+            break
+        time.sleep(1.0)
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    # Selaraskan dengan format yfinance: kolom Title-case, drop 'symbol'.
+    df = df.rename(columns={"open": "Open", "high": "High", "low": "Low",
+                            "close": "Close", "volume": "Volume"})
+    cols = [c for c in ("Open", "High", "Low", "Close", "Volume") if c in df.columns]
+    df = df[cols].dropna(how="all")
+    df.index.name = None
+    return df
+
+
+# --------------------------------------------------------------------------- #
 #  History (OHLCV)                                                            #
 # --------------------------------------------------------------------------- #
 def get_history(ticker: str, period: str = "2y", interval: str = "1d",
@@ -125,6 +206,14 @@ def get_history(ticker: str, period: str = "2y", interval: str = "1d",
         df = None
         yf_ticker = None
     if df is None or df.empty:
+        # yfinance kosong -> coba OHLCV penuh dari TradingView (tvdatafeed).
+        tv_df = _tv_history(ticker, period, interval)
+        if not tv_df.empty:
+            try:
+                tv_df.to_csv(cache)   # cache seperti jalur yfinance
+            except Exception:
+                pass
+            return tv_df
         return pd.DataFrame()
     df = df[["Open", "High", "Low", "Close", "Volume"]].dropna(how="all")
 
