@@ -817,24 +817,53 @@ async function loadCrossCheck(){
     body.innerHTML='<p class="sub" style="margin:.4rem 0 0">Cross-check TradingView tidak aktif (mode data bukan <b>hybrid</b>/<b>tradingview</b>). Aktifkan via <code>DATA_SOURCE</code> untuk memunculkan radar ini.</p>';
     return;
   }
-  const cons=d.contradictions||[];
+  const sells=d.sell_signals||[], warns=d.buy_warnings||[];
   let h=`<div class="cc-summary">
-    <div class="cc-stat"><div class="cc-num ${d.contradiction_count?'warn':'ok'}">${d.contradiction_count}</div><div class="cc-lbl">Kontradiksi</div></div>
-    <div class="cc-stat"><div class="cc-num">${d.with_tv}</div><div class="cc-lbl">Saham dgn cross-check</div></div>
-    <div class="cc-stat"><div class="cc-num">${d.total_lolos}</div><div class="cc-lbl">Lolos funnel</div></div>
+    <div class="cc-stat"><div class="cc-num ${d.sell_count?'warn':'ok'}">${d.sell_count}</div><div class="cc-lbl">Rekomendasi SELL<br>(di portofolio)</div></div>
+    <div class="cc-stat"><div class="cc-num">${d.warning_count}</div><div class="cc-lbl">Tunda Beli<br>(bukan milik)</div></div>
+    <div class="cc-stat"><div class="cc-num">${d.portfolio_count}</div><div class="cc-lbl">Posisi portofolio</div></div>
   </div>`;
-  if(!cons.length){
-    h+='<div class="cc-ok-banner">✅ Tidak ada kontradiksi — semua rekomendasi BELI selaras dengan teknikal TradingView saat ini.</div>';
+
+  // Bagian 1 — Rekomendasi SELL: HANYA untuk saham yang dimiliki (syariah long-only).
+  h+='<h3 class="cc-sec">🔴 Rekomendasi SELL — Posisi di Portofolio</h3>';
+  if(!d.portfolio_count){
+    h+='<div class="cc-ok-banner mutbox">Portofolio kosong — tidak ada rekomendasi SELL. SELL hanya diberikan untuk saham yang Anda miliki.</div>';
+  } else if(!sells.length){
+    h+='<div class="cc-ok-banner">✅ Tidak ada posisi portofolio dengan teknikal TradingView SELL saat ini.</div>';
   } else {
-    h+='<div class="cc-note-top">⚠️ Saham berikut direkomendasikan <b>BELI</b> oleh mesin, namun teknikal TradingView memberi sinyal <b>SELL</b>. Timing beli berisiko — pertimbangkan menunggu konfirmasi.</div>';
-    h+='<div class="cc-grid">'+cons.map(ccCard).join('')+'</div>';
+    h+='<div class="cc-note-top">Saham milik Anda berikut menunjukkan teknikal TradingView <b>SELL</b> — pertimbangkan exit / kurangi posisi sesuai money management.</div>';
+    h+='<div class="cc-grid">'+sells.map(sellCard).join('')+'</div>';
+  }
+
+  // Bagian 2 — Tunda Beli: kandidat BELI bertenikal SELL yang TIDAK dimiliki (bukan SELL).
+  h+='<h3 class="cc-sec" style="margin-top:1.4rem">⚠️ Tunda Beli — Kandidat dgn Teknikal SELL</h3>';
+  if(!warns.length){
+    h+='<div class="cc-ok-banner">✅ Tidak ada kandidat BELI yang bertolak belakang dengan teknikal TradingView.</div>';
+  } else {
+    h+='<div class="cc-note-top amber">Direkomendasikan <b>BELI</b> oleh mesin tapi teknikal TradingView <b>SELL</b> — tunda beli, tunggu konfirmasi. Bukan rekomendasi jual karena saham tidak dimiliki.</div>';
+    h+='<div class="cc-grid">'+warns.map(warnCard).join('')+'</div>';
+  }
+
+  if((d.held_uncovered||[]).length){
+    h+=`<p class="sub" style="margin-top:.9rem">Catatan: ${d.held_uncovered.length} saham milik Anda di luar universe scan (${d.held_uncovered.join(', ')}) — belum dievaluasi radar ini.</p>`;
   }
   body.innerHTML=h;
 }
-function ccCard(x){
+function sellCard(x){
   const ra=(x.tv_recommend_all!=null)?Number(x.tv_recommend_all).toFixed(2):'n/a';
-  return `<div class="cc-card" onclick="gotoAnalyze('${x.ticker}')" title="Klik untuk analisa lengkap">
-    <div class="cc-card-head"><span class="tkr">${x.ticker}</span><span class="cc-flag">⚠️ KONTRADIKSI</span></div>
+  const pl=(x.pl_pct!=null)?`<b class="${x.pl_pct>=0?'gain':'loss'}">${x.pl_pct>=0?'+':''}${x.pl_pct}%</b>`:'—';
+  const typeBadge=(x.pos_type==='investasi')?' <span class="badge hold" style="font-size:.58rem;padding:.08rem .3rem">INVESTASI</span>':'';
+  return `<div class="cc-card sell-card" onclick="gotoAnalyze('${x.ticker}')" title="Klik untuk analisa lengkap">
+    <div class="cc-card-head"><span class="tkr">${x.ticker}${typeBadge}</span><span class="cc-flag">🔴 SELL</span></div>
+    <div class="cc-line"><span class="mut">Teknikal TradingView</span><span class="badge sell">${esc(x.tv_recommend)} (${ra})</span></div>
+    <div class="cc-line"><span class="mut">Posisi Anda</span><span><b class="num">${x.lots!=null?x.lots:'-'}</b> lot · P/L ${pl}</span></div>
+    <div class="cc-line"><span class="mut">Fundamental · Skor</span><span>${esc(x.fundamental_label||'-')} · <b class="num">${x.skor!=null?x.skor:'-'}</b></span></div>
+  </div>`;
+}
+function warnCard(x){
+  const ra=(x.tv_recommend_all!=null)?Number(x.tv_recommend_all).toFixed(2):'n/a';
+  return `<div class="cc-card warn-card" onclick="gotoAnalyze('${x.ticker}')" title="Klik untuk analisa lengkap">
+    <div class="cc-card-head"><span class="tkr">${x.ticker}</span><span class="cc-flag amber">⚠️ TUNDA BELI</span></div>
     <div class="cc-line"><span class="mut">Rekomendasi sistem</span><span class="badge ${x.css||'buy'}">${esc(x.aksi||x.final_signal||'-')}</span></div>
     <div class="cc-line"><span class="mut">Teknikal TradingView</span><span class="badge sell">${esc(x.tv_recommend)} (${ra})</span></div>
     <div class="cc-line"><span class="mut">Fundamental · Skor</span><span>${esc(x.fundamental_label||'-')} · <b class="num">${x.skor!=null?x.skor:'-'}</b></span></div>

@@ -370,3 +370,13 @@ label.fld .l{display:block;color:var(--dim);font-size:.78rem;font-weight:600;mar
 .cc-flag{font-size:.62rem;font-weight:700;color:var(--sell);background:color-mix(in srgb,var(--sell) 14%,transparent);border:1px solid color-mix(in srgb,var(--sell) 35%,transparent);border-radius:6px;padding:.12rem .4rem;white-space:nowrap}
 .cc-line{display:flex;justify-content:space-between;align-items:center;gap:.5rem;font-size:.8rem;padding:.18rem 0}
 .cc-line .mut{color:var(--mute)}
+
+/* Radar — pemisahan SELL (portofolio) vs Tunda Beli (kandidat) */
+.cc-sec{font-size:.92rem;font-weight:700;color:var(--text);margin:.2rem 0 .7rem;display:flex;align-items:center;gap:.4rem}
+.cc-note-top.amber{background:color-mix(in srgb,var(--hold) 12%,transparent);border-color:color-mix(in srgb,var(--hold) 35%,transparent)}
+.cc-ok-banner.mutbox{color:var(--mute);background:var(--panel);border-color:var(--border)}
+.cc-card.warn-card{border-color:color-mix(in srgb,var(--hold) 40%,var(--border));border-left-color:var(--hold)}
+.cc-card.warn-card:hover{box-shadow:0 6px 20px color-mix(in srgb,var(--hold) 18%,transparent)}
+.cc-card.warn-card .cc-flag.amber{color:var(--hold);background:color-mix(in srgb,var(--hold) 14%,transparent);border-color:color-mix(in srgb,var(--hold) 35%,transparent)}
+.cc-line .gain{color:var(--buy)}
+.cc-line .loss{color:var(--sell)}

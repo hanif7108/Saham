@@ -122,17 +122,48 @@ def screen(
     )
 
 
+_TV_SELL_LABELS = ("SELL", "STRONG SELL")
+
+
+def _held_positions() -> dict[str, dict]:
+    """Map ticker -> ringkasan posisi portofolio (lots digabung antar broker/tipe)."""
+    from app.core import portfolio
+    try:
+        positions = portfolio.list_positions().get("positions", [])
+    except Exception:  # noqa: BLE001
+        positions = []
+    held: dict[str, dict] = {}
+    for p in positions:
+        tk = (p.get("ticker") or "").upper().strip()
+        if not tk:
+            continue
+        h = held.setdefault(tk, {"lots": 0, "pl_pct": None, "type": p.get("type", "trading")})
+        h["lots"] += int(p.get("lots") or 0)
+        if h["pl_pct"] is None:
+            h["pl_pct"] = p.get("net_pl_pct", p.get("pl_pct"))
+        if p.get("type") == "investasi":
+            h["type"] = "investasi"   # tandai bila ada porsi investasi tahunan
+    return held
+
+
 @router.get("/cross-check")
 def cross_check(limit: int | None = Query(None, ge=1, le=100)):
-    """Radar kontradiksi: saham yang direkomendasikan BELI oleh mesin tapi teknikal
-    TradingView memberi sinyal SELL (risiko false positive / timing beli buruk).
+    """Radar cross-check TradingView, sadar-portofolio (syariah long-only).
 
-    Aktif bila settings.data_source memakai TradingView (hybrid/tradingview);
-    tiap hasil membawa `tv_cross_check` dari funnel.
+    Dua kelompok terpisah:
+      - sell_signals : saham YANG DIMILIKI di portofolio dgn teknikal TradingView
+        SELL/STRONG SELL → rekomendasi SELL/exit yang actionable. SELL hanya
+        diberikan untuk saham yang benar-benar dipegang (tak bisa jual yang tak
+        dimiliki — tunai, long-only).
+      - buy_warnings : kandidat BELI (BUKAN milik) yang teknikal TradingView SELL
+        → sekadar peringatan "tunda beli", BUKAN rekomendasi SELL.
+
+    Aktif bila settings.data_source memakai TradingView (hybrid/tradingview).
     """
     data = funnel.screen_universe(min_magic=0, min_canslim=0,
                                   require_uptrend=False, limit=limit)
     rows = data.get("hasil", [])
+    held = _held_positions()
 
     items: list[dict] = []
     for r in rows:
@@ -155,14 +186,38 @@ def cross_check(limit: int | None = Query(None, ge=1, le=100)):
             "contradiction": bool(cc.get("contradiction")),
         })
 
-    contradictions = [i for i in items if i["contradiction"]]
-    contradictions.sort(key=lambda x: x.get("skor") or 0, reverse=True)
+    sell_signals: list[dict] = []
+    buy_warnings: list[dict] = []
+    for it in items:
+        pos = held.get(it["ticker"])
+        it["in_portfolio"] = bool(pos)
+        tv_sell = it["tv_recommend"] in _TV_SELL_LABELS
+        if pos and tv_sell:
+            # SELL hanya untuk saham yang dimiliki.
+            it["action"] = "SELL"
+            it["lots"] = pos.get("lots")
+            it["pl_pct"] = pos.get("pl_pct")
+            it["pos_type"] = pos.get("type")
+            sell_signals.append(it)
+        elif it["contradiction"] and not pos:
+            # Kontradiksi pada saham yang tidak dimiliki -> hanya tunda beli.
+            it["action"] = "TUNDA_BELI"
+            buy_warnings.append(it)
+
+    sell_signals.sort(key=lambda x: (x.get("tv_recommend_all") if x.get("tv_recommend_all") is not None else 0))
+    buy_warnings.sort(key=lambda x: x.get("skor") or 0, reverse=True)
+
+    scanned = {r["ticker"] for r in rows}
+    held_uncovered = sorted(tk for tk in held if tk not in scanned)
 
     return {
         "enabled": len(items) > 0,    # False jika data_source bukan TradingView/hybrid
         "total_lolos": len(rows),
         "with_tv": len(items),
-        "contradiction_count": len(contradictions),
-        "contradictions": contradictions,
-        "all": items,
+        "portfolio_count": len(held),
+        "sell_count": len(sell_signals),
+        "warning_count": len(buy_warnings),
+        "sell_signals": sell_signals,
+        "buy_warnings": buy_warnings,
+        "held_uncovered": held_uncovered,   # saham dipegang tapi di luar scan universe
     }
