@@ -146,22 +146,46 @@ def _held_positions() -> dict[str, dict]:
     return held
 
 
-@router.get("/cross-check")
-def cross_check(limit: int | None = Query(None, ge=1, le=100)):
-    """Radar cross-check TradingView, sadar-portofolio (syariah long-only).
+_BUY_ISH = ("STRONG BUY", "BUY", "SPECULATIVE BUY", "ACCUMULATE")
 
-    Dua kelompok terpisah:
-      - sell_signals : saham YANG DIMILIKI di portofolio dgn teknikal TradingView
-        SELL/STRONG SELL → rekomendasi SELL/exit yang actionable. SELL hanya
-        diberikan untuk saham yang benar-benar dipegang (tak bisa jual yang tak
-        dimiliki — tunai, long-only).
-      - buy_warnings : kandidat BELI (BUKAN milik) yang teknikal TradingView SELL
-        → sekadar peringatan "tunda beli", BUKAN rekomendasi SELL.
+
+def _accuracy_map(tickers: list[str]) -> dict[str, dict]:
+    """Win-rate backtest (akurasi prediksi) untuk daftar ticker — paralel.
+
+    Sumber metrik SAMA dengan Pusat Keputusan (undervalue.evaluate -> backtest).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from app.core import undervalue
+
+    def _one(tk: str):
+        try:
+            uv = undervalue.evaluate(tk)
+            bt = (uv.get("backtest") or {}) if uv else {}
+            return tk, {"akurasi_pct": bt.get("win_rate"), "akurasi_n": bt.get("n_signals")}
+        except Exception:  # noqa: BLE001
+            return tk, {"akurasi_pct": None, "akurasi_n": None}
+
+    if not tickers:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(6, len(tickers))) as ex:
+        return {tk: acc for tk, acc in ex.map(_one, tickers)}
+
+
+@router.get("/cross-check")
+def cross_check(top: int = Query(5, ge=1, le=15)):
+    """Radar cross-check TradingView — fokus & efisien sesuai money management.
+
+    BELI: hanya `top` (default 5, sesuai batas maks 5 saham/hari) kandidat dengan
+    AKURASI PREDIKSI TERTINGGI (win-rate backtest historis). Tiap kandidat diberi
+    status SELARAS (teknikal TV mendukung) atau TUNDA_BELI (teknikal TV SELL).
+    Untuk efisiensi, akurasi (backtest) dihitung hanya pada shortlist skor-teratas.
+
+    SELL: hanya saham YANG DIMILIKI di portofolio dgn teknikal TV SELL/STRONG SELL
+    (syariah long-only — tak bisa jual yang tak dipegang). Tak dibatasi `top`.
 
     Aktif bila settings.data_source memakai TradingView (hybrid/tradingview).
     """
-    data = funnel.screen_universe(min_magic=0, min_canslim=0,
-                                  require_uptrend=False, limit=limit)
+    data = funnel.screen_universe(min_magic=0, min_canslim=0, require_uptrend=False)
     rows = data.get("hasil", [])
     held = _held_positions()
 
@@ -171,53 +195,61 @@ def cross_check(limit: int | None = Query(None, ge=1, le=100)):
         if not cc or not cc.get("recommend_label"):
             continue
         items.append({
-            "ticker": r["ticker"],
-            "name": r.get("name"),
-            "sector": r.get("sector"),
-            "aksi": r.get("aksi"),
-            "final_signal": r.get("final_signal"),
-            "css": r.get("css"),
-            "fundamental_label": r.get("fundamental_label"),
-            "magic_score": r.get("magic_score"),
-            "skor": r.get("skor"),
-            "price": r.get("price"),
-            "tv_recommend": cc.get("recommend_label"),
-            "tv_recommend_all": cc.get("recommend_all"),
+            "ticker": r["ticker"], "name": r.get("name"), "sector": r.get("sector"),
+            "aksi": r.get("aksi"), "final_signal": r.get("final_signal"), "css": r.get("css"),
+            "fundamental_label": r.get("fundamental_label"), "magic_score": r.get("magic_score"),
+            "skor": r.get("skor"), "price": r.get("price"),
+            "tv_recommend": cc.get("recommend_label"), "tv_recommend_all": cc.get("recommend_all"),
             "contradiction": bool(cc.get("contradiction")),
         })
 
+    # ---- SELL: saham dimiliki + teknikal TV SELL (tak dibatasi top) ---- #
     sell_signals: list[dict] = []
-    buy_warnings: list[dict] = []
     for it in items:
         pos = held.get(it["ticker"])
         it["in_portfolio"] = bool(pos)
-        tv_sell = it["tv_recommend"] in _TV_SELL_LABELS
-        if pos and tv_sell:
-            # SELL hanya untuk saham yang dimiliki.
+        if pos and it["tv_recommend"] in _TV_SELL_LABELS:
             it["action"] = "SELL"
             it["lots"] = pos.get("lots")
             it["pl_pct"] = pos.get("pl_pct")
             it["pos_type"] = pos.get("type")
             sell_signals.append(it)
-        elif it["contradiction"] and not pos:
-            # Kontradiksi pada saham yang tidak dimiliki -> hanya tunda beli.
-            it["action"] = "TUNDA_BELI"
-            buy_warnings.append(it)
-
     sell_signals.sort(key=lambda x: (x.get("tv_recommend_all") if x.get("tv_recommend_all") is not None else 0))
-    buy_warnings.sort(key=lambda x: x.get("skor") or 0, reverse=True)
+
+    # ---- BELI: top-N akurasi tertinggi (shortlist by skor -> backtest -> sort) ---- #
+    pool = [it for it in items
+            if it["final_signal"] in _BUY_ISH
+            and it["fundamental_label"] != "AVOID"
+            and (it.get("price") or 0) > 0
+            and it["ticker"] not in held]          # fokus entri baru; held -> bagian SELL
+    pool.sort(key=lambda x: x.get("skor") or 0, reverse=True)
+    shortlist = pool[: max(top * 2, 10)]           # batasi backtest mahal ke skor-teratas
+    acc = _accuracy_map([it["ticker"] for it in shortlist])
+    for it in shortlist:
+        a = acc.get(it["ticker"], {})
+        it["akurasi_pct"] = a.get("akurasi_pct")
+        it["akurasi_n"] = a.get("akurasi_n")
+
+    # urut: akurasi tertinggi dulu (None dianggap terendah), tie-break skor funnel
+    shortlist.sort(key=lambda x: (x.get("akurasi_pct") if x.get("akurasi_pct") is not None else -1,
+                                  x.get("skor") or 0), reverse=True)
+    candidates = shortlist[:top]
+    for it in candidates:
+        it["status"] = "TUNDA_BELI" if it["tv_recommend"] in _TV_SELL_LABELS else "SELARAS"
 
     scanned = {r["ticker"] for r in rows}
     held_uncovered = sorted(tk for tk in held if tk not in scanned)
 
     return {
         "enabled": len(items) > 0,    # False jika data_source bukan TradingView/hybrid
+        "top_n": top,
         "total_lolos": len(rows),
-        "with_tv": len(items),
+        "candidate_count": len(candidates),
+        "tunda_beli_count": sum(1 for c in candidates if c["status"] == "TUNDA_BELI"),
+        "selaras_count": sum(1 for c in candidates if c["status"] == "SELARAS"),
+        "candidates": candidates,
         "portfolio_count": len(held),
         "sell_count": len(sell_signals),
-        "warning_count": len(buy_warnings),
         "sell_signals": sell_signals,
-        "buy_warnings": buy_warnings,
-        "held_uncovered": held_uncovered,   # saham dipegang tapi di luar scan universe
+        "held_uncovered": held_uncovered,
     }
