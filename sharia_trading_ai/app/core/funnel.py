@@ -110,10 +110,31 @@ def _recommend(sharia, fund, cslim, tech, j7=None, osignal=None, bandar=None) ->
             fib_reason += f" · Proyeksi Reversal {next_cycle['date']} ({days_str})"
         reasons.append(fib_reason)
 
+    # Cross-check independen: rekomendasi teknikal TradingView live (bila aktif).
+    # Tidak menurunkan sinyal secara otomatis (advisory) — hanya menandai kontradiksi
+    # agar timing beli yang berisiko terlihat jelas (kurangi false positive).
+    tv = fund.get("tradingview")
+    tv_cross = None
+    if tv and tv.get("recommend_label"):
+        lbl = tv["recommend_label"]
+        rec_all = tv.get("recommend_all")
+        buyish = final in ("STRONG BUY", "BUY", "SPECULATIVE BUY", "ACCUMULATE")
+        contradiction = buyish and lbl in ("SELL", "STRONG SELL")
+        tv_cross = {"recommend_label": lbl, "recommend_all": rec_all, "contradiction": contradiction}
+        rec_str = f"{rec_all:.2f}" if isinstance(rec_all, (int, float)) else "n/a"
+        if contradiction:
+            reasons.append(
+                f"⚠️ Cross-check TradingView: teknikal {lbl} (Recommend.All {rec_str}) "
+                f"— timing beli berisiko, pertimbangkan menunggu konfirmasi."
+            )
+        else:
+            reasons.append(f"Cross-check TradingView: teknikal {lbl} (Recommend.All {rec_str})")
+
     tech_pos = 1 if t_signal == "BUY" else 0
     j7_norm = (j7_score / 4) if j7_score is not None else 0
     skor = round((magic / 6 * 0.35 + cs / 7 * 0.35 + tech_pos * 0.15 + j7_norm * 0.15) * 100)
-    return {"aksi": final, "final_signal": final, "css": css, "alasan": reasons, "skor": skor}
+    return {"aksi": final, "final_signal": final, "css": css, "alasan": reasons,
+            "skor": skor, "tv_cross_check": tv_cross}
 
 
 def screen_universe(
@@ -138,6 +159,16 @@ def screen_universe(
 
     # Pra-muat data indeks IHSG sekali agar tidak terjadi file lock saat menulis cache secara paralel
     provider.get_index_history()
+
+    # Pra-muat fundamental TradingView dalam SATU batch (cache TTL) bila sumber data
+    # memakainya — supaya 75 worker membaca cache, bukan 75 request HTTP terpisah.
+    from app.config import settings as _settings
+    if (_settings.data_source or "").lower() in ("tradingview", "hybrid"):
+        try:
+            from app.data import tradingview_provider
+            tradingview_provider.scan_fundamentals(tickers)
+        except Exception:  # noqa: BLE001
+            pass
 
     def process_ticker(t):
         try:

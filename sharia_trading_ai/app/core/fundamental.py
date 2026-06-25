@@ -1,8 +1,10 @@
 """
 Analisa Fundamental — "6 Magic Number" (modul hal. 9-12).
 
-Sumber utama: master_data_syariah.csv terkurasi (akurat untuk IDX). Bila ticker
-tidak ada di master data, fallback ke yfinance.
+Sumber metrik dipilih lewat settings.data_source (default "hybrid"):
+TradingView live -> master_data CSV -> yfinance. TradingView memberi angka IDX
+yang segar & akurat; master_data/yfinance jadi jaring pengaman. Set data_source
+ke "master_data" untuk kembali ke perilaku lama.
 
   1. EPS QnQ growth >= 25%   2. ROA > 15%   3. ROE > 15%
   4. DER < 1 (100%)          5. PBV < 1     6. PER < 10x
@@ -13,10 +15,13 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from app.config import FUND
-from app.data import master_data, provider
+from app.config import FUND, settings
+from app.data import master_data, provider, tradingview_provider
 
 EPS_GROWTH_MIN = 25.0  # EPS QnQ growth (CAN SLIM C) sebagai kriteria EPS
+
+# Field metrik yang dievaluasi 6 Magic Number (untuk pengisian celah mode hybrid).
+_FILLABLE = ("eps_growth", "roa", "roe", "der", "pbv", "per", "dy", "bvps", "mp")
 
 
 def _normalize_pct(value: Optional[float]) -> Optional[float]:
@@ -30,17 +35,44 @@ def _crit(name: str, value: Optional[float], passed: Optional[bool], target: str
     return {"kriteria": name, "nilai": disp, "target": target, "lolos": passed}
 
 
-def _metrics(ticker: str, info: Optional[dict[str, Any]]) -> dict[str, Any]:
-    """Ambil metrik dari master data (utama) atau yfinance (fallback)."""
+def _md_shape(ticker: str) -> Optional[dict[str, Any]]:
+    """Metrik dari master_data CSV (DER % -> rasio), atau None bila tak ada."""
     md = master_data.metrics(ticker)
-    if md:
-        return {
-            "eps_growth": md["eps_growth"], "roa": md["roa"], "roe": md["roe"],
-            "der": (md["der"] / 100) if md["der"] is not None else None,  # % -> rasio
-            "pbv": md["pbv"], "per": md["per"], "dy": md["dividend_yield"],
-            "bvps": md["bvps"], "mp": md["market_price"], "source": "master_data",
-        }
-    # fallback yfinance
+    if not md:
+        return None
+    return {
+        "eps_growth": md["eps_growth"], "roa": md["roa"], "roe": md["roe"],
+        "der": (md["der"] / 100) if md["der"] is not None else None,  # % -> rasio
+        "pbv": md["pbv"], "per": md["per"], "dy": md["dividend_yield"],
+        "bvps": md["bvps"], "mp": md["market_price"], "source": "master_data",
+    }
+
+
+def _tv_shape(ticker: str) -> Optional[dict[str, Any]]:
+    """Metrik LIVE dari TradingView (DER sudah rasio), atau None bila gagal."""
+    try:
+        tv = tradingview_provider.metrics(ticker)
+    except Exception:  # noqa: BLE001 — jaringan/parsing: jangan ganggu funnel
+        return None
+    if not tv:
+        return None
+    return {
+        "eps_growth": tv.get("eps_growth"), "roa": tv.get("roa"), "roe": tv.get("roe"),
+        "der": tv.get("der"), "pbv": tv.get("pbv"), "per": tv.get("per"),
+        "dy": tv.get("dy"), "bvps": tv.get("bvps"), "mp": tv.get("mp"),
+        "source": "tradingview",
+        "tv_extra": {
+            "recommend_all": tv.get("recommend_all"),
+            "recommend_label": tv.get("recommend_label"),
+            "recommend_ma": tv.get("recommend_ma"),
+            "recommend_other": tv.get("recommend_other"),
+            "eps_yoy": tv.get("eps_yoy"),
+        },
+    }
+
+
+def _yf_shape(ticker: str, info: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Metrik dari yfinance (fallback terakhir)."""
     info = info if info is not None else provider.get_info(ticker)
     d2e = info.get("debtToEquity")
     pbv = info.get("priceToBook")
@@ -59,6 +91,45 @@ def _metrics(ticker: str, info: Optional[dict[str, Any]]) -> dict[str, Any]:
         "dy": _normalize_pct(info.get("dividendYield")),
         "bvps": bvps, "mp": price, "source": "yfinance",
     }
+
+
+def _fill_gaps(base: dict[str, Any], extra: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Isi field yang None pada base dari extra; tandai sumber gabungan."""
+    if not extra:
+        return base
+    filled = False
+    for k in _FILLABLE:
+        if base.get(k) is None and extra.get(k) is not None:
+            base[k] = extra[k]
+            filled = True
+    if filled:
+        base["source"] = f"{base.get('source', '?')}+{extra.get('source', '?')}"
+    return base
+
+
+def _metrics(ticker: str, info: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Pilih sumber metrik sesuai settings.data_source (default: master_data)."""
+    mode = (settings.data_source or "master_data").lower()
+
+    if mode == "yfinance":
+        return _yf_shape(ticker, info)
+
+    if mode == "tradingview":
+        return _tv_shape(ticker) or _md_shape(ticker) or _yf_shape(ticker, info)
+
+    if mode == "hybrid":
+        base = _tv_shape(ticker)
+        if base is None:
+            return _md_shape(ticker) or _yf_shape(ticker, info)
+        base = _fill_gaps(base, _md_shape(ticker))   # isi celah dari CSV lokal (gratis)
+        # Lengkapi dari yfinance HANYA bila info sudah tersedia (mis. dari funnel),
+        # supaya tidak memicu request jaringan per-ticker saat ranking massal.
+        if info is not None and any(base.get(k) is None for k in _FILLABLE):
+            base = _fill_gaps(base, _yf_shape(ticker, info))
+        return base
+
+    # default "master_data": perilaku lama (master_data -> yfinance)
+    return _md_shape(ticker) or _yf_shape(ticker, info)
 
 
 def evaluate_fundamental(ticker: str, info: Optional[dict[str, Any]] = None) -> dict[str, Any]:
@@ -119,6 +190,7 @@ def evaluate_fundamental(ticker: str, info: Optional[dict[str, Any]] = None) -> 
         "source": m["source"],
         "raw": {"eps_qnq": eps, "roa": roa, "roe": roe, "der": der,
                 "pbv": pbv, "per": per, "dividend_yield": dy, "bvps": bvps, "mp": mp},
+        "tradingview": m.get("tv_extra"),   # rekomendasi teknikal TV utk cross-check (None bila tak dipakai)
         "verdict": _verdict(score, evaluated),
     }
 
@@ -139,9 +211,17 @@ from functools import lru_cache
 
 @lru_cache(maxsize=1)
 def sector_scores() -> dict[str, int]:
-    """fundamental_score semua saham di master data (lokal, tanpa jaringan)."""
+    """fundamental_score semua saham (dipakai ranking Leader CAN SLIM L)."""
+    tickers = master_data.tickers()
+    # Pra-muat TradingView SATU batch supaya per-ticker di bawah baca cache, bukan
+    # 75 request terpisah (graceful: diabaikan bila gagal / sumber bukan TV).
+    if (settings.data_source or "").lower() in ("tradingview", "hybrid"):
+        try:
+            tradingview_provider.scan_fundamentals(tickers)
+        except Exception:  # noqa: BLE001
+            pass
     out: dict[str, int] = {}
-    for t in master_data.tickers():
+    for t in tickers:
         try:
             out[t] = evaluate_fundamental(t)["fundamental_score"]
         except Exception:

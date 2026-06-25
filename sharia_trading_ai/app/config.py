@@ -140,6 +140,18 @@ class Settings(BaseSettings):
     price_ttl_seconds: int = 60 * 3        # 3 menit — harga posisi/jual lebih live (intraday 5m)
     trading_mode: str = "swing"            # swing | scalping
 
+    # Sumber fundamental untuk screening (6 Magic Number / CAN SLIM):
+    #   "hybrid"      = TradingView live dulu, fallback master_data lalu yfinance (DEFAULT)
+    #   "tradingview" = scanner TradingView live saja (+ fallback master/yfinance)
+    #   "master_data" = CSV terkurasi (perilaku lama; pilih ini utk kembali ke semula)
+    #   "yfinance"    = yfinance saja
+    # Override tanpa edit kode: set DATA_SOURCE=master_data di .env. Funnel tetap
+    # berjalan walau TradingView gagal (graceful fallback).
+    data_source: str = "hybrid"
+    tradingview_screener: str = "indonesia"   # scanner region TradingView (BEI)
+    tradingview_exchange: str = "IDX"
+    tradingview_ttl_seconds: int = 60 * 10    # cache scan fundamental (detik)
+
     # opsional — AI advisor (Claude). Kosong = fitur AI dinonaktifkan.
     anthropic_api_key: str = ""
     ai_model: str = "claude-opus-4-8"

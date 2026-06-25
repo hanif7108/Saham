@@ -87,7 +87,12 @@ def _format_report(report: dict[str, Any]) -> str:
             "skor": f"{report['fundamental']['magic_score']}/6",
             "verdict": report["fundamental"]["verdict"],
             "rasio": report["fundamental"]["raw"],
+            "sumber_data": report["fundamental"].get("source"),
         },
+        # Cross-check teknikal independen dari TradingView (None bila sumber data
+        # tidak memakai TradingView). Pakai untuk MENGKALIBRASI keyakinan timing:
+        # bila fundamental kuat tapi teknikal TV SELL kuat, tekankan risiko timing.
+        "cross_check_tradingview": report["fundamental"].get("tradingview"),
         "canslim": {
             "skor": f"{report['canslim']['canslim_score']}/7",
             "verdict": report["canslim"]["verdict"],
