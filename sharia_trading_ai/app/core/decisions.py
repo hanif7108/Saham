@@ -25,6 +25,22 @@ CUT_LOSS_PCT = -7.0      # SELL bila P/L <= -7%
 TAKE_PROFIT_PCT = 20.0   # SELL bila P/L >= +20%
 BASE_TARGET_PCT = 7.0    # target profit dasar (Jalur 7%)
 
+INVESTASI_TICKERS = {"ASII", "SIDO"}
+
+def _nudge_investasi(res: Optional[dict], tk: str) -> Optional[dict]:
+    if not res:
+        return res
+    if tk in INVESTASI_TICKERS:
+        res["investasi_nudge"] = True
+        res["reason"] = "🌟 [INVESTASI TAHUNAN] " + res["reason"]
+        res["next_step"] = (
+            f"Saham {tk} direkomendasikan untuk Investasi Tahunan (Portofolio Investasi Saham). "
+            f"Bila membeli untuk investasi, gunakan volume lebih besar (misal 5-10x) untuk menangkap dividen & capital gain. "
+            f"Trading harian tetap berjalan paralel dengan volume terpisah. "
+            f"Rekomendasi taktis: {res['next_step']}"
+        )
+    return res
+
 
 # ---------------- Skor kekuatan (untuk strategi N-emiten) ---------------- #
 def _hold_strength(p: dict, ri: dict, top5_lookup: dict[str, int]) -> float:
@@ -591,6 +607,7 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
             min_buy_accuracy=min_acc,
             akurasi_pct=_acc_pct(p["ticker"])
         )
+        d = _nudge_investasi(d, p["ticker"])
         if d and d["action"] == "SELL":
             # Tunda SELL demi DIVIDEN bila ex-date dekat & aman (bukan cut-loss/TP/AVOID dalam)
             rsn = d.get("reason", "")
@@ -632,6 +649,7 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
             continue
         cv = conv_map[tk]
         base = decide_for_watchlist(s, prospects_set, top5_lookup)
+        base = _nudge_investasi(base, tk)
         if not base:
             continue
         rank = top5_lookup.get(tk)

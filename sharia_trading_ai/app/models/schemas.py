@@ -41,6 +41,7 @@ class PositionIn(BaseModel):
     lots: int = Field(..., gt=0, description="Jumlah lot (1 lot = 100 lembar)")
     avg_price: float = Field(..., gt=0, description="Harga rata-rata beli")
     broker: Optional[str] = Field(None, description="Broker (Profits Anywhere)")
+    type: Optional[str] = Field("trading", pattern="^(trading|investasi)$", description="Tipe portfolio: trading atau investasi")
 
 
 class AccountIn(BaseModel):

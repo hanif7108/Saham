@@ -102,7 +102,7 @@ def get_portfolio():
 def add(pos: PositionIn):
     """Tambah posisi baru."""
     try:
-        return portfolio.add_position(pos.ticker, pos.lots, pos.avg_price, pos.broker)
+        return portfolio.add_position(pos.ticker, pos.lots, pos.avg_price, pos.broker, type=pos.type or "trading")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -117,6 +117,7 @@ def sync_portfolio(positions: list[PositionIn], broker: str | None = Query(None)
             "lots": p.lots,
             "avg_price": p.avg_price,
             "broker": bk,
+            "type": p.type or "trading",
             "importable": True
         }
         for p in positions

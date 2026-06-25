@@ -220,6 +220,8 @@ def breakdown() -> dict[str, Any]:
 
     rdns: list[dict[str, Any]] = []
     tot_cash = tot_asset = tot_pl = tot_net_pl = tot_gold_value = tot_gold_pl = tot_gold_cost = 0.0
+    tot_trading_asset = tot_investasi_asset = tot_trading_pl = tot_investasi_pl = 0.0
+    
     for broker in sorted(set(groups) | set(accounts)):
         ps = groups.get(broker, [])
         asset = sum((p.get("value") or 0) for p in ps)                 # nilai pasar (gross)
@@ -227,7 +229,23 @@ def breakdown() -> dict[str, Any]:
         cost = sum((p.get("total_cost") or p.get("cost") or 0) for p in ps)
         pl = sum((p.get("pl") or 0) for p in ps)                       # P/L kotor
         net_pl = sum((p.get("net_pl") if p.get("net_pl") is not None else (p.get("pl") or 0)) for p in ps)
-        emiten = len({p["ticker"] for p in ps})
+        
+        # Hanya hitung emiten trading untuk money management bursa
+        emiten = len({p["ticker"] for p in ps if p.get("type", "trading") == "trading"})
+        
+        trading_ps = [p for p in ps if p.get("type", "trading") == "trading"]
+        investasi_ps = [p for p in ps if p.get("type", "trading") == "investasi"]
+        
+        trading_asset = sum((p.get("value") or 0) for p in trading_ps)
+        trading_net_asset = sum((p.get("net_value") if p.get("net_value") is not None else (p.get("value") or 0)) for p in trading_ps)
+        trading_cost = sum((p.get("total_cost") or p.get("cost") or 0) for p in trading_ps)
+        trading_pl_val = sum((p.get("net_pl") if p.get("net_pl") is not None else (p.get("pl") or 0)) for p in trading_ps)
+        
+        investasi_asset = sum((p.get("value") or 0) for p in investasi_ps)
+        investasi_net_asset = sum((p.get("net_value") if p.get("net_value") is not None else (p.get("value") or 0)) for p in investasi_ps)
+        investasi_cost = sum((p.get("total_cost") or p.get("cost") or 0) for p in investasi_ps)
+        investasi_pl_val = sum((p.get("net_pl") if p.get("net_pl") is not None else (p.get("pl") or 0)) for p in investasi_ps)
+        
         acc = accounts.get(broker, {})
         cash = float(acc.get("cash") or 0)
         cash_at_broker = acc.get("cash_at_broker")
@@ -274,6 +292,17 @@ def breakdown() -> dict[str, Any]:
             "gold_pl": gold_pl if gold_balance_grams else None,
             "gold_pl_pct": gold_pl_pct if gold_balance_grams else None,
             "gold_pct": round(gold_value / equity * 100, 1) if (equity and gold_balance_grams) else None,
+            "gold_price_g": gold_price_g,
+            
+            # breakdown per tipe
+            "trading_asset_value": round(trading_asset),
+            "trading_net_asset": round(trading_net_asset),
+            "trading_cost": round(trading_cost),
+            "trading_pl": round(trading_pl_val),
+            "investasi_asset_value": round(investasi_asset),
+            "investasi_net_asset": round(investasi_net_asset),
+            "investasi_cost": round(investasi_cost),
+            "investasi_pl": round(investasi_pl_val),
         })
         tot_cash += cash
         tot_asset += asset
@@ -282,6 +311,11 @@ def breakdown() -> dict[str, Any]:
         tot_gold_value += gold_value
         tot_gold_pl += gold_pl
         tot_gold_cost += gold_cost
+        
+        tot_trading_asset += trading_asset
+        tot_investasi_asset += investasi_asset
+        tot_trading_pl += trading_pl_val
+        tot_investasi_pl += investasi_pl_val
 
     tot_equity = tot_cash + tot_asset + tot_gold_value
     tot_pl_all = tot_net_pl + tot_gold_pl
@@ -294,9 +328,19 @@ def breakdown() -> dict[str, Any]:
             "cash_pct": round(tot_cash / tot_equity * 100, 1) if tot_equity else None,
             "asset_pct": round(tot_asset / tot_equity * 100, 1) if tot_equity else None,
             "gold_pct": round(tot_gold_value / tot_equity * 100, 1) if tot_equity else None,
+            
+            # component breakdown totals
+            "trading_value": round(tot_cash + tot_trading_asset),
+            "trading_pct": round((tot_cash + tot_trading_asset) / tot_equity * 100, 1) if tot_equity else None,
+            "trading_pl": round(tot_trading_pl),
+            "investasi_value": round(tot_investasi_asset),
+            "investasi_pct": round(tot_investasi_asset / tot_equity * 100, 1) if tot_equity else None,
+            "investasi_pl": round(tot_investasi_pl),
+            
             "target_emiten": target, "jumlah_rdn": len(rdns),
         },
-        "catatan": ("Cash & aset dirinci per RDN. Saran alokasi memakai metode Money Management "
+        "catatan": ("Cash & aset dirinci per RDN/Pegadaian. Saran alokasi memakai metode Money Management "
                     f"(dana trading {MM.TRADING_FUND_PCT:.0f}% dari cash, sisanya cadangan) dan menjaga "
-                    f"jumlah emiten = {target}. Advisory — bukan ajakan beli/jual, tunai non-margin."),
+                    f"jumlah emiten = {target}. Portofolio terbagi menjadi 3 komponen: Trading Harian, "
+                    "Investasi Saham (tahunan/dividen), dan Investasi Emas."),
     }

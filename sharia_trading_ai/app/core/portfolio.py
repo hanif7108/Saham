@@ -24,11 +24,11 @@ def _load() -> list[dict[str, Any]]:
         return []
     try:
         data = json.loads(STORE.read_text())
-        # Penggabungan otomatis duplikat (ticker & broker yang sama) agar data bersih
+        # Penggabungan otomatis duplikat (ticker, broker, & tipe yang sama) agar data bersih
         merged = {}
         changed = False
         for r in data:
-            key = (r["ticker"], r.get("broker"))
+            key = (r["ticker"], r.get("broker"), r.get("type", "trading"))
             if key in merged:
                 existing = merged[key]
                 total_lots = existing["lots"] + r["lots"]
@@ -85,15 +85,15 @@ def _current_price(ticker: str) -> float | None:
 
 
 def add_position(ticker: str, lots: int, avg_price: float,
-                 broker: str | None = None) -> dict[str, Any]:
+                 broker: str | None = None, type: str = "trading") -> dict[str, Any]:
     ticker = ticker.upper().strip()
     if lots <= 0 or avg_price <= 0:
         raise ValueError("lot & harga harus > 0")
     rows = _load()
     
-    # Gabungkan jika posisi untuk broker tersebut sudah ada
+    # Gabungkan jika posisi untuk broker & type tersebut sudah ada
     for r in rows:
-        if r["ticker"] == ticker and r.get("broker") == broker:
+        if r["ticker"] == ticker and r.get("broker") == broker and r.get("type", "trading") == type:
             total_lots = r["lots"] + int(lots)
             total_cost = (r["lots"] * r["avg_price"]) + (int(lots) * float(avg_price))
             r["lots"] = total_lots
@@ -103,7 +103,7 @@ def add_position(ticker: str, lots: int, avg_price: float,
 
     new_id = (max((r["id"] for r in rows), default=0) + 1)
     new_row = {"id": new_id, "ticker": ticker, "lots": int(lots),
-               "avg_price": float(avg_price), "broker": broker}
+               "avg_price": float(avg_price), "broker": broker, "type": type}
     rows.append(new_row)
     _save(rows)
     return new_row
@@ -141,6 +141,9 @@ def list_positions() -> dict[str, Any]:
     rows = _load()
     positions: list[dict[str, Any]] = []
     tot_cost = tot_value = tot_net_value = tot_total_cost = 0.0
+    
+    trading_cost = trading_total_cost = trading_value = trading_net_value = 0.0
+    investasi_cost = investasi_total_cost = investasi_value = investasi_net_value = 0.0
 
     # Pemuatan harga secara paralel agar tidak memblokir sekuensial (terutama saat cache kosong)
     with ThreadPoolExecutor(max_workers=min(5, max(1, len(rows)))) as executor:
@@ -163,11 +166,27 @@ def list_positions() -> dict[str, Any]:
         # harga impas (break-even): harga jual agar hasil bersih = modal riil
         break_even = round(total_cost / (shares * (1 - fee_sell / 100))) if (shares and fee_sell < 100) else None
         compliant = sharia_screening.screen_sharia(r["ticker"])["compliant"]
+        
         tot_cost += gross_cost
         tot_total_cost += total_cost
         if value is not None:
             tot_value += value
             tot_net_value += net_value
+
+        p_type = r.get("type", "trading")
+        if p_type == "investasi":
+            investasi_cost += gross_cost
+            investasi_total_cost += total_cost
+            if value is not None:
+                investasi_value += value
+                investasi_net_value += net_value
+        else:
+            trading_cost += gross_cost
+            trading_total_cost += total_cost
+            if value is not None:
+                trading_value += value
+                trading_net_value += net_value
+
         positions.append({
             **r, "shares": shares, "cost": round(gross_cost), "total_cost": round(total_cost),
             "buy_fee": round(buy_fee), "fee_buy_pct": fee_buy, "fee_sell_pct": fee_sell,
@@ -177,9 +196,18 @@ def list_positions() -> dict[str, Any]:
             "pl": round(pl) if pl is not None else None, "pl_pct": pl_pct,
             "net_pl": round(net_pl) if net_pl is not None else None, "net_pl_pct": net_pl_pct,
             "break_even": break_even, "syariah": compliant,
+            "type": p_type
         })
+        
     tot_pl = tot_value - tot_cost
     tot_net_pl = tot_net_value - tot_total_cost
+    
+    trading_pl = trading_value - trading_cost
+    trading_net_pl = trading_net_value - trading_total_cost
+    
+    investasi_pl = investasi_value - investasi_cost
+    investasi_net_pl = investasi_net_value - investasi_total_cost
+    
     return {
         "positions": positions,
         "summary": {
@@ -191,6 +219,20 @@ def list_positions() -> dict[str, Any]:
             "total_net_pl_pct": round(tot_net_pl / tot_total_cost * 100, 2) if tot_total_cost else 0,
             "jumlah_posisi": len(positions),
         },
+        "trading_summary": {
+            "total_cost": round(trading_cost), "total_modal": round(trading_total_cost),
+            "total_value": round(trading_value), "total_net_value": round(trading_net_value),
+            "total_pl": round(trading_net_pl),
+            "total_pl_pct": round(trading_net_pl / trading_total_cost * 100, 2) if trading_total_cost else 0,
+            "jumlah_posisi": len([p for p in positions if p["type"] == "trading"]),
+        },
+        "investasi_summary": {
+            "total_cost": round(investasi_cost), "total_modal": round(investasi_total_cost),
+            "total_value": round(investasi_value), "total_net_value": round(investasi_net_value),
+            "total_pl": round(investasi_net_pl),
+            "total_pl_pct": round(investasi_net_pl / investasi_total_cost * 100, 2) if investasi_total_cost else 0,
+            "jumlah_posisi": len([p for p in positions if p["type"] == "investasi"]),
+        }
     }
 
 

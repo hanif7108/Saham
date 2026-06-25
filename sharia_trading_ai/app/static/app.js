@@ -1393,16 +1393,39 @@ async function loadPortfolio(){
     $('#port-summary').innerHTML=`${miniStat('Total Nilai',fmt(s.total_value),s.jumlah_posisi+' posisi')}
       ${plStat('P/L Bersih',s.total_net_pl)}${plStat('Return Bersih',s.total_net_pl_pct,true)}`;
     if(!d.positions.length){ $('#port-table').innerHTML='<div class="empty">Belum ada posisi. Tambahkan di atas.</div>'; return; }
-    let r='<table><thead><tr><th>Kode</th><th>Lot</th><th style="text-align:right">Avg</th><th style="text-align:right" title="harga impas setelah biaya beli+jual">Impas</th><th style="text-align:right">Harga</th><th style="text-align:right" title="nilai pasar kotor → hasil bersih bila dijual (stlh fee jual)">Nilai (kotor → jual bersih)</th><th style="text-align:right" title="setelah biaya beli & jual">P/L Bersih</th><th></th></tr></thead><tbody>';
-    d.positions.forEach(p=>{ const up=(p.net_pl||0)>=0; const beUp=p.current_price>=p.break_even;
-      r+=`<tr><td><span class="tkr">${p.ticker}</span> ${p.syariah?'<span class="badge buy" style="font-size:.6rem">✓</span>':'<span class="badge sell" style="font-size:.6rem">non</span>'}${p.broker?` <span class="badge na" style="font-size:.55rem" title="fee beli ${p.fee_buy_pct}% / jual ${p.fee_sell_pct}%">${esc(p.broker)}</span>`:''}</td>
-        <td class="num">${p.lots}</td><td style="text-align:right" class="num">${fmt(p.avg_price)}</td>
-        <td style="text-align:right" class="num ${beUp?'pl-up':'pl-down'}" title="impas (sudah hitung biaya)">${fmt(p.break_even)}</td>
-        <td style="text-align:right" class="num">${fmt(p.current_price)}</td><td style="text-align:right" class="num">${fmt(p.value)}<br><span class="mut" style="font-size:.62rem" title="hasil bersih bila dijual semua kini (stlh fee jual ${p.fee_sell_pct}%)">jual ≈ <b style="color:var(--buy)">${fmt(p.net_value)}</b></span></td>
-        <td style="text-align:right" class="num ${up?'pl-up':'pl-down'}"><b>${p.net_pl>=0?'+':''}${fmt(p.net_pl)}</b><br><span style="font-size:.72rem">${p.net_pl_pct>=0?'+':''}${p.net_pl_pct}%</span><br><span class="mut" style="font-size:.62rem" title="P/L kotor (harga saja)">kotor ${p.pl>=0?'+':''}${fmt(p.pl)}</span></td>
-        <td style="text-align:right;white-space:nowrap"><button class="btn ghost" style="padding:.2rem .5rem;font-size:.7rem" onclick="openSell(${p.id},'${p.ticker}',${p.lots},${p.current_price||p.avg_price},${p.fee_sell_pct||0.25})" title="Jual (sebagian/penuh) & sinkron">💰 Jual</button>
-          <button class="del-btn" onclick="delPosition(${p.id})" title="Hapus tanpa catat">🗑</button></td></tr>`; });
-    $('#port-table').innerHTML=r+'</tbody></table>';
+    
+    const trading_ps = d.positions.filter(p => (p.type || 'trading') === 'trading');
+    const investasi_ps = d.positions.filter(p => p.type === 'investasi');
+    
+    function renderTable(ps, title, summary) {
+      let h = `<h3 class="sec" style="margin: 1.5rem 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .4rem; display: flex; justify-content: space-between; align-items: center;">
+        <span>📊 ${title}</span>
+        <span style="font-size: .8rem; font-weight: normal; color: var(--mute);">
+          Modal: <b>${fmt(summary.total_modal)}</b> · pasar: <b>${fmt(summary.total_value)}</b> · P/L: <b class="${summary.total_pl>=0?'pl-up':'pl-down'}">${summary.total_pl>=0?'+':''}${fmt(summary.total_pl)} (${summary.total_pl_pct>=0?'+':''}${summary.total_pl_pct}%)</b>
+        </span>
+      </h3>`;
+      if (!ps.length) {
+        h += '<div class="empty" style="padding: 1rem 0;">Belum ada posisi di portfolio ini.</div>';
+        return h;
+      }
+      h += '<table><thead><tr><th>Kode</th><th>Lot</th><th style="text-align:right">Avg</th><th style="text-align:right" title="harga impas setelah biaya beli+jual">Impas</th><th style="text-align:right">Harga</th><th style="text-align:right" title="nilai pasar kotor → hasil bersih bila dijual (stlh fee jual)">Nilai (kotor → jual bersih)</th><th style="text-align:right" title="setelah biaya beli & jual">P/L Bersih</th><th></th></tr></thead><tbody>';
+      ps.forEach(p => { const up=(p.net_pl||0)>=0; const beUp=p.current_price>=p.break_even;
+        h += `<tr><td><span class="tkr">${p.ticker}</span> ${p.syariah?'<span class="badge buy" style="font-size:.6rem">✓</span>':'<span class="badge sell" style="font-size:.6rem">non</span>'}${p.broker?` <span class="badge na" style="font-size:.55rem" title="fee beli ${p.fee_buy_pct}% / jual ${p.fee_sell_pct}%">${esc(p.broker)}</span>`:''}</td>
+          <td class="num">${p.lots}</td><td style="text-align:right" class="num">${fmt(p.avg_price)}</td>
+          <td style="text-align:right" class="num ${beUp?'pl-up':'pl-down'}" title="impas (sudah hitung biaya)">${fmt(p.break_even)}</td>
+          <td style="text-align:right" class="num">${fmt(p.current_price)}</td><td style="text-align:right" class="num">${fmt(p.value)}<br><span class="mut" style="font-size:.62rem" title="hasil bersih bila dijual semua kini (stlh fee jual ${p.fee_sell_pct}%)">jual ≈ <b style="color:var(--buy)">${fmt(p.net_value)}</b></span></td>
+          <td style="text-align:right" class="num ${up?'pl-up':'pl-down'}"><b>${p.net_pl>=0?'+':''}${fmt(p.net_pl)}</b><br><span style="font-size:.72rem">${p.net_pl_pct>=0?'+':''}${p.net_pl_pct}%</span><br><span class="mut" style="font-size:.62rem" title="P/L kotor (harga saja)">kotor ${p.pl>=0?'+':''}${fmt(p.pl)}</span></td>
+          <td style="text-align:right;white-space:nowrap"><button class="btn ghost" style="padding:.2rem .5rem;font-size:.7rem" onclick="openSell(${p.id},'${p.ticker}',${p.lots},${p.current_price||p.avg_price},${p.fee_sell_pct||0.25})" title="Jual (sebagian/penuh) & sinkron">💰 Jual</button>
+            <button class="del-btn" onclick="delPosition(${p.id})" title="Hapus tanpa catat">🗑</button></td></tr>`;
+      });
+      h += '</tbody></table>';
+      return h;
+    }
+    
+    let htmlContent = renderTable(trading_ps, 'Portofolio Trading Harian', d.trading_summary || {total_modal:0,total_value:0,total_pl:0,total_pl_pct:0});
+    htmlContent += renderTable(investasi_ps, 'Portofolio Investasi Saham (Tahunan)', d.investasi_summary || {total_modal:0,total_value:0,total_pl:0,total_pl_pct:0});
+    
+    $('#port-table').innerHTML = htmlContent;
   }catch(e){ $('#port-table').innerHTML='<div class="empty">Gagal memuat.</div>'; }
   loadRDN(); loadROI();
 }
@@ -1487,9 +1510,20 @@ async function loadRDN(){
   try{ const b=await api('/api/portfolio/rdn'); const t=b.total;
     window._rdnBreakdown = b;
     let h=`<div class="grid g-3" style="margin-bottom:.9rem">
-      ${miniStat('Total Cash',fmt(t.cash),(t.cash_pct??'–')+'% ekuitas')}
-      ${miniStat('Total Aset',fmt(t.asset_value),(t.asset_pct??'–')+'% ekuitas')}
-      ${miniStat('Total Ekuitas',fmt(t.equity),t.jumlah_rdn+' RDN · target '+t.target_emiten+' emiten')}</div>`;
+      ${miniStat('1. Portofolio Trading Harian', fmt(t.trading_value), `${t.trading_pct??'–'}% ekuitas · P/L: ${t.trading_pl >= 0 ? '+' : ''}${fmt(t.trading_pl)}`)}
+      ${miniStat('2. Portofolio Investasi Saham', fmt(t.investasi_value), `${t.investasi_pct??'–'}% ekuitas · P/L: ${t.investasi_pl >= 0 ? '+' : ''}${fmt(t.investasi_pl)}`)}
+      ${miniStat('3. Portofolio Investasi Emas', fmt(t.gold_value), `${t.gold_pct??'–'}% ekuitas · P/L: ${(b.rdn.find(r => r.broker === 'Tring Pegadaian')?.gold_pl || 0) >= 0 ? '+' : ''}${fmt(b.rdn.find(r => r.broker === 'Tring Pegadaian')?.gold_pl || 0)}`)}
+    </div>`;
+    h+=`<div class="grid g-1" style="margin-bottom:.9rem; background: var(--bg-card); padding: .75rem 1rem; border-radius: 10px; border: 1px solid var(--line);">
+      <div class="between" style="font-weight: 700;">
+        <span>💰 Total Ekuitas Gabungan (Net Worth)</span>
+        <span style="font-size: 1.15rem; color: var(--buy);">${fmt(t.equity)}</span>
+      </div>
+      <div class="between mut" style="font-size: .76rem; margin-top: .25rem;">
+        <span>Total Saldo Cash Standby: ${fmt(t.cash)} (${t.cash_pct??'–'}%)</span>
+        <span>Aset Saham: ${fmt(t.asset_value)} (${t.asset_pct??'–'}%) · Aset Emas: ${fmt(t.gold_value)} (${t.gold_pct??'–'}%)</span>
+      </div>
+    </div>`;
     h+= b.rdn.length ? b.rdn.map(rdnCard).join('') : '<div class="empty">Belum ada RDN. Impor PDF atau isi cash manual.</div>';
     h+=`<p class="sub" style="margin-top:.6rem">${esc(b.catatan)}</p>`;
     $('#rdn-out').innerHTML=h;
@@ -1744,9 +1778,9 @@ async function saveGold(){
 function plStat(l,v,pct){ const up=(v||0)>=0; return `<div class="cardlet"><div class="lbl mut" style="font-size:.7rem;text-transform:uppercase">${l}</div>
   <div class="num ${up?'pl-up':'pl-down'}" style="font-size:1.3rem;font-weight:800;margin-top:.1rem">${up?'+':''}${fmt(v)}${pct?'%':''}</div></div>`; }
 async function addPosition(){
-  const ticker=$('#p-tk').value.trim().toUpperCase(), lots=+$('#p-lot').value, avg_price=+$('#p-avg').value;
+  const ticker=$('#p-tk').value.trim().toUpperCase(), lots=+$('#p-lot').value, avg_price=+$('#p-avg').value, type=$('#p-type').value;
   if(!ticker||!lots||!avg_price){ toast('Lengkapi kode, lot, harga.'); return; }
-  const d=await post('/api/portfolio',{ticker,lots,avg_price});
+  const d=await post('/api/portfolio',{ticker,lots,avg_price,type});
   if(d.detail){ toast(d.detail); return; } $('#p-tk').value=''; toast(ticker+' ditambahkan.'); loadPortfolio();
 }
 async function delPosition(id){ if(!confirm('Hapus posisi ini?'))return;

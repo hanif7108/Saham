@@ -22,8 +22,8 @@ def test_sync_portfolio_endpoint():
         mock_sync.assert_called_once_with(
             "Profits Anywhere",
             [
-                {"ticker": "ANTM", "lots": 10, "avg_price": 1500.0, "broker": "Profits Anywhere", "importable": True},
-                {"ticker": "PTBA", "lots": 5, "avg_price": 2500.0, "broker": "Profits Anywhere", "importable": True}
+                {"ticker": "ANTM", "lots": 10, "avg_price": 1500.0, "broker": "Profits Anywhere", "type": "trading", "importable": True},
+                {"ticker": "PTBA", "lots": 5, "avg_price": 2500.0, "broker": "Profits Anywhere", "type": "trading", "importable": True}
             ]
         )
 

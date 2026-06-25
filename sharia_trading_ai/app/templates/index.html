@@ -306,6 +306,12 @@
         <label class="fld" style="flex:1;min-width:120px"><span class="l">Kode</span><input id="p-tk" placeholder="ADRO"></label>
         <label class="fld"><span class="l">Lot</span><input id="p-lot" type="number" value="10" min="1"></label>
         <label class="fld"><span class="l">Harga rata-rata</span><input id="p-avg" type="number" value="2100"></label>
+        <label class="fld" style="min-width:140px"><span class="l">Tipe Portfolio</span>
+          <select id="p-type">
+            <option value="trading">Trading Harian</option>
+            <option value="investasi">Investasi Saham</option>
+          </select>
+        </label>
         <button class="btn primary" onclick="addPosition()">Tambah</button>
       </div>
       <p class="sub">1 lot = 100 lembar. Hanya tunai/long-only (syariah).</p>
