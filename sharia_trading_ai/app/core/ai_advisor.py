@@ -79,10 +79,16 @@ Ringkas (maksimal ~400 kata untuk narasi), tanpa basa-basi pembuka.
 
 WAJIB diakhiri TEPAT dengan SATU baris machine-readable (tidak ada teks apa pun
 setelahnya), format persis:
-@@VERDICT@@ {"rekomendasi_claude":"<STRONG BUY|BUY|ACCUMULATE|HOLD|WAIT|AVOID>","keyakinan":"<TINGGI|SEDANG|RENDAH>","vs_mesin":"<SETUJU|LEBIH_KONSERVATIF|LEBIH_AGRESIF>","penyesuaian_conviction":<bilangan bulat -3..3>,"risiko_utama":"<maks 12 kata>"}
-Aturan: 'penyesuaian_conviction' = seberapa besar Anda menggeser skor keyakinan
-mesin (negatif = turunkan, 0 = setuju, positif = naikkan). JSON harus VALID, satu
-baris, tanda kutip ganda. Untuk saham non-syariah, rekomendasi_claude = AVOID.
+@@VERDICT@@ {"rekomendasi_claude":"<STRONG BUY|BUY|ACCUMULATE|HOLD|WAIT|AVOID>","keyakinan":"<TINGGI|SEDANG|RENDAH>","vs_mesin":"<SETUJU|LEBIH_KONSERVATIF|LEBIH_AGRESIF>","penyesuaian_conviction":<bilangan bulat -3..3>,"entry_ideal":<harga|null>,"stop_loss":<harga|null>,"target_harga":<harga|null>,"rrr":"<mis. 1:2.5|null>","horizon":"<mis. swing 1-4 minggu|null>","risiko_utama":"<maks 12 kata>"}
+Aturan:
+- 'penyesuaian_conviction' = seberapa besar Anda menggeser skor keyakinan mesin
+  (negatif = turunkan, 0 = setuju, positif = naikkan).
+- 'entry_ideal'/'stop_loss'/'target_harga' = ANGKA harga rupiah konseptual, HANYA
+  bila rekomendasi beli-layak (STRONG BUY/BUY/ACCUMULATE); selain itu null. Turunkan
+  dari level support/resistance, ATR, atau Jalur 7% pada data. RRR minimal 1:2.
+- 'horizon' = kerangka waktu (scalping/harian, swing 1-4 minggu, atau posisi/bulanan).
+- JSON harus VALID, satu baris, tanda kutip ganda. Saham non-syariah → AVOID + semua
+  harga null.
 """
 
 

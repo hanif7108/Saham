@@ -402,3 +402,4 @@ label.fld .l{display:block;color:var(--dim);font-size:.78rem;font-weight:600;mar
 .ai-verdict-label{font-weight:700;font-size:.82rem;color:var(--text)}
 .ai-verdict-meta{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.78rem;color:var(--dim);margin-top:.4rem}
 .ai-verdict-risk{font-size:.78rem;color:var(--text);margin-top:.45rem;padding-top:.4rem;border-top:1px dashed var(--border)}
+.ai-verdict-plan{font-size:.8rem;color:var(--text);margin-top:.5rem;padding:.4rem .55rem;border-radius:8px;background:color-mix(in srgb,var(--brand) 8%,transparent);border:1px solid color-mix(in srgb,var(--brand) 22%,transparent)}

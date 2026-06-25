@@ -792,12 +792,22 @@ function aiVerdict(v){
   const adj=v.penyesuaian_conviction;
   const adjStr = (adj!=null && Number(adj)!==0) ? `${Number(adj)>0?'+':''}${adj} conviction vs mesin` : 'sejalan dgn mesin';
   const vs = (v.vs_mesin||'').toString().replace(/_/g,' ').toLowerCase();
+  const num = x => (x!=null && x!=='' && !isNaN(Number(x))) ? Number(x).toLocaleString('id-ID') : null;
+  const plan=[];
+  if(num(v.entry_ideal)) plan.push(`Entry <b>${num(v.entry_ideal)}</b>`);
+  if(num(v.stop_loss)) plan.push(`SL <b class="loss">${num(v.stop_loss)}</b>`);
+  if(num(v.target_harga)) plan.push(`TP <b class="gain">${num(v.target_harga)}</b>`);
+  if(v.rrr) plan.push(`RRR <b>${esc(v.rrr)}</b>`);
+  const planHtml = plan.length ? `<div class="ai-verdict-plan">📋 Rencana: ${plan.join(' · ')}</div>` : '';
+  const horizon = v.horizon ? `<span>Horizon: <b>${esc(v.horizon)}</b></span>` : '';
   return `<div class="ai-verdict ${cls}">
     <div class="ai-verdict-head"><span class="ai-verdict-label">⚖️ Penilaian Claude (kalibrator)</span><span class="badge ${cls}">${esc(rec||'-')}</span></div>
     <div class="ai-verdict-meta">
       <span>Keyakinan: <b>${esc(v.keyakinan||'-')}</b></span>
       <span>vs mesin: <b>${esc(vs||'-')}</b> <span class="dim">(${esc(adjStr)})</span></span>
+      ${horizon}
     </div>
+    ${planHtml}
     ${v.risiko_utama?`<div class="ai-verdict-risk">⚠️ Risiko utama: ${esc(v.risiko_utama)}</div>`:''}
   </div>`;
 }
