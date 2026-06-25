@@ -782,8 +782,24 @@ async function advisor(){
     if(d.usage){ const parts=[]; if(d.usage.output_tokens)parts.push(d.usage.output_tokens+' tok');
       if(d.usage.durasi_detik)parts.push(d.usage.durasi_detik+'s'); if(d.usage.cache_read_input_tokens)parts.push('cache hit');
       if(parts.length)u=' · '+parts.join(' · '); }
-    slot.innerHTML=`<section class="glass-panel ai-box"><h3 class="sec">✦ Advisor <span class="mut" style="font-weight:600;text-transform:none">${esc(d.model||'')}${u}</span></h3><div class="ai-text">${mdb(d.analisa)}</div></section>`;
+    slot.innerHTML=`<section class="glass-panel ai-box"><h3 class="sec">✦ Advisor <span class="mut" style="font-weight:600;text-transform:none">${esc(d.model||'')}${u}</span></h3>${aiVerdict(d.verdict)}<div class="ai-text">${mdb(d.analisa)}</div></section>`;
   }catch(e){ slot.innerHTML=`<section class="glass-panel ai-box"><p class="dim">Gagal: ${e}</p></section>`; }
+}
+function aiVerdict(v){
+  if(!v) return '';
+  const rec=(v.rekomendasi_claude||'').toString().toUpperCase();
+  const cls = /STRONG BUY|^BUY|ACCUMULATE/.test(rec)?'buy' : /AVOID|SELL/.test(rec)?'sell' : 'hold';
+  const adj=v.penyesuaian_conviction;
+  const adjStr = (adj!=null && Number(adj)!==0) ? `${Number(adj)>0?'+':''}${adj} conviction vs mesin` : 'sejalan dgn mesin';
+  const vs = (v.vs_mesin||'').toString().replace(/_/g,' ').toLowerCase();
+  return `<div class="ai-verdict ${cls}">
+    <div class="ai-verdict-head"><span class="ai-verdict-label">⚖️ Penilaian Claude (kalibrator)</span><span class="badge ${cls}">${esc(rec||'-')}</span></div>
+    <div class="ai-verdict-meta">
+      <span>Keyakinan: <b>${esc(v.keyakinan||'-')}</b></span>
+      <span>vs mesin: <b>${esc(vs||'-')}</b> <span class="dim">(${esc(adjStr)})</span></span>
+    </div>
+    ${v.risiko_utama?`<div class="ai-verdict-risk">⚠️ Risiko utama: ${esc(v.risiko_utama)}</div>`:''}
+  </div>`;
 }
 
 /* ===================== SCREENING ===================== */

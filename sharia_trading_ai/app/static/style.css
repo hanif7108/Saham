@@ -392,3 +392,13 @@ label.fld .l{display:block;color:var(--dim);font-size:.78rem;font-weight:600;mar
 .cc-alloc{margin-top:.55rem;padding:.42rem .6rem;border-radius:8px;font-size:.74rem;line-height:1.45;
   background:color-mix(in srgb,var(--buy) 10%,transparent);border:1px solid color-mix(in srgb,var(--buy) 26%,transparent);color:var(--text)}
 .cc-alloc.dim{background:var(--panel);border-color:var(--border);color:var(--mute)}
+
+/* Advisor — kotak Penilaian Claude (kalibrator) */
+.ai-verdict{margin:.2rem 0 1rem;padding:.7rem .9rem;border-radius:10px;border:1px solid var(--border);background:var(--panel)}
+.ai-verdict.buy{border-left:4px solid var(--buy)}
+.ai-verdict.sell{border-left:4px solid var(--sell)}
+.ai-verdict.hold{border-left:4px solid var(--hold)}
+.ai-verdict-head{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap}
+.ai-verdict-label{font-weight:700;font-size:.82rem;color:var(--text)}
+.ai-verdict-meta{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.78rem;color:var(--dim);margin-top:.4rem}
+.ai-verdict-risk{font-size:.78rem;color:var(--text);margin-top:.45rem;padding-top:.4rem;border-top:1px dashed var(--border)}
