@@ -1,0 +1,124 @@
+========================================================================
+   STOCKHUNTER MULTIBAGGER By TRADINGTALK.WEB.ID
+   Aplikasi Screener Saham Multibagger
+========================================================================
+
+Selamat datang di StockHunter! Aplikasi ini dirancang khusus untuk investor 
+saham Indonesia (IDX) yang ingin menemukan "Hidden Gem" (Saham Mutiara 
+Terpendam) menggunakan kombinasi analisa Fundamental Ketat, Valuasi Modern, 
+dan Volume Price Analysis.
+
+------------------------------------------------------------------------
+   FITUR UNGGULAN
+------------------------------------------------------------------------
+1. Multibagger Logic (PEG & NPM)
+   Mencari perusahaan yang labanya tumbuh kencang tapi harganya masih murah 
+   (PEG < 1.5) dan memiliki margin keuntungan tebal (NPM > 5%).
+
+2. Trend Filter
+   Otomatis membuang saham yang sedang Downtrend. Hanya saham yang 
+   harganya di atas Rata-rata 200 Hari (MA200) yang diproses.
+
+3. Smart Valuation (Anti-Halu)
+   Menghitung Harga Wajar (Fair Value) menggunakan gabungan metode 
+   Benjamin Graham (Aset) dan Peter Lynch (Pertumbuhan), dengan sistem 
+   capping agar valuasi tetap masuk akal.
+
+4. Volume Spike Detector
+   Membedakan antara lonjakan volume yang positif (TRENDING) dengan 
+   buangan barang (DISTRIBUSI).
+
+5. AI Analyst (Gemini)
+   Memberikan opini naratif singkat tentang prospek saham tersebut. 
+  
+
+------------------------------------------------------------------------
+   CARA MENGGUNAKAN APLIKASI
+------------------------------------------------------------------------
+PENTING: Jangan memindahkan file "StockHunter.exe" keluar dari foldernya. 
+Aplikasi ini membutuhkan folder "_internal" untuk berjalan.
+
+1. Buka Aplikasi
+   Klik dua kali pada file "StockHunter.exe".
+
+2. Konfigurasi Awal (Pop-up)
+   - API Key: Masukkan Google Gemini API Key Anda. 
+     (Gratis di: https://aistudio.google.com/app/apikey) - ikuti
+     https://www.youtube.com/watch?v=-wtfp7bR_E8 untuk yang masih bingung.
+     Jika dikosongkan, aplikasi berjalan dalam "Mode Cepat" (Tanpa AI).
+   - Model ID: Pilih versi kecerdasan buatan yang diinginkan.
+     Disarankan: "gemini-2.5-flash".
+
+3. Klik "MULAI SCREENING"
+   - Aplikasi akan mengunduh data ratusan saham secara background.
+   - Mohon Tunggu: Proses ini memakan waktu +/- 1-3 menit tergantung 
+     kecepatan internet.
+   - Jangan tutup aplikasi selama proses berjalan.
+
+4. Selesai
+   - Akan muncul pesan sukses.
+   - Hasil screening tersimpan otomatis di file Excel: "hasil_multibagger.xlsx".
+
+------------------------------------------------------------------------
+   CARA MEMBACA LAPORAN EXCEL
+------------------------------------------------------------------------
+Laporan Excel sudah dilengkapi pewarnaan otomatis untuk memudahkan analisa:
+
+[1] Potensi % (Target Keuntungan)
+    - Hijau (> 20%): Potensi keuntungan tinggi menuju Harga Wajar.
+    - Merah (< -10%): Harga sudah kemahalan.
+
+[2] PEG Ratio (Indikator Multibagger)
+    - Hijau (< 1.0x): Sangat Murah dibanding pertumbuhannya.
+    - Merah (> 1.5x): Mulai Mahal.
+
+[3] NPM % (Efisiensi)
+    - Hijau (> 15%): Bisnis sangat menguntungkan.
+    - Merah (< 5%): Margin tipis, persaingan ketat.
+
+[4] Volume Status (Deteksi Bandar)
+    - KUNING "VOL SPIKE (TRENDING)": Volume meledak & harga naik/stabil. 
+      (Indikasi Akumulasi/Awal Tren).
+    - MERAH "DUMP (DISTRIBUSI)": Volume meledak & harga jatuh. 
+      (Indikasi Bandar Jualan/Guyur Barang).
+
+[5] Status Likuiditas
+    - LIKUID: Transaksi ramai (Aman).
+    - SEPI (RISIKO): Transaksi harian < 1 Miliar. Hati-hati jangan masuk 
+      dana besar sekaligus karena susah jual (Bid tipis).
+
+------------------------------------------------------------------------
+   PERINGATAN RISIKO (DISCLAIMER)
+------------------------------------------------------------------------
+1. Bukan Ajakan Jual/Beli
+   Aplikasi ini adalah alat bantu screening (penyaring) data. Keputusan 
+   investasi sepenuhnya ada di tangan Anda.
+
+2. Data Delay
+   Data harga diambil dari Yahoo Finance yang mungkin memiliki keterlambatan 
+   (delay) 10-15 menit dari pasar real-time.
+
+3. Keamanan Data
+   API Key Anda disimpan secara lokal di komputer Anda (gemini_config.txt) 
+   dan tidak dikirim ke pihak manapun selain Google Server untuk keperluan 
+   analisa.
+
+------------------------------------------------------------------------
+   REFERENSI & EDUKASI
+------------------------------------------------------------------------
+Ingin belajar lebih dalam tentang cara profit konsisten? Kunjungi:
+
+* Komunitas & Edukasi: 
+  https://tradingtalk.web.id
+  https://bb.tradingtalk.web.id
+
+* Belajar Analisa Volume: 
+  https://henri.myscalev.com/profit-konsisten-saham
+
+* StockSense Pulse Pro
+  https://henri.myscalev.com/stocksense
+
+
+========================================================================
+StockHunter - Dibuat untuk Investor Cerdas Indonesia.
+========================================================================

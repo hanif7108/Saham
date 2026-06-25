@@ -1,0 +1,76 @@
+Ticker,Nama Perusahaan,Sektor,EPS QnQ,ROA,ROE,NPM,PER,PBV,DER,PEG,BVPS,MP,Free Float,Dividend Yield,Source
+ACES,PT Aspirasi Hidup Indonesia Tbk,Consumer Cyclical,15.50%,8.12%,12.58%,9.20%,9.10x,0.94x,15.23%,2.84x,389.61,366.00,39.99%,8.75%,yfinance
+ADMR,PT Alamtri Minerals Indonesia Tbk,Basic Materials,34.00%,8.27%,16.94%,28.21%,11.92x,N/A,53.25%,N/A,0.04,1515.00,14.98%,3.05%,yfinance
+ADRO,PT Alamtri Resources Indonesia Tbk,Energy,67.10%,5.42%,10.26%,25.43%,7.21x,N/A,19.54%,0.85x,0.17,2220.00,36.80%,10.19%,yfinance
+AKRA,PT AKR Corporindo Tbk,Energy,16.10%,5.75%,18.94%,5.26%,9.43x,1.89x,34.16%,0.40x,647.68,1225.00,32.09%,8.16%,yfinance
+AMMN,PT Amman Mineral Internasional Tbk,Basic Materials,N/A,5.28%,10.48%,20.66%,26.32x,N/A,116.55%,N/A,0.08,3820.00,20.37%,N/A,yfinance
+ANTM,PT Antam (Persero) Tbk,Basic Materials,59.90%,10.85%,24.69%,9.66%,8.73x,1.91x,21.61%,0.00x,1616.55,3080.00,35.02%,6.82%,yfinance
+ARTO,PT Bank Jago Tbk,Financial Services,42.30%,0.84%,3.45%,13.87%,45.67x,1.51x,N/A,0.72x,643.37,970.00,27.77%,N/A,yfinance
+ASII,PT Astra International Tbk,Industrials,-15.60%,4.54%,13.25%,9.94%,6.13x,0.83x,39.86%,0.77x,5809.86,4810.00,44.44%,8.11%,yfinance
+ASRI,PT Alam Sutera Realty Tbk,Real Estate,-42.00%,2.79%,2.65%,9.94%,7.48x,0.19x,50.89%,0.18x,587.65,114.00,53.41%,132.00%,yfinance
+AUTO,PT Astra Otoparts Tbk,Consumer Cyclical,10.60%,3.34%,14.19%,11.14%,5.26x,0.73x,3.32%,N/A,3362.55,2460.00,20.00%,9.31%,yfinance
+BFIN,PT BFI Finance Indonesia Tbk,Financial Services,-12.60%,6.01%,14.16%,34.77%,6.80x,0.92x,119.87%,N/A,742.58,680.00,45.33%,10.00%,yfinance
+BMTR,PT Global Mediacom Tbk,Communication Services,34.40%,2.71%,4.09%,9.07%,2.30x,0.12x,19.69%,N/A,991.89,118.00,46.88%,N/A,yfinance
+BRIS,PT Bank Syariah Indonesia Tbk,Financial Services,17.10%,1.83%,16.15%,31.93%,11.18x,1.67x,N/A,N/A,1100.59,1835.00,9.90%,1.75%,yfinance
+BRMS,PT Bumi Resources Minerals Tbk,Basic Materials,21.30%,4.60%,5.14%,20.78%,100.00x,N/A,24.53%,N/A,0.01,660.00,96.90%,N/A,yfinance
+BRPT,PT Barito Pacific Tbk,Basic Materials,459.90%,0.98%,34.82%,5.98%,15.72x,N/A,133.91%,N/A,0.03,1700.00,28.25%,N/A,yfinance
+BSDE,PT Bumi Serpong Damai Tbk,Real Estate,-28.70%,3.17%,5.72%,19.90%,4.56x,0.26x,31.14%,N/A,2095.32,555.00,19.29%,N/A,yfinance
+BTPS,PT Bank BTPN Syariah Tbk,Financial Services,2.80%,5.39%,12.15%,30.37%,6.37x,0.75x,N/A,0.42x,1334.20,1000.00,29.99%,11.84%,yfinance
+BUKA,PT Bukalapak.com Tbk.,Consumer Cyclical,N/A,-6.56%,10.81%,35.10%,4.13x,0.40x,45.60%,N/A,268.62,107.00,35.29%,N/A,yfinance
+BUMI,PT Bumi Resources Tbk,Energy,35.20%,2.32%,4.59%,5.84%,39.07x,N/A,19.97%,0.10x,0.00,168.00,48.49%,N/A,yfinance
+CPIN,PT Charoen Pokphand Indonesia Tbk,Consumer Defensive,67.70%,12.82%,19.50%,9.16%,8.15x,1.48x,18.07%,0.80x,2239.08,3320.00,44.47%,5.28%,yfinance
+CTRA,PT Ciputra Development Tbk,Real Estate,-21.50%,4.90%,10.23%,20.26%,4.04x,0.41x,28.66%,0.44x,1326.47,550.00,46.60%,4.36%,yfinance
+DEWA,PT Darma Henwa Tbk,Energy,34.60%,2.47%,68.30%,68.12%,3.29x,1.90x,55.99%,N/A,193.60,368.00,24.57%,N/A,yfinance
+DOID,PT Buma Internasional Grup Tbk,Energy,-87.80%,-2.85%,-76.15%,-7.81%,N/A,N/A,1096.97%,0.02x,0.01,204.00,53.59%,N/A,yfinance
+ELSA,PT Elnusa Tbk,Energy,1.60%,4.75%,13.62%,5.01%,5.72x,0.75x,9.99%,2.20x,753.87,565.00,43.07%,7.84%,yfinance
+EMTK,PT Elang Mahkota Teknologi Tbk,Communication Services,N/A,1.19%,9.00%,13.43%,11.92x,0.91x,4.51%,N/A,602.98,550.00,28.61%,1.69%,yfinance
+ENRG,PT Energi Mega Persada Tbk,Energy,2.00%,6.29%,12.13%,17.74%,25.77x,N/A,50.82%,0.15x,0.04,1395.00,2.08%,N/A,yfinance
+ERAA,PT Erajaya Swasembada Tbk,Consumer Cyclical,122.70%,5.44%,15.76%,1.74%,4.08x,0.61x,98.55%,N/A,610.41,374.00,43.41%,5.11%,yfinance
+ESSA,PT ESSA Industries Indonesia Tbk.,Basic Materials,130.70%,8.37%,12.11%,15.88%,12.09x,N/A,2.20%,N/A,0.03,640.00,30.18%,104.00%,yfinance
+EXCL,PT XLSMART Telecom Sejahtera Tbk,Communication Services,N/A,-1.07%,-20.14%,-12.11%,N/A,1.61x,209.04%,2.19x,1601.26,2580.00,33.18%,6.16%,yfinance
+FILM,PT.MD Entertainment Tbk,Communication Services,N/A,-1.87%,-9.72%,-44.86%,N/A,5.90x,12.22%,N/A,286.23,1690.00,32.55%,N/A,yfinance
+GOTO,PT GoTo Gojek Tokopedia Tbk,Technology,N/A,0.32%,-3.29%,-3.32%,N/A,1.66x,27.75%,N/A,30.20,50.00,77.01%,N/A,yfinance
+HEAL,PT Medikaloka Hermina Tbk,Healthcare,-18.80%,5.06%,7.83%,5.62%,33.22x,2.37x,48.06%,5.60x,373.20,885.00,53.04%,1.62%,yfinance
+HRUM,PT Harum Energy Tbk,Energy,60.50%,2.51%,3.58%,2.94%,14.86x,N/A,33.73%,0.28x,0.07,825.00,17.66%,N/A,yfinance
+ICBP,PT Indofood CBP Sukses Makmur Tbk,Consumer Defensive,-3.10%,7.33%,14.63%,11.97%,8.55x,1.43x,62.22%,1.53x,4681.50,6700.00,19.47%,3.73%,yfinance
+INCO,PT Vale Indonesia Tbk,Basic Materials,100.10%,1.42%,3.51%,9.45%,30.77x,N/A,10.30%,N/A,0.27,5075.00,16.18%,1.53%,yfinance
+INDF,PT Indofood Sukses Makmur Tbk,Consumer Defensive,8.60%,6.89%,13.32%,8.68%,5.40x,0.76x,61.09%,0.43x,8805.49,6725.00,49.68%,4.21%,yfinance
+INDY,PT. Indika Energy Tbk,Energy,142.30%,2.68%,2.25%,0.50%,62.88x,N/A,82.31%,3.93x,0.23,2250.00,28.59%,46.00%,yfinance
+INKP,PT Indah Kiat Pulp & Paper Tbk,Basic Materials,11.40%,3.67%,6.93%,14.64%,4.86x,N/A,68.49%,N/A,1.28,7475.00,41.29%,67.00%,yfinance
+INTP,PT Indocement Tunggal Prakarsa Tbk,Basic Materials,2.10%,4.17%,9.88%,12.80%,5.94x,0.57x,12.12%,4.21x,7086.77,4020.00,27.48%,11.64%,yfinance
+ISAT,PT Indosat Ooredoo Hutchison Tbk,Communication Services,13.70%,5.85%,15.03%,9.78%,9.84x,1.48x,133.42%,0.99x,1172.45,1735.00,25.98%,6.40%,yfinance
+ITMG,PT Indo Tambangraya Megah Tbk,Energy,-15.80%,6.48%,9.38%,9.53%,7.74x,N/A,4.24%,0.25x,1.72,22225.00,33.86%,7.40%,yfinance
+JPFA,PT Japfa Comfeed Indonesia Tbk,Consumer Defensive,167.00%,12.37%,27.83%,8.02%,4.38x,1.09x,37.27%,0.58x,1764.12,1930.00,58.33%,7.25%,yfinance
+KLBF,PT Kalbe Farma Tbk.,Healthcare,-4.40%,9.02%,14.43%,9.99%,8.79x,1.30x,118.70%,1.08x,536.97,700.00,39.77%,2.86%,yfinance
+KPIG,PT MNC Tourism Indonesia Tbk,Real Estate,78.10%,1.22%,2.62%,27.71%,10.76x,0.28x,19.04%,N/A,288.33,82.00,64.47%,N/A,yfinance
+LSIP,PT Perusahaan Perkebunan London Sumatra Indonesia Tbk,Consumer Defensive,0.70%,8.11%,13.82%,34.07%,4.71x,0.62x,0.10%,1.69x,2110.48,1310.00,40.38%,4.96%,yfinance
+MAPA,PT Map Aktif Adiperkasa Tbk,Consumer Cyclical,38.40%,11.88%,21.84%,9.30%,9.16x,1.85x,20.46%,0.68x,321.19,595.00,30.70%,67.00%,yfinance
+MAPI,PT. Mitra Adiperkasa Tbk,Consumer Cyclical,33.00%,7.96%,17.54%,5.18%,10.56x,1.71x,46.96%,0.69x,882.62,1510.00,49.00%,68.00%,yfinance
+MARK,PT Mark Dynamics Indonesia Tbk,Healthcare,19.20%,21.84%,31.03%,33.59%,11.82x,3.58x,62.80%,N/A,258.51,925.00,19.73%,12.97%,yfinance
+MDKA,PT Merdeka Copper Gold Tbk,Basic Materials,N/A,1.68%,0.55%,-3.28%,N/A,N/A,71.14%,N/A,0.03,2930.00,50.69%,N/A,yfinance
+MEDC,PT Medco Energi Internasional Tbk,Energy,282.30%,4.98%,6.97%,6.15%,10.47x,N/A,155.80%,0.81x,0.09,1145.00,25.01%,4.82%,yfinance
+MIKA,PT Mitra Keluarga Karyasehat Tbk,Healthcare,4.80%,11.73%,17.98%,25.30%,16.13x,2.94x,11.10%,1.35x,544.97,1600.00,34.03%,2.69%,yfinance
+MNCN,PT. Media Nusantara Citra Tbk,Communication Services,-11.90%,2.92%,5.94%,17.53%,2.17x,0.12x,5.69%,0.57x,1679.14,208.00,36.88%,N/A,yfinance
+MTDL,PT Metrodata Electronics Tbk,Technology,3.40%,7.02%,18.73%,2.89%,7.65x,1.27x,33.35%,N/A,396.78,505.00,44.31%,5.35%,yfinance
+MTEL,PT Dayamitra Telekomunikasi Tbk.,Communication Services,3.60%,4.39%,6.33%,22.35%,18.52x,1.20x,62.60%,N/A,415.44,500.00,14.24%,3.62%,yfinance
+MYOR,PT Mayora Indah Tbk,Consumer Defensive,37.20%,8.78%,17.13%,8.17%,14.27x,2.33x,26.63%,2.04x,854.26,1990.00,14.79%,3.02%,yfinance
+PGAS,PT Perusahaan Gas Negara (Persero) Tbk,Utilities,45.80%,5.30%,10.09%,6.19%,8.58x,N/A,29.05%,1.05x,0.12,1540.00,43.02%,7.98%,yfinance
+PGEO,PT Pertamina Geothermal Energy Tbk,Utilities,40.00%,4.34%,7.27%,33.55%,14.27x,N/A,35.81%,N/A,0.05,895.00,11.66%,5.65%,yfinance
+PTBA,PT Bukit Asam (Persero) Tbk,Energy,104.80%,5.27%,14.41%,7.84%,8.73x,1.24x,11.49%,0.38x,2043.81,2530.00,32.80%,12.69%,yfinance
+PTPP,PT PP (Persero) Tbk,Industrials,-15.00%,-9.52%,-82.07%,-39.01%,N/A,0.36x,464.34%,0.51x,519.15,187.00,48.84%,N/A,yfinance
+PWON,PT Pakuwon Jati Tbk,Real Estate,29.30%,5.15%,11.02%,33.80%,5.02x,0.54x,20.98%,N/A,474.37,254.00,30.40%,5.12%,yfinance
+SCMA,PT Surya Citra Media Tbk,Communication Services,100.20%,6.49%,11.40%,13.19%,13.74x,1.86x,23.40%,1.22x,107.77,200.00,6.57%,10.50%,yfinance
+SIDO,PT Industri Jamu dan Farmasi Sido Muncul Tbk,Consumer Defensive,-36.80%,23.06%,32.82%,29.09%,9.68x,3.38x,4.90%,99.80x,110.67,374.00,20.86%,9.89%,yfinance
+SILO,PT Siloam International Hospitals Tbk,Healthcare,13.80%,7.64%,12.49%,8.76%,24.59x,2.82x,20.86%,2.84x,768.24,2170.00,9.70%,N/A,yfinance
+SMGR,PT Semen Indonesia (Persero) Tbk,Basic Materials,88.70%,1.03%,0.44%,0.64%,42.29x,0.22x,21.14%,2.41x,6465.29,1440.00,48.66%,1.97%,yfinance
+SMRA,PT Summarecon Agung Tbk,Real Estate,-20.30%,4.33%,7.93%,8.07%,6.76x,0.42x,87.74%,0.36x,705.97,294.00,58.15%,1.70%,yfinance
+TAPG,PT Triputra Agro Persada Tbk,Consumer Defensive,-8.10%,14.94%,30.76%,32.26%,8.38x,2.53x,8.74%,0.74x,601.87,1525.00,16.93%,11.80%,yfinance
+TINS,PT TIMAH Tbk,Basic Materials,1184.20%,16.03%,30.66%,18.08%,9.64x,2.61x,11.26%,N/A,1336.98,3490.00,28.96%,2.53%,yfinance
+TKIM,PT Pabrik Kertas Tjiwi Kimia Tbk,Basic Materials,-17.20%,1.02%,8.91%,26.12%,4.02x,N/A,25.02%,N/A,0.97,5975.00,34.99%,42.00%,yfinance
+TLKM,Perusahaan Perseroan (Persero) PT Telekomunikasi Indonesia Tbk,Communication Services,-21.70%,7.38%,14.21%,11.28%,15.70x,1.90x,44.12%,20.08x,1360.33,2580.00,47.26%,7.56%,yfinance
+TPIA,PT Chandra Asri Pacific Tbk,Basic Materials,N/A,-1.23%,42.37%,14.34%,5.47x,N/A,117.02%,N/A,0.04,2060.00,34.47%,29.00%,yfinance
+UNTR,PT United Tractors Tbk,Basic Materials,-79.80%,6.40%,12.31%,9.77%,6.70x,0.83x,25.75%,0.43x,27366.65,22675.00,38.35%,9.67%,yfinance
+UNVR,PT Unilever Indonesia Tbk,Consumer Defensive,73.00%,15.60%,74.29%,26.56%,17.38x,9.76x,9.03%,2.46x,172.72,1685.00,14.63%,13.53%,yfinance
+WIKA,PT Wijaya Karya (Persero) Tbk,Industrials,N/A,-6.09%,-181.33%,-78.54%,N/A,1.44x,6422.03%,0.72x,141.88,204.00,7.32%,N/A,yfinance
+WSKT,PT Waskita Karya (Persero) Tbk,N/A,N/A,N/A,N/A,N/A,N/A,-15.96x,N/A,N/A,-12.66,202.00,N/A,N/A,yfinance
+WTON,PT Wijaya Karya Beton Tbk,Basic Materials,-5.60%,0.96%,0.11%,1.18%,16.38x,0.18x,11.30%,N/A,416.42,75.00,26.54%,59.00%,yfinance

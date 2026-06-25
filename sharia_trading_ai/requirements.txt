@@ -1,0 +1,21 @@
+# Sharia Trading AI — backend dependencies
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+jinja2==3.1.5
+yfinance>=1.4.1
+curl_cffi>=0.7.0
+pandas==2.2.3
+numpy==2.2.1
+pydantic==2.10.5
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+httpx==0.28.1
+
+# AI Advisor (opsional — fitur aktif jika ANTHROPIC_API_KEY di-set)
+anthropic>=0.73.0
+
+# dev/test
+pytest==8.3.4
+python-multipart>=0.0.9
+pytesseract>=0.3.10
+pdfplumber>=0.11

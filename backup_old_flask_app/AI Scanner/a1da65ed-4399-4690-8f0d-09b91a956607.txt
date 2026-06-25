@@ -1,0 +1,455 @@
+//@version=5
+// â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+// â•‘  ðŸš€ ULTIMATE SPOT TRADING ASSISTANT [PRO VERSION]                    â•‘
+// â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+// â•‘  Indikator ini dibuat exclusive untuk member Tradingtalk.web.id      â•‘
+// â•‘  Dilarang menyebarkan tanpa izin dari Tradingtalk.web.id             â•‘
+// â•‘  Dibuat Untuk Scalping, Daytrading & Swing Trading                   â•‘
+// â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+indicator("Ultimate Trading Assistant [NLP Fixed]", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=50)
+
+// --- 1. SETTINGS ---
+// Group: Volume Profile
+int lookback_length = input.int(300, "VP Range (Candle)", group="Volume Profile", minval=50)
+int row_size = input.int(100, "VP Resolusi", group="Volume Profile", minval=10)
+int val_area_pct = input.int(70, "Value Area %", group="Volume Profile", minval=1)
+float width_pct = input.float(40, "Lebar Histogram (%)", group="Volume Profile")
+
+// Group: Indikator Penguat
+int ema_len = input.int(200, "EMA Trend Filter", group="Indikator Penguat")
+int rsi_len = input.int(14, "RSI Momentum", group="Indikator Penguat")
+
+// Group: UI
+bool show_dash = input.bool(true, "Tampilkan Dashboard", group="UI")
+bool show_sr = input.bool(true, "Tampilkan S1/S2 & R1/R2", group="UI")
+bool show_chart_signal = input.bool(true, "Tampilkan Segitiga Signal di Chart", group="UI")
+
+// Warna
+color bull_col = input.color(color.new(color.teal, 60), "Warna Buy")
+color bear_col = input.color(color.new(color.red, 60), "Warna Sell")
+color poc_col = input.color(color.yellow, "Warna POC")
+color va_col = input.color(color.red, "Warna Garis VAH/VAL") 
+color sr_col = input.color(color.new(color.blue, 30), "Warna S/R Lines")
+
+// --- 2. HELPER FUNCTIONS ---
+get_txt_color(color bg_color) =>
+    r = color.r(bg_color)
+    g = color.g(bg_color)
+    b = color.b(bg_color)
+    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    luminance > 0.5 ? color.black : color.white
+
+// --- 3. CALCULATIONS (INDICATORS) ---
+// Indikator ini dihitung setiap candle
+float ema_filter = ta.ema(close, ema_len)
+float rsi_val = ta.rsi(close, rsi_len)
+
+// --- VPA CALCULATIONS ---
+float avg_vol = ta.sma(volume, 20)
+float spread = high - low
+float avg_spread = ta.sma(spread, 20)
+
+bool vpa_high_vol = volume > (avg_vol * 1.5)
+bool vpa_low_vol = volume < (avg_vol * 0.5)
+bool vpa_wide_spread = spread > (avg_spread * 1.2)
+bool vpa_narrow_spread = spread < (avg_spread * 0.8)
+
+// Plot EMA
+plot(ema_filter, "EMA 200", color=color.new(color.orange, 20), linewidth=2)
+
+// --- 4. VOLUME PROFILE & MAIN LOGIC ---
+// Variabel persistent (var)
+var box[] vol_boxes = array.new_box()
+var line poc_line = na
+var line vah_line = na
+var line val_line = na
+// Line S/R Variables
+var line r1_line = na
+var line r2_line = na
+var line s1_line = na
+var line s2_line = na
+
+var label vah_lbl = na
+var label val_lbl = na
+var label poc_lbl = na
+var label signal_lbl = na
+// Label S/R Variables
+var label r1_lbl = na
+var label r2_lbl = na
+var label s1_lbl = na
+var label s2_lbl = na
+
+var table info_table = table.new(position.top_right, 2, 6, border_width=1)
+
+// Blok ini HANYA jalan di candle terakhir (Realtime/Closing)
+if barstate.islast
+    // -- A. VP CORE LOGIC --
+    float highest_p = high[0]
+    float lowest_p = low[0]
+    int safe_lookback = math.min(lookback_length, bar_index)
+    
+    // Loop mencari High/Low range
+    for i = 0 to safe_lookback - 1
+        highest_p := math.max(highest_p, high[i])
+        lowest_p := math.min(lowest_p, low[i])
+        
+    float price_range = highest_p - lowest_p
+    float step = price_range / row_size
+    
+    // Inisialisasi Array
+    float[] total_vol_arr = array.new_float(row_size, 0.0)
+    float[] vol_bull = array.new_float(row_size, 0.0)
+    float[] vol_bear = array.new_float(row_size, 0.0)
+    float grand_total_vol = 0.0
+    
+    // Loop mengisi Volume Profile
+    for i = 0 to safe_lookback - 1
+        float c_mid = (high[i] + low[i]) / 2
+        int row_idx = math.floor((c_mid - lowest_p) / step)
+        
+        if row_idx >= row_size
+            row_idx := row_size - 1
+        if row_idx < 0
+            row_idx := 0
+            
+        float v = volume[i]
+        grand_total_vol := grand_total_vol + v
+        
+        // Update total volume array
+        float current_total = array.get(total_vol_arr, row_idx)
+        array.set(total_vol_arr, row_idx, current_total + v)
+        
+        if close[i] >= open[i]
+            float current_bull = array.get(vol_bull, row_idx)
+            array.set(vol_bull, row_idx, current_bull + v)
+        else
+            float current_bear = array.get(vol_bear, row_idx)
+            array.set(vol_bear, row_idx, current_bear + v)
+
+    // -- B. FIND POC & VA --
+    float max_row_vol = 0.0
+    int poc_idx = 0
+    
+    // Cari POC
+    for i = 0 to row_size - 1
+        float tv = array.get(total_vol_arr, i)
+        if tv > max_row_vol
+            max_row_vol := tv
+            poc_idx := i
+            
+    // Cari Value Area (VAH/VAL)
+    float target_vol = grand_total_vol * (val_area_pct / 100.0)
+    float current_va_vol = array.get(total_vol_arr, poc_idx)
+    int up_idx = poc_idx
+    int dn_idx = poc_idx
+    
+    while current_va_vol < target_vol
+        float vol_up = (up_idx < row_size - 1) ? array.get(total_vol_arr, up_idx + 1) : 0.0
+        float vol_dn = (dn_idx > 0) ? array.get(total_vol_arr, dn_idx - 1) : 0.0
+        
+        if vol_up == 0.0 and vol_dn == 0.0
+            break
+            
+        if vol_up >= vol_dn
+            up_idx := up_idx + 1
+            current_va_vol := current_va_vol + vol_up
+        else
+            dn_idx := dn_idx - 1
+            current_va_vol := current_va_vol + vol_dn
+
+    // -- C. CLEANUP & PREP DRAWING --
+    if array.size(vol_boxes) > 0
+        for i = 0 to array.size(vol_boxes) - 1
+            box.delete(array.get(vol_boxes, i))
+        array.clear(vol_boxes)
+        
+    line.delete(poc_line)
+    line.delete(vah_line)
+    line.delete(val_line)
+    line.delete(r1_line)
+    line.delete(r2_line)
+    line.delete(s1_line)
+    line.delete(s2_line)
+    
+    label.delete(vah_lbl)
+    label.delete(val_lbl)
+    label.delete(poc_lbl)
+    label.delete(signal_lbl)
+    label.delete(r1_lbl)
+    label.delete(r2_lbl)
+    label.delete(s1_lbl)
+    label.delete(s2_lbl)
+
+    int right_anchor = bar_index + 10
+    
+    // -- D. CALCULATE S/R BASED ON VP PEAKS (HVN) --
+    float max_vol_up = 0.0
+    int r1_idx = up_idx 
+    
+    // Fix Indentasi Loop R1
+    if up_idx < row_size - 1
+        for k = up_idx + 1 to row_size - 1
+            float v = array.get(total_vol_arr, k)
+            if v > max_vol_up
+                max_vol_up := v
+                r1_idx := k
+
+    float max_vol_dn = 0.0
+    int s1_idx = dn_idx 
+    
+    // Fix Indentasi Loop S1
+    if dn_idx > 0
+        for k = dn_idx - 1 to 0
+            float v = array.get(total_vol_arr, k)
+            if v > max_vol_dn
+                max_vol_dn := v
+                s1_idx := k
+    
+    // -- DRAW BOXES --
+    for i = 0 to row_size - 1
+        float t_v = array.get(total_vol_arr, i)
+        if t_v > 0
+            float b_top = lowest_p + (step * (i + 1))
+            float b_btm = lowest_p + (step * i)
+            int bar_len = math.round(safe_lookback * (t_v / max_row_vol) * (width_pct / 100))
+            if bar_len < 1
+                bar_len := 1
+                
+            bool in_va = (i >= dn_idx and i <= up_idx)
+            color base_bull = in_va ? bull_col : color.new(bull_col, 85)
+            color base_bear = in_va ? bear_col : color.new(bear_col, 85)
+            float v_b = array.get(vol_bull, i)
+            float v_s = array.get(vol_bear, i)
+            color final_col = v_b > v_s ? base_bull : base_bear
+            
+            if i == r1_idx or i == s1_idx
+                final_col := color.new(sr_col, 40)
+            if i == poc_idx
+                final_col := color.new(poc_col, 30)
+                
+            box b = box.new(left=right_anchor - bar_len, top=b_top, right=right_anchor, bottom=b_btm, border_width=0, bgcolor=final_col)
+            array.push(vol_boxes, b)
+
+    // -- E. PLOT MAIN LINES (Definisi Variabel Lokal di sini agar terbaca Logic Bawah) --
+    float poc_lvl = lowest_p + (step * poc_idx) + (step/2)
+    float vah_lvl = lowest_p + (step * up_idx) + (step/2)
+    float val_lvl = lowest_p + (step * dn_idx) + (step/2)
+    
+    // -- Hitung Level S/R --
+    float r1_lvl = lowest_p + (step * r1_idx) + (step/2)
+    float s1_lvl = lowest_p + (step * s1_idx) + (step/2)
+    float r2_lvl = highest_p
+    float s2_lvl = lowest_p
+
+    // Plot Lines
+    poc_line := line.new(bar_index - safe_lookback, poc_lvl, right_anchor + 15, poc_lvl, color=poc_col, width=2)
+    poc_lbl := label.new(right_anchor + 15, poc_lvl, "POC " + str.tostring(poc_lvl, format.mintick), color=poc_col, textcolor=get_txt_color(poc_col), style=label.style_label_left, size=size.small)
+    
+    vah_line := line.new(bar_index - safe_lookback, vah_lvl, right_anchor + 15, vah_lvl, color=va_col, width=1, style=line.style_dashed)
+    vah_lbl := label.new(right_anchor + 15, vah_lvl, "VAH", color=va_col, textcolor=get_txt_color(va_col), style=label.style_label_left, size=size.small)
+    
+    val_line := line.new(bar_index - safe_lookback, val_lvl, right_anchor + 15, val_lvl, color=va_col, width=1, style=line.style_dashed)
+    val_lbl := label.new(right_anchor + 15, val_lvl, "VAL", color=va_col, textcolor=get_txt_color(va_col), style=label.style_label_left, size=size.small)
+
+    if show_sr
+        r1_line := line.new(bar_index - safe_lookback, r1_lvl, right_anchor + 15, r1_lvl, color=sr_col, width=1, style=line.style_solid)
+        r1_lbl := label.new(right_anchor + 15, r1_lvl, "Resist 1 (HVN)", color=sr_col, textcolor=color.white, style=label.style_label_left, size=size.small)
+        
+        s1_line := line.new(bar_index - safe_lookback, s1_lvl, right_anchor + 15, s1_lvl, color=sr_col, width=1, style=line.style_solid)
+        s1_lbl := label.new(right_anchor + 15, s1_lvl, "Support 1 (HVN)", color=sr_col, textcolor=color.white, style=label.style_label_left, size=size.small)
+
+        r2_line := line.new(bar_index - safe_lookback, r2_lvl, right_anchor + 15, r2_lvl, color=sr_col, width=1, style=line.style_dotted)
+        r2_lbl := label.new(right_anchor + 15, r2_lvl, "Resist 2 (Top)", color=sr_col, textcolor=color.white, style=label.style_label_left, size=size.small)
+
+        s2_line := line.new(bar_index - safe_lookback, s2_lvl, right_anchor + 15, s2_lvl, color=sr_col, width=1, style=line.style_dotted)
+        s2_lbl := label.new(right_anchor + 15, s2_lvl, "Support 2 (Btm)", color=sr_col, textcolor=color.white, style=label.style_label_left, size=size.small)
+
+
+    // --- 5. LOGIC & SIGNAL (UPDATE FIBONACHI) ---
+    // Hitung Fibonacci Extension sederhana untuk target jika tidak ada volume resistance
+    float fib_ext_1272 = highest_p + (price_range * 0.272)
+    
+    string signal_title = "MENUNGGU..."
+    string signal_msg = "Menganalisis kondisi pasar..."
+    color signal_col = color.gray
+
+    bool is_uptrend = close > ema_filter
+    string trend_txt = is_uptrend ? "UPTREND" : "DOWNTREND"
+    color trend_col = is_uptrend ? color.teal : color.red
+
+    string rsi_state = rsi_val > 70 ? "OVERBOUGHT" : (rsi_val < 30 ? "OVERSOLD" : "NEUTRAL")
+    color rsi_bg_col = rsi_val > 50 ? color.new(color.blue, 40) : color.new(color.orange, 40)
+
+    string vpa_msg = ""
+    if vpa_high_vol and vpa_wide_spread
+        vpa_msg := "ðŸ“ˆ VOLUME & SPREAD: Volume tinggi dengan spread lebar - validasi pergerakan kuat."
+    else if vpa_high_vol and vpa_narrow_spread
+        vpa_msg := "âš ï¸ VOLUME & SPREAD: Volume tinggi namun spread sempit - kemungkinan akumulasi atau distribusi."
+    else if vpa_low_vol and vpa_wide_spread
+        vpa_msg := "ðŸŽ­ VOLUME & SPREAD: Spread lebar dengan volume rendah - potensi false breakout/trap."
+    else if vpa_low_vol
+        vpa_msg := "ðŸ˜´ VOLUME & SPREAD: Volume rendah - partisipasi pasar minimal."
+    else
+        vpa_msg := "âšª VOLUME & SPREAD: Kondisi volume dan spread normal."
+
+    // --- ANALISIS LEVEL HARGA ---
+    string level_analysis = ""
+    float dist_to_vah = math.abs(close - vah_lvl) / syminfo.mintick
+    float dist_to_val = math.abs(close - val_lvl) / syminfo.mintick
+    float dist_to_poc = math.abs(close - poc_lvl) / syminfo.mintick
+
+    if close > vah_lvl
+        level_analysis := "ðŸ“ LEVEL: Harga BERADA DI ATAS VAH (breakout). "
+        if dist_to_vah <= 20
+            level_analysis := level_analysis + "Breakout masih rapuh (hanya " + str.tostring(dist_to_vah, "#") + " tick dari VAH)."
+        else
+            level_analysis := level_analysis + "Breakout kuat (" + str.tostring(dist_to_vah, "#") + " tick dari VAH)."
+    else if close < val_lvl
+        level_analysis := "ðŸ“ LEVEL: Harga BERADA DI BAWAH VAL (breakdown). "
+        if dist_to_val <= 20
+            level_analysis := level_analysis + "Breakdown masih rapuh (hanya " + str.tostring(dist_to_val, "#") + " tick dari VAL)."
+        else
+            level_analysis := level_analysis + "Breakdown kuat (" + str.tostring(dist_to_val, "#") + " tick dari VAL)."
+    else if close > poc_lvl
+        level_analysis := "ðŸ“ LEVEL: Harga DI ATAS POC (area mahal). "
+        if dist_to_poc <= 30
+            level_analysis := level_analysis + "Sangat dekat dengan POC (" + str.tostring(dist_to_poc, "#") + " tick)."
+        else
+            level_analysis := level_analysis + "Jarak ke POC: " + str.tostring(dist_to_poc, "#") + " tick."
+    else
+        level_analysis := "ðŸ“ LEVEL: Harga DI BAWAH POC (area murah). "
+        if dist_to_poc <= 30
+            level_analysis := level_analysis + "Sangat dekat dengan POC (" + str.tostring(dist_to_poc, "#") + " tick)."
+        else
+            level_analysis := level_analysis + "Jarak ke POC: " + str.tostring(dist_to_poc, "#") + " tick."
+
+    // --- ANALISIS MOMENTUM ---
+    string momentum_analysis = ""
+    if rsi_val > 70
+        momentum_analysis := "ðŸŽ¯ MOMENTUM: OVERBOUGHT ekstrem - risiko koreksi tinggi."
+    else if rsi_val > 60
+        momentum_analysis := "ðŸŽ¯ MOMENTUM: Mendekati overbought - pertimbangkan profit taking."
+    else if rsi_val < 30
+        momentum_analysis := "ðŸŽ¯ MOMENTUM: OVERSOLD ekstrem - potensi rebound."
+    else if rsi_val < 40
+        momentum_analysis := "ðŸŽ¯ MOMENTUM: Mendekati oversold - peluang akumulasi."
+    else if rsi_val > 50
+        momentum_analysis := "ðŸŽ¯ MOMENTUM: Bullish dengan ruang naik."
+    else
+        momentum_analysis := "ðŸŽ¯ MOMENTUM: Bearish dengan tekanan jual."
+
+    // --- ANALISIS TREND ---
+    string trend_analysis = ""
+    float dist_to_ema = math.abs(close - ema_filter) / close * 100
+
+    if is_uptrend
+        trend_analysis := "ðŸ“Š TREND: UPTREND aktif. "
+        if dist_to_ema > 5
+            trend_analysis := trend_analysis + "Harga JAUH di atas EMA (" + str.tostring(dist_to_ema, "#.#") + "%) - trend kuat."
+        else if dist_to_ema > 2
+            trend_analysis := trend_analysis + "Harga di atas EMA (" + str.tostring(dist_to_ema, "#.#") + "%) - trend normal."
+        else
+            trend_analysis := trend_analysis + "Harga sangat dekat EMA (" + str.tostring(dist_to_ema, "#.#") + "%) - wasiap pullback."
+    else
+        trend_analysis := "ðŸ“Š TREND: DOWNTREND aktif. "
+        if dist_to_ema > 5
+            trend_analysis := trend_analysis + "Harga JAUH di bawah EMA (" + str.tostring(dist_to_ema, "#.#") + "%) - trend bearish kuat."
+        else if dist_to_ema > 2
+            trend_analysis := trend_analysis + "Harga di bawah EMA (" + str.tostring(dist_to_ema, "#.#") + "%) - trend bearish normal."
+        else
+            trend_analysis := trend_analysis + "Harga sangat dekat EMA (" + str.tostring(dist_to_ema, "#.#") + "%) - potensi reversal."
+
+    // --- REKOMENDASI TRADING ---
+    string trading_recommendation = ""
+    string confidence_level = ""
+    color rec_color = color.gray
+
+    if close > vah_lvl
+        if is_uptrend
+            if rsi_val >= 50
+                signal_title := "STRONG BUY ðŸš€"
+                
+                // LOGIKA TARGET BARU (Auto Fib)
+                float target_price = r1_lvl
+                string target_source = "R1 (HVN)"
+                
+                // Cek apakah R1 "tidak ada" (sama dengan VAH) atau harga sudah melewati R1
+                bool r1_invalid_or_passed = (r1_lvl <= vah_lvl) or (close >= r1_lvl)
+                
+                if r1_invalid_or_passed
+                    // Cek Target Selanjutnya: R2 (Range Top)
+                    if close >= r2_lvl
+                        // Jika sudah tembus High (Blue Sky Breakout), gunakan Fib
+                        target_price := fib_ext_1272
+                        target_source := "Fibo Ext 1.272 ðŸš€"
+                    else
+                        // Jika belum tembus High, target ke Top Range
+                        target_price := r2_lvl
+                        target_source := "R2 (Range Top)"
+                
+                trading_recommendation := "âœ… REKOMENDASI: BUY dengan target " + target_source + " (" + str.tostring(target_price, format.mintick) + ")."
+                confidence_level := "ðŸŸ¢ KONFIDENSI: TINGGI (Breakout + Trend + Momentum selaras)"
+                signal_col := color.teal
+                rec_color := color.green
+                if show_chart_signal
+                    signal_lbl := label.new(bar_index, low, text="BUY", style=label.style_triangleup, color=color.teal, textcolor=color.white, size=size.small)
+            else
+                signal_title := "CONFIRMATION NEEDED"
+                trading_recommendation := "âš ï¸ REKOMENDASI: Tunggu konfirmasi RSI > 50 sebelum entry."
+                confidence_level := "ðŸŸ¡ KONFIDENSI: SEDANG (Breakout tapi momentum lemah)"
+                signal_col := color.blue
+                rec_color := color.blue
+        else
+            signal_title := "RISKY BREAKOUT"
+            trading_recommendation := "âš ï¸ REKOMENDASI: Hindari entry - breakout berlawanan trend utama."
+            confidence_level := "ðŸ”´ KONFIDENSI: RENDAH (Counter-trend breakout)"
+            signal_col := color.orange
+            rec_color := color.orange
+    else if close < val_lvl
+        signal_title := "DO NOT BUY â›”"
+        trading_recommendation := "â›” REKOMENDASI: JANGAN BUY - harga breakdown area support."
+        confidence_level := "ðŸ”´ KONFIDENSI: SANGAT RENDAH"
+        signal_col := color.red
+        rec_color := color.red
+    else
+        if close < poc_lvl
+            if rsi_val < 40
+                signal_title := "BUY ON DIP âœ…"
+                trading_recommendation := "âœ… REKOMENDASI: BUY di area diskon (bawah POC + oversold). Stop loss di S1 (" + str.tostring(s1_lvl, format.mintick) + ")."
+                confidence_level := "ðŸŸ¢ KONFIDENSI: TINGGI (Harga murah + momentum oversold)"
+                signal_col := color.lime
+                rec_color := color.green
+                if show_chart_signal
+                    signal_lbl := label.new(bar_index, low, text="DIP BUY", style=label.style_triangleup, color=color.lime, textcolor=color.black, size=size.small)
+            else
+                signal_title := "WAIT FOR BETTER DIP"
+                trading_recommendation := "ðŸŸ¡ REKOMENDASI: Tunggu RSI < 40 untuk entry yang lebih aman."
+                confidence_level := "ðŸŸ¡ KONFIDENSI: SEDANG (Harga murah tapi momentum belum oversold)"
+                signal_col := color.gray
+                rec_color := color.gray
+        else
+            if rsi_val > 60
+                signal_title := "TAKE PROFIT âš ï¸"
+                trading_recommendation := "ðŸŸ  REKOMENDASI: Pertimbangkan profit taking - harga mahal + overbought."
+                confidence_level := "ðŸŸ  KONFIDENSI: TINGGI (Risk:Reward buruk)"
+                signal_col := color.orange
+                rec_color := color.orange
+            else
+                signal_title := "NO TRADE ZONE"
+                trading_recommendation := "âšª REKOMENDASI: Tidak ada sinyal jelas - tunggu di pinggir."
+                confidence_level := "âšª KONFIDENSI: RENDAH"
+                signal_col := color.gray
+                rec_color := color.gray
+
+    // --- GABUNGAN SEMUA ANALISIS UNTUK SARAN ---
+    string full_analysis = trend_analysis + "\n" + momentum_analysis + "\n" + level_analysis + "\n" + vpa_msg + "\n\n" + trading_recommendation + "\n" + confidence_level
+
+    if show_dash
+        table.cell(info_table, 0, 0, "TREND", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(info_table, 1, 0, trend_txt, bgcolor=trend_col, text_color=color.white, text_size=size.small)
+        table.cell(info_table, 0, 1, "RSI", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(info_table, 1, 1, str.tostring(rsi_val, "#.##") + " (" + rsi_state + ")", bgcolor=rsi_bg_col, text_color=color.white, text_size=size.small)
+        table.cell(info_table, 0, 2, "SIGNAL", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(info_table, 1, 2, signal_title, bgcolor=signal_col, text_color=color.white, text_size=size.small)
+        table.cell(info_table, 0, 3, "ANALISIS & SARAN", bgcolor=color.new(color.gray, 50), text_color=color.white, text_size=size.small)
+        table.cell(info_table, 1, 3, full_analysis, bgcolor=color.new(color.black, 70), text_color=color.white, text_size=size.small, text_halign=text.align_left)

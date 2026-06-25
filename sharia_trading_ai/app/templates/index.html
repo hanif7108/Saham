@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>{{ app_name }} — Decision Support Saham Syariah</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<div class="background-mesh"></div>
+<div class="container">
+  <header>
+    <div class="logo">
+      <h1>☪ {{ app_name }}</h1>
+      <p>O'Neil CAN SLIM • 6 Magic Numbers • Technical Signals • Fatwa DSN-MUI</p>
+    </div>
+    <div class="market-status-widget" id="mkt"><span class="spin"></span><span class="mut">memuat pasar…</span></div>
+    <div class="header-actions">
+      <button class="btn icon" id="btn-theme" onclick="toggleTheme()" title="Ganti tema">🌗</button>
+      <button class="btn secondary" onclick="refreshAll()">🔄 Refresh</button>
+      <button class="btn secondary" onclick="checkAlerts()">🔔 Alert</button>
+      <button class="btn secondary" onclick="sendTelegram()">✈️ Telegram</button>
+      <button class="btn secondary" onclick="exportScreen()">📥 Export</button>
+      <button class="btn secondary" onclick="masterRebuild()" title="Perbarui fundamental dari yfinance">⚙️ Master</button>
+    </div>
+  </header>
+
+  <nav class="tabs-nav glass-panel">
+    <button class="tab-btn-main active" data-p="dash">🏠 Dashboard</button>
+    <button class="tab-btn-main" data-p="analyze">🔎 Analisa Saham</button>
+    <button class="tab-btn-main" data-p="screen">🧮 Screening</button>
+    <button class="tab-btn-main" data-p="underval">💎 Screener Undervalue</button>
+    <button class="tab-btn-main" data-p="plan">📊 Trading Plan</button>
+    <button class="tab-btn-main" data-p="port">💼 Portofolio</button>
+    <button class="tab-btn-main" data-p="sim">🧪 Simulasi</button>
+    <button class="tab-btn-main" data-p="emas">🥇 Emas & Komoditas</button>
+    <button class="tab-btn-main" data-p="perak">🪙 Perak & Dinar</button>
+    <button class="tab-btn-main" data-p="strat">📚 Strategi Harian</button>
+    <button class="tab-btn-main" data-p="learn">📖 Pembelajaran</button>
+    <button class="tab-btn-main" data-p="ped">📜 Pedoman</button>
+  </nav>
+
+  <!-- ===================== DASHBOARD ===================== -->
+  <div class="panel active" id="dash">
+    <section class="glass-panel decision-panel" style="margin-bottom:1.4rem">
+      <div class="panel-header">
+        <h2>🎯 Pusat Keputusan</h2>
+        <div class="flex" style="gap:.7rem">
+          <span class="led" id="funnel-led" title="Status proses funnel"></span>
+          <span class="led-txt" id="funnel-led-txt">Siap</span>
+          <label class="check" style="font-size:.76rem" title="Paksa sinyal penuh walau bursa libur (untuk pengembangan/uji)"><input id="test-mode" type="checkbox"> 🧪 Mode Uji</label>
+          <button class="btn primary" onclick="runDecision()">▶ Jalankan Funnel</button>
+        </div>
+      </div>
+      <div class="verdict-banner" id="verdict"><span class="mut">Klik “Jalankan Funnel” untuk mengkategorikan saham syariah ke BELI / PANTAU / HINDARI.</span></div>
+      <div class="decisions-grid">
+        <div class="decision-col"><h4>🟢 BELI / Add <span class="count" id="cnt-buy">0</span></h4><div id="col-buy"></div></div>
+        <div class="decision-col"><h4>🟡 HOLD (Portfolio) <span class="count" id="cnt-hold">0</span></h4><div id="col-hold"></div></div>
+        <div class="decision-col"><h4>🔴 SELL / Exit <span class="count" id="cnt-sell">0</span></h4><div id="col-sell"></div></div>
+      </div>
+    </section>
+
+    <div style="display:grid;grid-template-columns:minmax(280px,1fr) minmax(0,1.7fr);gap:1.2rem;margin-bottom:1.4rem;align-items:start">
+      <section class="glass-panel" id="dash-roi" style="margin:0">
+        <div class="between"><h3 class="sec" style="margin:0">🎯 ROI Integral <span class="mut" style="font-size:.72rem;font-weight:600">(realized+unrealized)</span></h3>
+          <button class="btn text" onclick="document.querySelector('.tab-btn-main[data-p=&quot;port&quot;]').click()">Detail →</button></div>
+        <div id="dash-roi-body"><div class="skel" style="width:70%;margin-top:.6rem"></div></div>
+      </section>
+      <section class="glass-panel" id="dash-mm" style="margin:0">
+        <div class="between"><h3 class="sec" style="margin:0">💼 Portofolio &amp; Money Management <span class="mut" style="font-size:.72rem;font-weight:600">(sinkron dgn semua tab)</span></h3>
+          <button class="btn text" onclick="document.querySelector('.tab-btn-main[data-p=&quot;port&quot;]').click()">Buka Portofolio →</button></div>
+        <div id="dash-mm-body"><div class="skel" style="width:60%;margin-top:.6rem"></div></div>
+      </section>
+    </div>
+
+    <div class="grid g-3">
+      <section class="glass-panel" style="grid-column:span 2" id="mkt-card">
+        <h3 class="sec">◈ Arah Pasar (IHSG) — komponen M</h3>
+        <div id="mkt-body"><div class="skel" style="width:60%"></div></div>
+        <div id="mkt-chart" style="height:180px;margin-top:1rem;width:100%"></div>
+      </section>
+      <section class="glass-panel">
+        <h3 class="sec">⛁ Universe Syariah</h3>
+        <div class="stat"><div class="lbl">Saham terpantau (DES/ISSI)</div><div class="big num" id="uni-count">—</div></div>
+        <p class="sub">Bank konvensional dikecualikan (riba).</p>
+        <div class="funnel" style="margin-top:1rem">
+          <div class="step">500+ Saham Syariah<small>WHAT — DES/ISSI</small></div><div class="arrow">▼</div>
+          <div class="step">6 Magic + CAN SLIM<small>WHY — fundamental</small></div><div class="arrow">▼</div>
+          <div class="step">Analisa Teknikal<small>WHEN — timing</small></div><div class="arrow">▼</div>
+          <div class="step">Money Management<small>HOW — Taichi · RRR</small></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ===================== ANALISA ===================== -->
+  <div class="panel" id="analyze">
+    <section class="glass-panel" style="margin-bottom:1.4rem">
+      <div class="row">
+        <button class="btn secondary" onclick="navigateStock(-1)" title="Saham Sebelumnya">◀ Prev</button>
+        <label class="fld" style="flex:1;min-width:150px"><span class="l">Kode Saham</span>
+          <select id="tk" onchange="analyze()" style="width:100%; height:40px; border-radius:6px; background:rgba(255,255,255,0.06); color:var(--text); border:1px solid var(--line); padding: 0 10px; font-weight: 600; outline: none; cursor: pointer;">
+            <option value="ADRO">ADRO</option>
+          </select>
+        </label>
+        <button class="btn secondary" onclick="navigateStock(1)" title="Saham Berikutnya">Next ▶</button>
+        <button class="btn primary" onclick="analyze()">🔎 Analisa</button>
+        <select id="adv-engine" title="Pilih engine advisor" style="width:auto;min-width:120px"></select>
+        <button class="btn ai" onclick="advisor()" title="Narasi analisa">✦ Advisor</button>
+      </div>
+      <p class="sub" id="adv-hint">Saham terpantau: <span id="uni-list" class="dim"></span></p>
+    </section>
+    <div id="aout"></div>
+  </div>
+
+  <!-- ===================== SCREENING ===================== -->
+  <div class="panel" id="screen">
+    <section class="glass-panel" style="margin-bottom:1.4rem">
+      <h3 class="sec">⚙ Parameter Screening</h3>
+      <div class="row">
+        <label class="fld">
+          <span class="l">Potensi Tren</span>
+          <select id="potensi">
+            <option value="semua">Semua</option>
+            <option value="naik">Potensi Naik</option>
+            <option value="turun">Potensi Turun</option>
+          </select>
+        </label>
+        <label class="fld">
+          <span class="l">Golden Cross</span>
+          <select id="golden_cross">
+            <option value="abaikan">Abaikan</option>
+            <option value="stoch">Stochastic GC</option>
+            <option value="ma">MA GC (20/50)</option>
+            <option value="keduanya">Keduanya</option>
+          </select>
+        </label>
+        <label class="fld">
+          <span class="l">Range Stoch RSI</span>
+          <select id="stoch_range">
+            <option value="abaikan">Abaikan</option>
+            <option value="0-20">0-20 (Oversold)</option>
+            <option value="20-40">20-40</option>
+            <option value="40-60">40-60</option>
+            <option value="60-80">60-80</option>
+            <option value="80-100">80-100 (Overbought)</option>
+          </select>
+        </label>
+        <button class="btn primary" onclick="screen()">▶ Jalankan</button>
+      </div>
+      <p class="sub" id="sst">Mengambil data tiap saham bisa memakan beberapa detik.</p>
+    </section>
+    <div id="sout"></div>
+  </div>
+
+  <!-- ===================== SCREENER UNDERVALUE ===================== -->
+  <div class="panel" id="underval">
+    <section class="glass-panel" style="margin-bottom:1.2rem">
+      <div class="between" style="align-items:flex-start">
+        <div>
+          <h3 class="sec" style="margin:0">💎 Screener Saham Undervalue — AI berbasis data historis</h3>
+          <p class="sub" style="margin:.4rem 0 0;max-width:640px">Memeringkat saham <b>syariah</b> termurah yang secara historis punya
+            peluang pantul terbaik. Skor = <b>50% valuasi</b> (PBV/PER/PEG/Margin-of-Safety Graham + ROE/DER/EPS/Dividen)
+            + <b>20% timing</b> teknikal + <b>30% keyakinan backtest</b> (win-rate historis entry oversold). Tiap kandidat
+            dilengkapi rencana trading (entry/stop/target). <i>Advisory — bukan ajakan beli/jual.</i></p>
+        </div>
+      </div>
+      <div class="row" style="margin-top:1rem">
+        <label class="fld"><span class="l">Tampilkan Top</span><input id="uv-top" type="number" value="6" min="3" max="20"></label>
+        <label class="fld"><span class="l">Ambang BUY kuat</span><input id="uv-min" type="number" value="55" min="0" max="100"></label>
+        <label class="fld"><span class="l">Maks PBV (0=abaikan)</span><input id="uv-pbv" type="number" value="0" min="0" step="0.1"></label>
+        <label class="fld"><span class="l">Horizon backtest (hari)</span><input id="uv-hor" type="number" value="20" min="5" max="120"></label>
+        <label class="fld"><span class="l">Target menang %</span><input id="uv-tgt" type="number" value="7" min="1" step="0.5"></label>
+        <button class="btn primary" id="uv-run" onclick="runUndervalue()">💎 Jalankan Screener</button>
+      </div>
+      <p class="sub" id="uv-status">Memindai <b>SELURUH ~75 saham syariah</b> (±20-30 dtk pertama, lalu di-cache) → Top aksi kuat BUY/SELL.</p>
+    </section>
+    <div id="uv-out"></div>
+  </div>
+
+  <!-- ===================== TRADING PLAN ===================== -->
+  <div class="panel" id="plan">
+    <section class="glass-panel" style="margin-bottom:1.4rem">
+      <div class="panel-header">
+        <h2>🎯 Rekomendasi Nilai &amp; Besaran Trading Aktif</h2>
+        <span class="badge buy">Portfolio-Aware MM</span>
+      </div>
+      <p class="sub">Menganalisis emiten, mendeteksi posisi portofolio saat ini, membatasi pembelian maksimal sesuai Bid Fund RDN, dan menyusun Taichi Entry Plan secara otomatis.</p>
+      
+      <div class="row" style="gap:1rem; flex-wrap:wrap; margin-top:1rem">
+        <label class="fld" style="flex:1; min-width:140px">
+          <span class="l">Pilih Saham Syariah</span>
+          <select id="plan-ticker" onchange="loadPlanTicker()"></select>
+        </label>
+        
+        <label class="fld" style="flex:1; min-width:160px">
+          <span class="l">Akun RDN / Broker</span>
+          <select id="plan-broker" onchange="loadPlanBroker()"></select>
+        </label>
+        
+        <label class="fld" style="width:140px">
+          <span class="l">Harga Beli OB1</span>
+          <input id="plan-price" type="number" value="0">
+        </label>
+        
+        <label class="fld" style="width:120px">
+          <span class="l">Risk Mode</span>
+          <select id="plan-mode">
+            <option value="konservatif">Konservatif</option>
+            <option value="moderat">Moderat</option>
+          </select>
+        </label>
+
+        <label class="fld" style="width:150px">
+          <span class="l">Metode Batas Risk %</span>
+          <select id="plan-risk-type" onchange="togglePlanRiskType()">
+            <option value="default">Default MM (3%)</option>
+            <option value="atr">ATR Volatility</option>
+          </select>
+        </label>
+        
+        <button class="btn primary" style="align-self:flex-end; height:42px" onclick="calculateActivePlan()">🎯 Susun Rencana</button>
+      </div>
+
+      <div id="active-plan-out" style="margin-top:1.2rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:1.2rem">
+        <div class="empty" style="grid-column:span 3; padding:1.5rem">Pilih saham syariah &amp; klik "Susun Rencana" untuk menghasilkan rekomendasi alokasi &amp; batasan trading.</div>
+      </div>
+
+      <!-- Profits Anywhere Execution Helper Guide -->
+      <div id="phintraco-guide-container" style="display:none; margin-top:1.8rem; border-top:1px dashed var(--line); padding-top:1.5rem">
+        <h3 class="sec" style="margin-bottom:0.8rem; display:flex; align-items:center; gap:0.5rem; font-size:1.15rem">
+          <span>📱 Panduan Input Aplikasi Profits Anywhere (Phintraco)</span>
+          <span class="badge na" style="font-size:0.7rem; background:rgba(34,197,94,.1); color:var(--buy); border:1px solid rgba(34,197,94,.2)">Execution Form Guide</span>
+        </h3>
+        <p class="sub" style="margin-bottom:1.2rem; font-size:0.82rem; color:var(--mute)">Berikut adalah visualisasi formulir input BUY dan SELL sesuai tata letak asli aplikasi <b>Profits Anywhere</b> untuk membantu eksekusi order Anda secara presisi tanpa salah ketik.</p>
+        
+        <div id="phintraco-guide-out" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:1.5rem; justify-content:center">
+          <!-- Mockups will be rendered here dynamically -->
+        </div>
+      </div>
+    </section>
+
+    <div class="grid g-3">
+      <section class="glass-panel">
+        <h3 class="sec">⚖ Money Management</h3>
+        <label class="fld" style="margin-bottom:.7rem"><span class="l">Modal Trading (IDR)</span><input id="idle" type="number" value="5000000"></label>
+        <label class="fld" style="margin-bottom:.7rem"><span class="l">Jumlah Saham / Emiten</span><input id="nstk" type="number" value="3" min="1"></label>
+        <div class="grid g-2" style="gap:.6rem;margin-bottom:.9rem">
+          <label class="fld"><span class="l">Risk % (maks 5)</span><input id="risk" type="number" value="3" min="0.1" max="5" step="0.5"></label>
+          <label class="fld"><span class="l">Target Profit % (min 2×risk)</span><input id="profit" type="number" value="6" min="0.1" step="0.5"></label>
+        </div>
+        <button class="btn primary" style="width:100%" onclick="mm()">Hitung Alokasi Dana</button>
+        <div id="mmout" style="margin-top:1rem"></div>
+      </section>
+      <section class="glass-panel">
+        <h3 class="sec">☯ Taichi Trading Plan</h3>
+        <div class="grid g-2" style="gap:.6rem;margin-bottom:.9rem">
+          <label class="fld"><span class="l">Modal / emiten</span><input id="tmodal" type="number" value="5000000"></label>
+          <label class="fld"><span class="l">Market Price</span><input id="tmp" type="number" value="4200"></label>
+          <label class="fld"><span class="l">Risk % (OB3, maks 5)</span><input id="trisk" type="number" value="3" min="0.1" max="5" step="0.5"></label>
+          <label class="fld"><span class="l">Mode</span><select id="tmode"><option>konservatif</option><option>moderat</option></select></label>
+        </div>
+        <button class="btn primary" style="width:100%" onclick="taichi()">Hitung OB1/OB2/OB3</button>
+        <div id="tout" style="margin-top:1rem"></div>
+      </section>
+      <section class="glass-panel">
+        <h3 class="sec">⚲ Risk / Reward Ratio</h3>
+        <label class="fld" style="margin-bottom:.7rem"><span class="l">Harga beli</span><input id="rbuy" type="number" value="4200"></label>
+        <div class="grid g-2" style="gap:.6rem;margin-bottom:.9rem">
+          <label class="fld"><span class="l">Risk % (maks 5)</span><input id="rrisk" type="number" value="3" min="0.1" max="5" step="0.5"></label>
+          <label class="fld"><span class="l">Target Profit % (min 2×risk)</span><input id="rprofit" type="number" value="6" min="0.1" step="0.5"></label>
+        </div>
+        <button class="btn primary" style="width:100%" onclick="rrr()">Hitung RRR</button>
+        <div id="rout" style="margin-top:1rem"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ===================== PORTOFOLIO ===================== -->
+  <div class="panel" id="port">
+    <section class="glass-panel" style="margin-bottom:1.4rem">
+      <h3 class="sec">📸 Impor dari Screenshot / PDF Broker</h3>
+      <div class="row">
+        <input id="port-file" type="file" accept="image/png,image/jpeg,image/webp,application/pdf" style="flex:1;min-width:160px">
+        <select id="port-engine" style="width:auto;min-width:150px" title="Metode ekstraksi">
+          <option value="ocr">OCR lokal (akurat)</option>
+          <option value="gemini">Gemini (AI vision)</option>
+        </select>
+        <select id="port-broker" style="width:auto;min-width:150px">
+          <option value="">Auto-broker</option>
+          <option>Profits Anywhere</option>
+        </select>
+        <button class="btn primary" onclick="uploadPortfolio()">🔎 Baca</button>
+      </div>
+      <p class="sub"><b>OCR lokal</b> (Tesseract, deterministik — tak mengarang angka) dipakai default. <b>PDF e-statement</b> paling akurat. Hasil <b>bisa diedit</b> sebelum impor. Dioptimalkan untuk Profits Anywhere (kuantitas = LOT).</p>
+      <div id="port-up-out"></div>
+    </section>
+    <section class="glass-panel" style="margin-bottom:1.4rem">
+      <h3 class="sec">➕ Tambah Posisi</h3>
+      <div class="row">
+        <label class="fld" style="flex:1;min-width:120px"><span class="l">Kode</span><input id="p-tk" placeholder="ADRO"></label>
+        <label class="fld"><span class="l">Lot</span><input id="p-lot" type="number" value="10" min="1"></label>
+        <label class="fld"><span class="l">Harga rata-rata</span><input id="p-avg" type="number" value="2100"></label>
+        <button class="btn primary" onclick="addPosition()">Tambah</button>
+      </div>
+      <p class="sub">1 lot = 100 lembar. Hanya tunai/long-only (syariah).</p>
+    </section>
+    <section class="glass-panel" style="margin-bottom:1.4rem">
+      <div class="between"><h3 class="sec" style="margin:0">💰 Cash &amp; Aset per RDN + Saran Alokasi (Money Management)</h3>
+        <button class="btn text" onclick="loadRDN()">🔄 Segarkan</button></div>
+      <p class="sub" style="margin:.3rem 0 .7rem">Saldo cash terisi otomatis saat impor PDF e-statement, atau isi manual di bawah. Saran alokasi menjaga jumlah emiten sesuai target.</p>
+      <div class="row">
+        <select id="rdn-broker" style="min-width:150px"><option>Profits Anywhere</option></select>
+        <label class="fld"><span class="l">Saldo Cash (IDR)</span><input id="rdn-cash" type="number" value="0"></label>
+        <label class="fld"><span class="l">Biaya Beli %</span><input id="rdn-feeb" type="number" step="0.01" placeholder="0.15"></label>
+        <label class="fld"><span class="l">Biaya Jual %</span><input id="rdn-fees" type="number" step="0.01" placeholder="0.25"></label>
+        <label class="fld"><span class="l">No. RDN</span><input id="rdn-no"></label>
+        <button class="btn primary" onclick="saveRDN()">💾 Simpan RDN</button>
+      </div>
+      <div class="row" style="margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 1rem;">
+        <span style="font-size: .84rem; font-weight: 700; display: flex; align-items: center; min-width: 150px; gap: .3rem;">🪙 Emas Tring Pegadaian:</span>
+        <label class="fld"><span class="l">Saldo Emas (Gram)</span><input id="gold-grams" type="number" step="0.0001" placeholder="0.0000"></label>
+        <label class="fld"><span class="l">Harga Beli Rata-rata (Rp/g)</span><input id="gold-avg" type="number" placeholder="1200000"></label>
+        <button class="btn primary" onclick="saveGold()">💾 Simpan Emas</button>
+      </div>
+      <div id="rdn-out" style="margin-top:1rem"><div class="empty">Memuat…</div></div>
+    </section>
+    <section class="glass-panel" id="port-roi-sec" style="margin-bottom:1.4rem">
+      <h3 class="sec" style="margin:0 0 .2rem">🎯 ROI Integral Portofolio vs Target 6%</h3>
+      <div id="port-roi"><div class="skel" style="width:55%;margin-top:.5rem"></div></div>
+    </section>
+    <div id="port-summary" class="grid g-3" style="margin-bottom:1.4rem"></div>
+    <div id="port-sell"></div>
+    <section class="glass-panel"><div id="port-table"><div class="empty">Memuat…</div></div></section>
+  </div>
+
+  <!-- ===================== SIMULASI EKSEKUSI HARIAN ===================== -->
+  <div class="panel" id="sim">
+    <section class="glass-panel" style="margin-bottom:1.4rem">
+      <div class="between" style="flex-wrap:wrap;gap:.6rem">
+        <div>
+          <h3 class="sec" style="margin:0">🧪 Simulasi Eksekusi Harian <span class="mut" style="font-size:.72rem;font-weight:600">(paper trading — tanpa uang riil)</span></h3>
+          <p class="sub" style="margin:.25rem 0 0">Setiap rekomendasi <b>BELI</b> dari Pusat Keputusan direkam otomatis tiap pagi bursa, lalu ditutup saat menyentuh <b>Target</b> / <b>Stop Loss</b> / lewat <b>horizon 20 hari bursa</b>. Akumulasi ROI-nya menjadi rapor akurasi prediksi sekaligus bahan learning algoritma (strategi adaptif &amp; konteks Claude).</p>
+        </div>
+        <div class="flex" style="gap:.5rem">
+          <button class="btn primary" onclick="simCapture()" title="Jalankan funnel & rekam kartu BUY hari ini sebagai simulasi">📝 Rekam Rekomendasi Hari Ini</button>
+          <button class="btn secondary" onclick="simEvaluate()" title="Cek semua posisi simulasi terbuka thd Target/SL/horizon">⚖️ Evaluasi Sekarang</button>
+        </div>
+      </div>
+    </section>
+    <div id="sim-summary" class="grid g-4" style="margin-bottom:1.4rem"></div>
+    <section class="glass-panel" style="margin-bottom:1.4rem">
+      <h3 class="sec" style="margin:0 0 .2rem">📈 Equity Curve Simulasi <span class="mut" style="font-size:.72rem;font-weight:600">(ROI rata-rata kumulatif per sinyal vs target)</span></h3>
+      <div id="sim-chart"><div class="skel" style="width:55%;margin-top:.5rem"></div></div>
+    </section>
+    <section class="glass-panel" style="margin-bottom:1.4rem">
+      <h3 class="sec" style="margin:0 0 .2rem">🤖 Learning AI — apa yang dipelajari dari simulasi</h3>
+      <div id="sim-learning"><div class="skel" style="width:60%;margin-top:.5rem"></div></div>
+    </section>
+    <section class="glass-panel" style="margin-bottom:1.4rem">
+      <h3 class="sec" style="margin:0 0 .2rem">⏳ Posisi Simulasi Terbuka</h3>
+      <div id="sim-open"><div class="empty">Memuat…</div></div>
+    </section>
+    <section class="glass-panel">
+      <h3 class="sec" style="margin:0 0 .2rem">✅ Simulasi Tertutup (riwayat akurasi)</h3>
+      <div id="sim-closed"><div class="empty">Memuat…</div></div>
+    </section>
+  </div>
+
+  <!-- ===================== EMAS & KOMODITAS ===================== -->
+  <div class="panel" id="emas">
+    <section class="glass-panel">
+      <div class="panel-header"><h2>🥇 Emas & Komoditas</h2><button class="btn text" onclick="loadCommodities()">🔄 Segarkan</button></div>
+      <div id="emas-grid" class="grid g-auto"><div class="empty">Memuat…</div></div>
+      <p class="sub" id="komo-note"></p>
+    </section>
+  </div>
+
+  <!-- ===================== PERAK & DINAR ===================== -->
+  <div class="panel" id="perak">
+    <section class="glass-panel">
+      <div class="panel-header"><h2>🪙 Perak & Dinar</h2><button class="btn text" onclick="loadCommodities()">🔄 Segarkan</button></div>
+      <div id="perak-grid" class="grid g-auto"><div class="empty">Memuat…</div></div>
+      <p class="sub">Dinar = 4.25g emas 22k · Dirham = 2.975g perak murni — unit moneter Islam.</p>
+    </section>
+  </div>
+
+  <!-- ===================== STRATEGI HARIAN ===================== -->
+  <div class="panel" id="strat">
+    <section class="glass-panel ped" id="strat-body"></section>
+  </div>
+
+  <!-- ===================== PEMBELAJARAN ===================== -->
+  <div class="panel" id="learn">
+    <div class="learning-layout" style="display:flex;gap:1.2rem;min-height:600px;align-items:stretch">
+      <!-- Sisi Kiri: Kurikulum & Progress -->
+      <aside class="learning-sidebar glass-panel" style="flex:1;max-width:320px;display:flex;flex-direction:column;gap:1rem;padding:1.2rem">
+        <div class="learning-progress-container" style="background:rgba(255,255,255,0.03);padding:0.9rem;border-radius:10px;border:1px solid var(--line)">
+          <div class="between" style="margin-bottom:0.5rem">
+            <h4 style="margin:0;font-size:0.9rem;font-weight:700">📖 Progress Belajar</h4>
+            <span id="learn-pct" class="badge buy" style="font-size:0.75rem">0%</span>
+          </div>
+          <div class="progress-bar-container" style="background:rgba(255,255,255,0.06);height:6px;border-radius:3px;overflow:hidden">
+            <div id="learn-progress-bar" style="background:var(--buy);height:100%;width:0%;transition:width 0.4s ease"></div>
+          </div>
+          <div class="mut" id="learn-stat" style="font-size:0.7rem;margin-top:0.35rem">0 dari 0 modul selesai</div>
+        </div>
+        
+        <div class="learning-nav-categories" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:1rem;max-height:550px;padding-right:0.2rem">
+          <!-- Dinamis di-render via app.js -->
+        </div>
+      </aside>
+      
+      <!-- Sisi Kanan: Penampil PDF & Detail -->
+      <main class="learning-viewer glass-panel" id="learn-viewer-panel" style="flex:3;display:flex;flex-direction:column;padding:1.2rem">
+        <div id="learn-viewer-empty" class="empty" style="padding:6rem 2rem;text-align:center">
+          <span style="font-size:3.5rem;margin-bottom:1rem;display:block">📖</span>
+          <h3>Peta Jalan Pembelajaran Trading</h3>
+          <p class="sub" style="max-width:360px;margin:0.5rem auto 0">Pilih salah satu modul di sebelah kiri untuk mulai membaca panduan komprehensif, mengunduh kalkulator Excel, dan mencatat progres belajar Anda.</p>
+        </div>
+        
+        <div id="learn-viewer-content" style="display:none;height:100%;flex-direction:column;flex:1">
+          <div class="learning-header between" style="padding-bottom:0.8rem;border-bottom:1px solid var(--line)">
+            <div>
+              <h3 id="learn-title" style="margin:0;font-size:1.15rem;color:var(--text)">Judul Modul</h3>
+              <p id="learn-desc" class="sub" style="margin:0.25rem 0 0;font-size:0.8rem">Deskripsi singkat materi.</p>
+            </div>
+            <div class="flex" style="gap:0.6rem">
+              <label class="check" style="font-size:0.78rem;background:rgba(255,255,255,0.04);padding:0.4rem 0.8rem;border-radius:6px;border:1px solid var(--line);cursor:pointer;user-select:none">
+                <input type="checkbox" id="learn-complete-check" onchange="toggleLearningProgress()" style="margin-right:0.35rem"> 
+                <span>Tandai Selesai</span>
+              </label>
+            </div>
+          </div>
+          
+          <div class="learning-body" style="flex:1;display:flex;margin-top:1rem;gap:1rem;align-items:stretch">
+            <!-- PDF Viewer Iframe -->
+            <div class="pdf-container" style="flex:2.3;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid var(--line);position:relative;overflow:hidden;min-height:500px">
+              <iframe id="pdf-viewer-frame" style="width:100%;height:100%;border:none;position:absolute;top:0;left:0" src=""></iframe>
+            </div>
+            
+            <!-- Metadata & Templates Sidebar -->
+            <div class="module-resources-panel" style="flex:1;max-width:280px;display:flex;flex-direction:column;gap:1rem">
+              <div class="glass-panel" style="background:rgba(255,255,255,0.01);padding:0.8rem;border:1px solid var(--line)">
+                <h4 style="margin:0 0 0.5rem;font-size:0.8rem;text-transform:uppercase;color:var(--brand-2);font-weight:700">📋 Informasi Berkas</h4>
+                <div class="detail-row" style="font-size:0.8rem;margin-bottom:0.35rem;display:flex;justify-content:space-between">
+                  <span class="mut">Halaman:</span> <b id="learn-pages" class="num">-</b>
+                </div>
+                <div class="detail-row" style="font-size:0.8rem;display:flex;justify-content:space-between">
+                  <span class="mut">Ukuran File:</span> <b id="learn-size" class="num">- KB</b>
+                </div>
+              </div>
+              
+              <div class="glass-panel" style="background:rgba(255,255,255,0.01);padding:0.8rem;border:1px solid var(--line);flex:1;display:flex;flex-direction:column">
+                <h4 style="margin:0 0 0.5rem;font-size:0.8rem;text-transform:uppercase;color:var(--brand-2);font-weight:700">🛠️ Alat &amp; Template Excel</h4>
+                <p class="mut" style="font-size:0.72rem;margin:0 0 0.8rem">Berikut adalah template spreadsheet dan alat bantu pendukung materi ini:</p>
+                <div id="module-resources-list" style="display:flex;flex-direction:column;gap:0.5rem;overflow-y:auto;flex:1;max-height:300px">
+                  <!-- Dinamis di-render via app.js -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ===================== PEDOMAN ===================== -->
+  <div class="panel" id="ped">
+    <section class="glass-panel ped" id="ped-body"></section>
+  </div>
+
+  <!-- ===================== MODAL ALERT ===================== -->
+  <div class="modal-overlay" id="modal" onclick="if(event.target===this)closeModal()">
+    <div class="modal glass-panel">
+      <div class="between" style="margin-bottom:.8rem">
+        <h3 class="sec" style="margin:0">🔔 Alert</h3>
+        <button class="btn icon" onclick="closeModal()">✕</button></div>
+      <div id="modal-body"></div>
+      <div style="margin-top:1rem;text-align:right"><button class="btn primary" onclick="sendTelegram()">✈️ Kirim ke Telegram</button></div>
+    </div>
+  </div>
+
+  <section class="glass-panel disc" id="disc" style="margin-top:1.4rem"></section>
+</div>
+<div class="toast" id="toast"></div>
+<script src="/static/app.js?v=7"></script>
+</body>
+</html>
