@@ -56,6 +56,7 @@ document.querySelectorAll('.tab-btn-main').forEach(t => t.onclick = () => {
   if(p==='sim') loadSimulation();
   if((p==='emas'||p==='perak') && !_loaded.cmd){ loadCommodities(); }
   if(p==='learn') loadLearning();
+  if(p==='dash' && !_loaded.cc){ loadCrossCheck(); }   // auto-load radar saat buka Dashboard
 });
 
 /* shared bits */
@@ -806,11 +807,13 @@ function gotoAnalyze(tk){ if(tk==='🪙 EMAS'||tk==='EMAS'){ document.querySelec
 
 /* ===================== RADAR KONTRADIKSI TRADINGVIEW ===================== */
 async function loadCrossCheck(){
+  _loaded.cc = true;   // tandai sudah dimuat (cegah auto-load ganda saat pindah tab)
   const body=$('#crosscheck-body'), btn=$('#cc-run');
   if(btn){ btn.disabled=true; btn.textContent='⏳ Memindai…'; }
   body.innerHTML='<div class="empty"><span class="spin"></span> Memindai & menilai akurasi prediksi (backtest) kandidat teratas… (±20-40 dtk)</div>';
+  const minacc=($('#cc-minacc')&&$('#cc-minacc').value)||'50';
   let d;
-  try{ d=await api('/api/cross-check'); }
+  try{ d=await api('/api/cross-check?top=5&min_acc='+encodeURIComponent(minacc)); }
   catch(e){ body.innerHTML='<div class="empty">Gagal memuat radar.</div>'; if(btn){btn.disabled=false;btn.textContent='▶ Muat Radar';} return; }
   if(btn){ btn.disabled=false; btn.textContent='🔄 Segarkan Radar'; }
   if(!d.enabled){
@@ -825,11 +828,14 @@ async function loadCrossCheck(){
   </div>`;
 
   // Bagian 1 — TOP-N kandidat trading berakurasi tertinggi (maks N saham/hari).
-  h+=`<h3 class="cc-sec">🎯 ${d.top_n} Kandidat Trading — Akurasi Tertinggi <span class="mut" style="font-weight:500;font-size:.72rem">(maks ${d.top_n} saham/hari)</span></h3>`;
+  const ambang = (Number(d.min_acc)>0) ? ` · ambang akurasi ≥ ${d.min_acc}%` : '';
+  h+=`<h3 class="cc-sec">🎯 ${d.top_n} Kandidat Trading — Akurasi Tertinggi <span class="mut" style="font-weight:500;font-size:.72rem">(maks ${d.top_n} saham/hari${ambang})</span></h3>`;
   if(!cands.length){
-    h+='<div class="cc-ok-banner mutbox">Belum ada kandidat BELI (pasar lesu / semua AVOID atau sudah dimiliki).</div>';
+    const why = (d.hidden_by_threshold>0) ? `Tidak ada kandidat dengan akurasi ≥ ${d.min_acc}% (${d.hidden_by_threshold} di bawah ambang). Turunkan "Min. akurasi" untuk melihat lebih banyak.` : 'Belum ada kandidat BELI (pasar lesu / semua AVOID atau sudah dimiliki).';
+    h+=`<div class="cc-ok-banner mutbox">${why}</div>`;
   } else {
-    h+='<div class="cc-note-top neutral">Diurutkan dari <b>akurasi prediksi</b> (win-rate backtest) tertinggi. ✅ <b>SELARAS</b> = teknikal TradingView mendukung · ⚠️ <b>TUNDA BELI</b> = teknikal TradingView SELL, tunggu konfirmasi.</div>';
+    const hid = (d.hidden_by_threshold>0) ? ` <span class="mut">(${d.hidden_by_threshold} kandidat lain di bawah ambang ${d.min_acc}% disembunyikan)</span>` : '';
+    h+='<div class="cc-note-top neutral">Diurutkan dari <b>akurasi prediksi</b> (win-rate backtest) tertinggi. ✅ <b>SELARAS</b> = teknikal TradingView mendukung, disertai saran alokasi MM · ⚠️ <b>TUNDA BELI</b> = teknikal TradingView SELL, tunggu konfirmasi.'+hid+'</div>';
     h+='<div class="cc-grid">'+cands.map(candCard).join('')+'</div>';
   }
 
@@ -855,12 +861,23 @@ function candCard(x){
   const accN=(x.akurasi_n!=null)?` <span class="dim" style="font-size:.62rem">(${x.akurasi_n} sinyal)</span>`:'';
   const tunda=(x.status==='TUNDA_BELI');
   const statusBadge=tunda?'<span class="cc-flag amber">⚠️ TUNDA BELI</span>':'<span class="cc-flag green">✅ SELARAS</span>';
+  let allocHtml='';
+  if(!tunda && x.alokasi){
+    const a=x.alokasi;
+    if(a.lots && a.lots>0){
+      const rp=Number(a.outlay_idr||0).toLocaleString('id-ID');
+      allocHtml=`<div class="cc-alloc">💰 Alokasi MM: <b>≈ ${a.lots} lot</b>${a.rdn?` @ ${esc(a.rdn)}`:''} · Rp ${rp}${a.pct_cash!=null?` <span class="dim">(${a.pct_cash}% cash)</span>`:''}${(a.net_target_pct!=null)?` · jual +${a.net_target_pct}% utk profit bersih`:''}</div>`;
+    } else if(a.catatan){
+      allocHtml=`<div class="cc-alloc dim">💰 ${esc(a.catatan)}</div>`;
+    }
+  }
   return `<div class="cc-card cand-card ${tunda?'warn-card':'ok-card'}" onclick="gotoAnalyze('${x.ticker}')" title="Klik untuk analisa lengkap">
     <div class="cc-card-head"><span class="tkr">${x.ticker}</span>${statusBadge}</div>
     <div class="cc-line"><span class="mut">Akurasi prediksi</span><span><b class="num gain">${acc}</b>${accN}</span></div>
     <div class="cc-line"><span class="mut">Rekomendasi sistem</span><span class="badge ${x.css||'buy'}">${esc(x.aksi||x.final_signal||'-')}</span></div>
     <div class="cc-line"><span class="mut">Teknikal TradingView</span><span class="badge ${tunda?'sell':'buy'}">${esc(x.tv_recommend)} (${ra})</span></div>
     <div class="cc-line"><span class="mut">Fundamental · Skor</span><span>${esc(x.fundamental_label||'-')} · <b class="num">${x.skor!=null?x.skor:'-'}</b></span></div>
+    ${allocHtml}
   </div>`;
 }
 function sellCard(x){
@@ -3061,4 +3078,7 @@ function refreshAll(){ loadMarket(); loadUniverse(); _loaded.cmd=false; toast('D
     $('#disc').innerHTML=`<b>Disclaimer:</b> ${esc(dc.disclaimer)}<br><br><b>Acuan:</b> ${dc.acuan.map(esc).join(' · ')}`;
   }catch(e){}
   runDecision(false);
+  // Auto-load Radar Kontradiksi saat Dashboard dibuka (ditunda agar Pusat Keputusan
+  // & kartu dashboard ter-render dulu; guard _loaded.cc cegah pemuatan ganda).
+  setTimeout(()=>{ if(!_loaded.cc) loadCrossCheck(); }, 2500);
 })();

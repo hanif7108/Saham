@@ -172,22 +172,32 @@ def _accuracy_map(tickers: list[str]) -> dict[str, dict]:
 
 
 @router.get("/cross-check")
-def cross_check(top: int = Query(5, ge=1, le=15)):
+def cross_check(top: int = Query(5, ge=1, le=15),
+                min_acc: float = Query(50.0, ge=0, le=100)):
     """Radar cross-check TradingView — fokus & efisien sesuai money management.
 
     BELI: hanya `top` (default 5, sesuai batas maks 5 saham/hari) kandidat dengan
-    AKURASI PREDIKSI TERTINGGI (win-rate backtest historis). Tiap kandidat diberi
-    status SELARAS (teknikal TV mendukung) atau TUNDA_BELI (teknikal TV SELL).
-    Untuk efisiensi, akurasi (backtest) dihitung hanya pada shortlist skor-teratas.
+    AKURASI PREDIKSI TERTINGGI (win-rate backtest historis) yang LULUS ambang
+    `min_acc` (default 50%). Tiap kandidat diberi status SELARAS (teknikal TV
+    mendukung) atau TUNDA_BELI (teknikal TV SELL); yang SELARAS disertai saran
+    alokasi Money Management (lot/Rp dari cash RDN). Efisien: backtest hanya pada
+    shortlist skor-teratas, paralel.
 
     SELL: hanya saham YANG DIMILIKI di portofolio dgn teknikal TV SELL/STRONG SELL
     (syariah long-only — tak bisa jual yang tak dipegang). Tak dibatasi `top`.
 
     Aktif bila settings.data_source memakai TradingView (hybrid/tradingview).
     """
+    from app.core import portfolio, accounts, decisions
+
     data = funnel.screen_universe(min_magic=0, min_canslim=0, require_uptrend=False)
     rows = data.get("hasil", [])
     held = _held_positions()
+    try:
+        positions = portfolio.list_positions().get("positions", [])
+    except Exception:  # noqa: BLE001
+        positions = []
+    pos_by_tk = {(p.get("ticker") or "").upper(): p for p in positions}
 
     items: list[dict] = []
     for r in rows:
@@ -223,19 +233,34 @@ def cross_check(top: int = Query(5, ge=1, le=15)):
             and (it.get("price") or 0) > 0
             and it["ticker"] not in held]          # fokus entri baru; held -> bagian SELL
     pool.sort(key=lambda x: x.get("skor") or 0, reverse=True)
-    shortlist = pool[: max(top * 2, 10)]           # batasi backtest mahal ke skor-teratas
+    shortlist = pool[: max(top * 3, 15)]           # lebih luas agar filter ambang punya pilihan
     acc = _accuracy_map([it["ticker"] for it in shortlist])
     for it in shortlist:
         a = acc.get(it["ticker"], {})
         it["akurasi_pct"] = a.get("akurasi_pct")
         it["akurasi_n"] = a.get("akurasi_n")
 
-    # urut: akurasi tertinggi dulu (None dianggap terendah), tie-break skor funnel
-    shortlist.sort(key=lambda x: (x.get("akurasi_pct") if x.get("akurasi_pct") is not None else -1,
-                                  x.get("skor") or 0), reverse=True)
-    candidates = shortlist[:top]
+    # Ambang akurasi minimum: hanya kandidat ber-akurasi >= min_acc (None = tak lolos).
+    qualified = [it for it in shortlist
+                 if it.get("akurasi_pct") is not None and it["akurasi_pct"] >= min_acc]
+    hidden_by_threshold = len(shortlist) - len(qualified)
+
+    # urut: akurasi tertinggi dulu, tie-break skor funnel
+    qualified.sort(key=lambda x: (x["akurasi_pct"], x.get("skor") or 0), reverse=True)
+    candidates = qualified[:top]
+
+    # Alokasi Money Management hanya untuk kandidat SELARAS (layak beli sekarang).
+    try:
+        rdn_list = accounts.breakdown().get("rdn", [])
+    except Exception:  # noqa: BLE001
+        rdn_list = []
     for it in candidates:
         it["status"] = "TUNDA_BELI" if it["tv_recommend"] in _TV_SELL_LABELS else "SELARAS"
+        if it["status"] == "SELARAS":
+            try:
+                it["alokasi"] = decisions._alloc_buy(it["ticker"], it.get("price"), pos_by_tk, rdn_list)
+            except Exception:  # noqa: BLE001
+                it["alokasi"] = None
 
     scanned = {r["ticker"] for r in rows}
     held_uncovered = sorted(tk for tk in held if tk not in scanned)
@@ -243,8 +268,10 @@ def cross_check(top: int = Query(5, ge=1, le=15)):
     return {
         "enabled": len(items) > 0,    # False jika data_source bukan TradingView/hybrid
         "top_n": top,
+        "min_acc": min_acc,
         "total_lolos": len(rows),
         "candidate_count": len(candidates),
+        "hidden_by_threshold": hidden_by_threshold,
         "tunda_beli_count": sum(1 for c in candidates if c["status"] == "TUNDA_BELI"),
         "selaras_count": sum(1 for c in candidates if c["status"] == "SELARAS"),
         "candidates": candidates,

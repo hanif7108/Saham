@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=10">
+<link rel="stylesheet" href="/static/style.css?v=11">
 <script src="/static/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
@@ -69,8 +69,16 @@
     <section class="glass-panel" id="crosscheck-panel" style="margin-bottom:1.4rem">
       <div class="panel-header">
         <h2>🚦 Radar Kontradiksi TradingView</h2>
-        <div class="flex" style="gap:.7rem;align-items:center">
+        <div class="flex" style="gap:.6rem;align-items:center;flex-wrap:wrap">
           <span class="mut" style="font-size:.74rem">5 kandidat akurasi tertinggi (maks 5/hari) · SELL hanya dari portofolio</span>
+          <label class="mut" style="font-size:.72rem;display:flex;align-items:center;gap:.3rem">Min. akurasi
+            <select id="cc-minacc" onchange="loadCrossCheck()" style="font-size:.72rem;padding:.2rem .35rem;border-radius:6px;background:var(--panel-solid);color:var(--text);border:1px solid var(--border)">
+              <option value="0">Semua</option>
+              <option value="50" selected>≥ 50%</option>
+              <option value="55">≥ 55%</option>
+              <option value="60">≥ 60%</option>
+            </select>
+          </label>
           <button class="btn primary" id="cc-run" onclick="loadCrossCheck()">▶ Muat Radar</button>
         </div>
       </div>
@@ -540,6 +548,6 @@
   <section class="glass-panel disc" id="disc" style="margin-top:1.4rem"></section>
 </div>
 <div class="toast" id="toast"></div>
-<script src="/static/app.js?v=10"></script>
+<script src="/static/app.js?v=11"></script>
 </body>
 </html>

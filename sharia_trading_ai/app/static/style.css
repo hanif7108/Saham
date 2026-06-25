@@ -387,3 +387,8 @@ label.fld .l{display:block;color:var(--dim);font-size:.78rem;font-weight:600;mar
 .cc-card.ok-card{border-color:color-mix(in srgb,var(--buy) 40%,var(--border));border-left-color:var(--buy)}
 .cc-card.ok-card:hover{box-shadow:0 6px 20px color-mix(in srgb,var(--buy) 18%,transparent)}
 .cc-flag.green{color:var(--buy);background:color-mix(in srgb,var(--buy) 14%,transparent);border-color:color-mix(in srgb,var(--buy) 35%,transparent)}
+
+/* Radar — baris saran alokasi Money Management pada kartu SELARAS */
+.cc-alloc{margin-top:.55rem;padding:.42rem .6rem;border-radius:8px;font-size:.74rem;line-height:1.45;
+  background:color-mix(in srgb,var(--buy) 10%,transparent);border:1px solid color-mix(in srgb,var(--buy) 26%,transparent);color:var(--text)}
+.cc-alloc.dim{background:var(--panel);border-color:var(--border);color:var(--mute)}
