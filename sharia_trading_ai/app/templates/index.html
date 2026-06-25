@@ -37,6 +37,7 @@
     <button class="tab-btn-main" data-p="underval">💎 Screener Undervalue</button>
     <button class="tab-btn-main" data-p="plan">📊 Trading Plan</button>
     <button class="tab-btn-main" data-p="port">💼 Portofolio</button>
+    <button class="tab-btn-main" data-p="investasi_saham">🌟 Investasi Saham</button>
     <button class="tab-btn-main" data-p="sim">🧪 Simulasi</button>
     <button class="tab-btn-main" data-p="emas">🥇 Emas & Komoditas</button>
     <button class="tab-btn-main" data-p="perak">🪙 Perak & Dinar</button>
@@ -375,6 +376,39 @@
     <section class="glass-panel">
       <h3 class="sec" style="margin:0 0 .2rem">✅ Simulasi Tertutup (riwayat akurasi)</h3>
       <div id="sim-closed"><div class="empty">Memuat…</div></div>
+    </section>
+  </div>
+
+  <!-- ===================== INVESTASI SAHAM ===================== -->
+  <div class="panel" id="investasi_saham">
+    <section class="glass-panel" style="margin-bottom:1.4rem">
+      <div class="panel-header">
+        <h2>🌟 Investasi Saham (Tahunan)</h2>
+        <button class="btn text" onclick="loadInvestasiSaham()">🔄 Segarkan</button>
+      </div>
+      <p class="sub">Halaman analisis khusus investasi saham jangka panjang. Menampilkan portofolio saham tahunan Anda, estimasi pembagian dividen mendatang, serta indikator fundamental &amp; timing akumulasi.</p>
+    </section>
+
+    <!-- Ringkasan & Portofolio Investasi -->
+    <div style="display:grid;grid-template-columns:1fr;gap:1.4rem;margin-bottom:1.4rem">
+      <section class="glass-panel" style="margin:0">
+        <h3 class="sec" style="margin-top:0">📊 Portofolio &amp; Proyeksi Dividen Anda</h3>
+        <div class="grid g-3" id="inv-summary-cards" style="margin-bottom:1rem">
+          <!-- Di-render via JavaScript -->
+        </div>
+        <div id="inv-port-table-container">
+          <!-- Tabel Posisi Investasi -->
+        </div>
+      </section>
+    </div>
+
+    <!-- Rekomendasi & Analisis Fundamental/Teknikal -->
+    <section class="glass-panel">
+      <h3 class="sec" style="margin-top:0">🎯 Rekomendasi Saham &amp; Timing Akumulasi</h3>
+      <p class="sub">Evaluasi fundamental multi-faktor (PBV, PER, PEG, Graham, ROE, DER, Yield) dan timing teknikal (RSI, SMA 200, Posisi 52w-Low) untuk penambahan porsi saham investasi.</p>
+      <div id="inv-recs-container" class="grid g-2" style="gap:1.2rem;margin-top:1rem">
+        <!-- Kartu Evaluasi ASII, SIDO, dll. -->
+      </div>
     </section>
   </div>
 

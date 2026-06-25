@@ -92,6 +92,64 @@ async def import_image(file: UploadFile = File(...), save: bool = Query(False),
     return result
 
 
+@router.get("/investasi-info")
+def get_investasi_info():
+    """Mengambil informasi gabungan rekomendasi, dividen, dan portofolio investasi tahunan."""
+    from app.core.decisions import INVESTASI_TICKERS
+    from app.core import undervalue, dividend
+    
+    # Ambil data portofolio keseluruhan
+    port_data = portfolio.list_positions()
+    positions = [p for p in port_data["positions"] if p.get("type") == "investasi"]
+    summary = port_data.get("investasi_summary", {
+        "total_cost": 0, "total_modal": 0, "total_value": 0,
+        "total_net_value": 0, "total_pl": 0, "total_pl_pct": 0, "jumlah_posisi": 0
+    })
+    
+    # Ambil emiten investasi default + emiten investasi aktif di portofolio user
+    tickers = set(INVESTASI_TICKERS)
+    for p in positions:
+        tickers.add(p["ticker"])
+        
+    recommendations = []
+    total_expected_dividends = 0.0
+    
+    for tk in sorted(tickers):
+        tk_upper = tk.upper()
+        # Evaluasi teknikal & fundamental undervalue
+        eval_data = undervalue.evaluate(tk_upper)
+        # Profil dividen
+        div_prof = dividend.profile(tk_upper)
+        
+        # Posisi kepemilikan user
+        holding = next((p for p in positions if p["ticker"] == tk_upper), None)
+        
+        # Hitung estimasi nominal dividen untuk kepemilikan ini
+        expected_dividend_idr = 0.0
+        if holding and div_prof and div_prof.get("upcoming") and div_prof["upcoming"].get("expected"):
+            amt = div_prof["upcoming"].get("amount") or 0
+            shares = holding.get("shares") or (holding.get("lots", 0) * 100)
+            expected_dividend_idr = shares * amt
+            total_expected_dividends += expected_dividend_idr
+            
+        recommendations.append({
+            "ticker": tk_upper,
+            "evaluation": eval_data,
+            "dividend": div_prof,
+            "holding": holding,
+            "expected_dividend_idr": round(expected_dividend_idr)
+        })
+        
+    # Tambahkan proyeksi dividen ke summary
+    summary["total_expected_dividends"] = round(total_expected_dividends)
+    
+    return {
+        "positions": positions,
+        "summary": summary,
+        "recommendations": recommendations
+    }
+
+
 @router.get("")
 def get_portfolio():
     """Daftar posisi + P/L live + ringkasan total."""

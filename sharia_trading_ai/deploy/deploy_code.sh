@@ -9,7 +9,7 @@ echo "→ Deploy KODE ke ${MACMINI} (data_store TIDAK diubah)"
 rsync -avz --delete \
   --exclude '.venv/' --exclude '__pycache__/' --exclude '*.pyc' \
   --exclude '.ocrtmp/' --exclude '.DS_Store' --exclude '*.log' \
-  --exclude 'data_store/' \
+  --exclude 'data_store/' --exclude 'data_cache/' \
   ./ "${MACMINI}:${APP_DIR}/"
 
 echo "→ Update dependensi & restart server di Mac mini"

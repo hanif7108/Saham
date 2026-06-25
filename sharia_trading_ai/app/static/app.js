@@ -52,6 +52,7 @@ document.querySelectorAll('.tab-btn-main').forEach(t => t.onclick = () => {
   t.classList.add('active'); $('#' + t.dataset.p).classList.add('active');
   const p = t.dataset.p;
   if(p==='port') loadPortfolio();
+  if(p==='investasi_saham') loadInvestasiSaham();
   if(p==='sim') loadSimulation();
   if((p==='emas'||p==='perak') && !_loaded.cmd){ loadCommodities(); }
   if(p==='learn') loadLearning();
@@ -1392,7 +1393,6 @@ async function loadPortfolio(){
     window._portfolioData = d;
     $('#port-summary').innerHTML=`${miniStat('Total Nilai',fmt(s.total_value),s.jumlah_posisi+' posisi')}
       ${plStat('P/L Bersih',s.total_net_pl)}${plStat('Return Bersih',s.total_net_pl_pct,true)}`;
-    if(!d.positions.length){ $('#port-table').innerHTML='<div class="empty">Belum ada posisi. Tambahkan di atas.</div>'; return; }
     
     const trading_ps = d.positions.filter(p => (p.type || 'trading') === 'trading');
     const investasi_ps = d.positions.filter(p => p.type === 'investasi');
@@ -1428,6 +1428,214 @@ async function loadPortfolio(){
     $('#port-table').innerHTML = htmlContent;
   }catch(e){ $('#port-table').innerHTML='<div class="empty">Gagal memuat.</div>'; }
   loadRDN(); loadROI();
+}
+async function loadInvestasiSaham() {
+  $('#inv-summary-cards').innerHTML = '<div class="empty"><span class="spin"></span> Memuat ringkasan…</div>';
+  $('#inv-port-table-container').innerHTML = '<div class="empty"><span class="spin"></span> Memuat portofolio…</div>';
+  $('#inv-recs-container').innerHTML = '<div class="empty"><span class="spin"></span> Memuat analisis…</div>';
+
+  try {
+    const d = await api('/api/portfolio/investasi-info');
+    const s = d.summary;
+    
+    // 1. Render Summary Cards
+    const plClass = s.total_pl >= 0 ? 'pl-up' : 'pl-down';
+    $('#inv-summary-cards').innerHTML = `
+      <div class="cardlet">
+        <div class="lbl mut" style="font-size:.7rem">TOTAL MODAL INVESTASI</div>
+        <div class="num" style="font-size:1.4rem;font-weight:800">${fmt(s.total_modal)}</div>
+        <div class="mut" style="font-size:.7rem">Biaya beli termasuk</div>
+      </div>
+      <div class="cardlet">
+        <div class="lbl mut" style="font-size:.7rem">NILAI PASAR &amp; RETURN</div>
+        <div class="num ${plClass}" style="font-size:1.4rem;font-weight:800">${fmt(s.total_value)}</div>
+        <div class="mut ${plClass}" style="font-size:.7rem">
+          P/L Bersih: <b>${s.total_pl >= 0 ? '+' : ''}${fmt(s.total_pl)} (${s.total_pl_pct >= 0 ? '+' : ''}${s.total_pl_pct}%)</b>
+        </div>
+      </div>
+      <div class="cardlet" style="border-color: var(--brand-2)">
+        <div class="lbl mut" style="font-size:.7rem;color: var(--brand-2)">PROYEKSI DIVIDEN MENDATANG</div>
+        <div class="num" style="font-size:1.4rem;font-weight:800;color: var(--buy)">${fmt(s.total_expected_dividends)}</div>
+        <div class="mut" style="font-size:.7rem">Berdasarkan porsi lot saat ini</div>
+      </div>
+    `;
+
+    // 2. Render Portfolio Table
+    let tableHtml = '';
+    if (!d.positions.length) {
+      tableHtml = '<div class="empty" style="padding: 1.5rem 0;">Belum ada posisi investasi. Tambahkan posisi bertipe "Investasi Saham" di tab Portofolio.</div>';
+    } else {
+      tableHtml = `<table>
+        <thead>
+          <tr>
+            <th>Kode</th>
+            <th>Lot</th>
+            <th style="text-align:right">Harga Avg</th>
+            <th style="text-align:right">Impas</th>
+            <th style="text-align:right">Harga Live</th>
+            <th style="text-align:right">Nilai Bersih</th>
+            <th style="text-align:right">P/L Bersih</th>
+            <th style="text-align:right">Proyeksi Dividen</th>
+          </tr>
+        </thead>
+        <tbody>`;
+      d.positions.forEach(p => {
+        const up = (p.net_pl || 0) >= 0;
+        const beUp = p.current_price >= p.break_even;
+        // Cari info dividen untuk posisi ini dari recommendations
+        const rec = d.recommendations.find(r => r.ticker === p.ticker);
+        const expDiv = rec ? rec.expected_dividend_idr : 0;
+        const divInfo = rec && rec.dividend && rec.dividend.upcoming && rec.dividend.upcoming.expected
+          ? `Rp ${fmt(rec.dividend.upcoming.amount)} / lbr <br><span class="mut" style="font-size:.62rem">Ex-Date: ${rec.dividend.upcoming.ex_date}</span>`
+          : '<span class="mut">-</span>';
+          
+        tableHtml += `<tr>
+          <td><span class="tkr">${p.ticker}</span> ${p.syariah ? '<span class="badge buy" style="font-size:.6rem">✓</span>' : '<span class="badge sell" style="font-size:.6rem">non</span>'}</td>
+          <td class="num">${p.lots}</td>
+          <td style="text-align:right" class="num">${fmt(p.avg_price)}</td>
+          <td style="text-align:right" class="num ${beUp ? 'pl-up' : 'pl-down'}">${fmt(p.break_even)}</td>
+          <td style="text-align:right" class="num">${fmt(p.current_price)}</td>
+          <td style="text-align:right" class="num"><b>${fmt(p.net_value)}</b></td>
+          <td style="text-align:right" class="num ${up ? 'pl-up' : 'pl-down'}">
+            <b>${p.net_pl >= 0 ? '+' : ''}${fmt(p.net_pl)}</b><br>
+            <span style="font-size:.72rem">${p.net_pl_pct >= 0 ? '+' : ''}${p.net_pl_pct}%</span>
+          </td>
+          <td style="text-align:right" class="num" style="color:var(--buy)">
+            <b>${expDiv > 0 ? '+' + fmt(expDiv) : '0'}</b><br>
+            <span style="font-size:.65rem;color:var(--mute)">${divInfo}</span>
+          </td>
+        </tr>`;
+      });
+      tableHtml += '</tbody></table>';
+    }
+    $('#inv-port-table-container').innerHTML = tableHtml;
+
+    // 3. Render Recommendation Cards
+    let recsHtml = '';
+    d.recommendations.forEach(r => {
+      const ev = r.evaluation;
+      const div = r.dividend;
+      if (!ev) {
+        recsHtml += `
+          <div class="cardlet" style="padding:1rem;display:flex;flex-direction:column;gap:.5rem">
+            <div class="between">
+              <h3><span class="tkr">${r.ticker}</span></h3>
+              <span class="badge sell">Tidak Ada Data</span>
+            </div>
+            <p class="mut" style="font-size:.78rem">Saham tidak ditemukan dalam master data syariah lokal.</p>
+          </div>
+        `;
+        return;
+      }
+      
+      const verdClass = ev.verdict_class === 'buy' ? 'buy' : ev.verdict_class === 'warning' ? 'warning' : 'sell';
+      const scoreC = ev.val_score >= 55 ? 'pl-up' : 'pl-down';
+      const timeC = (ev.technical_score || 0) >= 50 ? 'pl-up' : 'pl-down';
+      
+      // Proyeksi dividen yang diumumkan atau diestimasi
+      let upcomingHtml = '<span class="mut">Tidak ada dalam waktu dekat</span>';
+      if (div && div.upcoming && div.upcoming.expected) {
+        const upDiv = div.upcoming;
+        upcomingHtml = `
+          <div style="font-size:.8rem;line-height:1.4">
+            <div>Nominal: <b style="color:var(--buy)">Rp ${fmt(upDiv.amount)} / lembar</b></div>
+            <div>Ex-Date: <b>${upDiv.ex_date}</b> <span class="badge na" style="font-size:.6rem;padding:.15rem .3rem">${upDiv.source}</span></div>
+            <div>Imbal Hasil Event: <b>${upDiv.event_yield_pct}%</b></div>
+            <div>Waktu: <b style="color:var(--brand-2)">${upDiv.days_until} hari lagi</b></div>
+          </div>
+        `;
+      }
+
+      // Rincian faktor fundamental/valuasi
+      let factorsHtml = '';
+      if (ev.factors) {
+        factorsHtml = '<table style="width:100%;font-size:.74rem;margin-top:.4rem;border-collapse:collapse">';
+        ev.factors.forEach(f => {
+          const valPct = f.nilai01 != null ? Math.round(f.nilai01 * 100) : null;
+          const scoreColor = valPct == null ? 'var(--mute)' : valPct >= 70 ? 'var(--buy)' : valPct >= 40 ? 'var(--hold)' : 'var(--sell)';
+          factorsHtml += `
+            <tr style="border-bottom:1px solid rgba(255,255,255,.03)">
+              <td class="mut" style="padding:.2rem 0">${f.faktor}</td>
+              <td style="text-align:right;padding:.2rem 0;font-weight:700;color:${scoreColor}">${valPct != null ? valPct + '%' : '-'}</td>
+            </tr>`;
+        });
+        factorsHtml += '</table>';
+      }
+
+      // Rincian faktor timing teknikal
+      let timingHtml = '';
+      if (ev.timing) {
+        const t = ev.timing;
+        timingHtml = `
+          <div style="display:flex;flex-wrap:wrap;gap:.6rem;margin-top:.5rem">
+            <span class="badge na" style="font-size:.7rem">RSI: <b>${t.rsi}</b></span>
+            <span class="badge na" style="font-size:.7rem">Jarak SMA200: <b>${t.dist_sma200_pct}%</b></span>
+            <span class="badge na" style="font-size:.7rem">Posisi 52w: <b>${t.pos_52w_pct}%</b></span>
+            <span class="badge na" style="font-size:.7rem">Momentum 20h: <b>${t.momentum_20d_pct}%</b></span>
+          </div>
+        `;
+      }
+
+      // Rencana Trading (Trading Plan)
+      const tp = ev.plan || {};
+      const tp_html = tp.entry ? `
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:.4rem;background:rgba(255,255,255,0.03);padding:.5rem;border-radius:6px;font-size:.74rem;margin-top:.6rem;text-align:center">
+          <div><div class="mut" style="font-size:.65rem">Entry Limit</div><b>${fmt(tp.entry)}</b></div>
+          <div><div class="mut" style="font-size:.65rem">Target Keluar</div><b>${fmt(tp.target)}</b></div>
+          <div><div class="mut" style="font-size:.65rem">Stop Loss</div><b>${fmt(tp.stop_loss)}</b></div>
+        </div>
+        <div style="font-size:.7rem;margin-top:.3rem" class="mut text-center">Risk: <b>${tp.risk_pct}%</b> · Reward: <b>${tp.reward_pct}%</b> · RRR: <b>${tp.rrr}</b></div>
+      ` : '<div class="mut" style="font-size:.74rem;margin-top:.5rem">Trading plan tidak tersedia.</div>';
+
+      const divYield = (div && div.dividend_yield != null) ? fmt(div.dividend_yield) : '-';
+      const divStreak = div ? (div.pay_streak || div.years_paid || 0) : 0;
+
+      recsHtml += `
+        <div class="cardlet" style="padding:1.2rem;display:flex;flex-direction:column;gap:.6rem;border-top:3px solid ${ev.verdict_class === 'buy' ? 'var(--buy)' : ev.verdict_class === 'warning' ? 'var(--hold)' : 'var(--line)'}">
+          <div class="between" style="align-items:flex-start">
+            <div>
+              <h3 style="margin:0"><span class="tkr">${r.ticker}</span> <span class="badge buy" style="font-size:.65rem">✓ Syariah</span></h3>
+              <div class="mut" style="font-size:.7rem;margin-top:.1rem">Yield Tahunan: <b>${divYield}%</b> · Streak: <b>${divStreak} tahun</b></div>
+            </div>
+            <span class="badge ${verdClass}" style="font-size:.85rem;padding:.3rem .6rem">${ev.verdict}</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-top:.3rem">
+            <div>
+              <div class="mut" style="font-size:.7rem">SKOR VALUASI FUNDAMENTAL</div>
+              <div style="font-size:1.3rem;font-weight:800" class="${scoreC}">${Math.round(ev.val_score)}<span style="font-size:.78rem;color:var(--mute)">/100</span></div>
+              ${factorsHtml}
+              <div style="font-size:.72rem;margin-top:.4rem" class="mut">
+                Harga Graham: <b>${ev.valuation_extra && ev.valuation_extra.graham_number != null ? fmt(ev.valuation_extra.graham_number) : '-'}</b><br>
+                Margin of Safety: <b class="${ev.valuation_extra && ev.valuation_extra.margin_of_safety_pct >= 0 ? 'pl-up' : 'pl-down'}">${ev.valuation_extra && ev.valuation_extra.margin_of_safety_pct != null ? ev.valuation_extra.margin_of_safety_pct + '%' : '-'}</b>
+              </div>
+            </div>
+            <div>
+              <div class="mut" style="font-size:.7rem">SKOR TIMING TEKNIKAL</div>
+              <div style="font-size:1.3rem;font-weight:800" class="${timeC}">${Math.round(ev.technical_score)}<span style="font-size:.78rem;color:var(--mute)">/100</span></div>
+              ${timingHtml}
+              <div style="margin-top:.6rem;border-top:1px solid rgba(255,255,255,.03);padding-top:.4rem">
+                <div class="mut" style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:var(--brand-2)">Dividen Mendatang</div>
+                ${upcomingHtml}
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:.4rem;border-top:1px solid rgba(255,255,255,.03);padding-top:.5rem">
+            <div class="mut" style="font-size:.7rem;text-transform:uppercase;font-weight:700">Rencana Pembelian &amp; Risiko</div>
+            ${tp_html}
+          </div>
+        </div>
+      `;
+    });
+    $('#inv-recs-container').innerHTML = recsHtml;
+
+  } catch (e) {
+    console.error(e);
+    $('#inv-summary-cards').innerHTML = '<div class="empty">Gagal memuat ringkasan.</div>';
+    $('#inv-port-table-container').innerHTML = '<div class="empty">Gagal memuat portofolio.</div>';
+    $('#inv-recs-container').innerHTML = '<div class="empty">Gagal memuat rekomendasi.</div>';
+  }
 }
 async function loadROI(){
   try{ const d=await api('/api/portfolio/roi'); const I=d.integral, U=d.unrealized, R=d.realized, a=d.adaptive;
