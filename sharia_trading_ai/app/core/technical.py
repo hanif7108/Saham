@@ -18,8 +18,8 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
-from app.config import TECH
-from app.data import provider
+from app.config import TECH, settings
+from app.data import provider, tradingview_provider
 
 
 # --------------------------------------------------------------------------- #
@@ -555,12 +555,98 @@ def calculate_volatility_insight_pro_rating(
 
 
 # --------------------------------------------------------------------------- #
+#  Fallback teknikal TradingView (saat OHLCV yfinance gagal/kurang)           #
+# --------------------------------------------------------------------------- #
+def _tv_enabled() -> bool:
+    return (settings.data_source or "").lower() in ("tradingview", "hybrid")
+
+
+def _tv_technical_fallback(ticker: str) -> Optional[dict[str, Any]]:
+    """Bentuk dict analyze_technical (subset) dari snapshot TradingView.
+
+    Tanpa OHLCV history: support/resistance, fibonacci, candlestick tidak tersedia
+    — tapi trend, stochastic, RSI/MACD/ADX, dan rekomendasi TV TETAP ada, sehingga
+    funnel menghasilkan sinyal WHEN yang berarti, bukan runtuh ke ok=False.
+    """
+    if not _tv_enabled():
+        return None
+    snap = tradingview_provider.technical_snapshot(ticker)
+    if not snap or snap.get("close") is None:
+        return None
+
+    price = snap["close"]
+    s20, s50, s200 = snap.get("SMA20"), snap.get("SMA50"), snap.get("SMA200")
+    above_200 = s200 is not None and price > s200
+    if above_200 and s20 and s50 and s20 > s50:
+        trend = "UPTREND"
+    elif s200 is not None and price < s200 and s20 and s50 and s20 < s50:
+        trend = "DOWNTREND"
+    else:
+        trend = "SIDEWAYS"
+
+    k_now, d_now = snap.get("Stoch.K"), snap.get("Stoch.D")
+    stoch_zone = "netral"
+    if k_now is not None:
+        if k_now > TECH.STOCH_OVERBOUGHT:
+            stoch_zone = "overbought"
+        elif k_now < TECH.STOCH_OVERSOLD:
+            stoch_zone = "oversold"
+    # Snapshot hanya beri K/D terkini (tak ada bar sebelumnya) → pakai POSISI K vs D
+    # sebagai proxy sinyal, ditandai jelas agar tak disangka cross sejati.
+    stoch_signal = "—"
+    if k_now is not None and d_now is not None:
+        stoch_signal = ("golden (posisi K>D)" if k_now > d_now else "dead (posisi K<D)")
+
+    adx_val = snap.get("ADX")
+    adx_strength, adx_class = "Lemah (Sideways)", "down"
+    if adx_val is not None:
+        if adx_val >= 50:
+            adx_strength, adx_class = "Sangat Kuat", "up"
+        elif adx_val >= 25:
+            adx_strength, adx_class = "Kuat (Trending)", "up"
+        elif adx_val >= 20:
+            adx_strength, adx_class = "Moderat", ""
+
+    note = (f"Teknikal dari TradingView (snapshot {snap.get('source', 'tradingview')}) "
+            f"karena data harga historis tidak tersedia. Level support/resistance, "
+            f"Fibonacci, dan pola candle tidak dihitung pada mode ini.")
+
+    return {
+        "ticker": ticker.upper(),
+        "ok": True,
+        "source": "tradingview_snapshot",
+        "price": _r(price),
+        "trend": trend,
+        "sma": {"sma20": _r(s20), "sma50": _r(s50), "sma200": _r(s200),
+                "price_vs_sma200": "di atas" if above_200 else "di bawah"},
+        "stochastic": {"k": _r(k_now), "d": _r(d_now), "zona": stoch_zone, "sinyal": stoch_signal},
+        "rsi": _r(snap.get("RSI")),
+        "macd": {"macd": _r(snap.get("MACD.macd")), "signal": _r(snap.get("MACD.signal"))},
+        "adx": {"value": _r(adx_val), "strength": adx_strength, "class": adx_class,
+                "plus_di": _r(snap.get("ADX+DI")), "minus_di": _r(snap.get("ADX-DI"))},
+        "volume": {"now": int(snap["volume"]) if snap.get("volume") else None,
+                   "avg20": None, "spike": False, "risk": "n/a (snapshot)"},
+        "entry_signals": [],
+        "bias": _bias(trend, stoch_zone, stoch_signal, [], []),
+        "tradingview_recommendation": {
+            "moving_averages": snap.get("rec_ma"),
+            "oscillators": snap.get("rec_osc"),
+            "summary": snap.get("rec_summary"),
+        },
+        "note": note,
+    }
+
+
+# --------------------------------------------------------------------------- #
 #  Analisa utama                                                              #
 # --------------------------------------------------------------------------- #
 def analyze_technical(ticker: str, hist: Optional[pd.DataFrame] = None) -> dict[str, Any]:
     ticker = ticker.upper()
     df = hist if hist is not None else provider.get_history(ticker)
     if df is None or df.empty or len(df) < 30:
+        fallback = _tv_technical_fallback(ticker)
+        if fallback is not None:
+            return fallback
         return {"ticker": ticker, "ok": False, "error": "data harga tidak cukup"}
 
     close = df["Close"]
@@ -789,9 +875,48 @@ def _sr_note(price, support, resistance, sr_levels) -> str:
 # --------------------------------------------------------------------------- #
 #  util                                                                       #
 # --------------------------------------------------------------------------- #
-def oneill_signal(hist: Optional[pd.DataFrame]) -> dict[str, Any]:
-    """Sinyal teknikal ala app lama (RSI+MACD+MA cross) → BUY/HOLD/SELL, score -3..+3."""
+def _tv_oneill_fallback(ticker: Optional[str]) -> Optional[dict[str, Any]]:
+    """Sinyal O'Neill (RSI+MACD+MA cross) dari snapshot TradingView bila hist gagal."""
+    if not _tv_enabled() or not ticker:
+        return None
+    snap = tradingview_provider.technical_snapshot(ticker)
+    if not snap or snap.get("close") is None:
+        return None
+    last = snap["close"]
+    rsi_v = snap.get("RSI")
+    rsi_v = 50.0 if rsi_v is None else rsi_v
+    macd, macd_sig = snap.get("MACD.macd"), snap.get("MACD.signal")
+    s20, s50 = snap.get("SMA20"), snap.get("SMA50")
+    ma_cross = ("GOLDEN" if (s20 and s50 and s20 > s50)
+                else "DEATH" if (s20 and s50) else None)
+    score = 0
+    if rsi_v < 30:
+        score += 1
+    elif rsi_v > 70:
+        score -= 1
+    if macd is not None and macd_sig is not None:
+        if macd > macd_sig and macd > 0:
+            score += 1
+        elif macd < macd_sig and macd < 0:
+            score -= 1
+    if ma_cross == "GOLDEN" and s20 and last > s20:
+        score += 1
+    elif ma_cross == "DEATH" and s20 and last < s20:
+        score -= 1
+    signal = "BUY" if score >= 2 else "SELL" if score <= -2 else "HOLD"
+    return {"signal": signal, "score": int(score), "rsi": round(rsi_v, 2),
+            "ma_cross": ma_cross, "ma20": _r(s20), "ma50": _r(s50),
+            "source": "tradingview_ta"}
+
+
+def oneill_signal(hist: Optional[pd.DataFrame], ticker: Optional[str] = None) -> dict[str, Any]:
+    """Sinyal teknikal ala app lama (RSI+MACD+MA cross) → BUY/HOLD/SELL, score -3..+3.
+
+    Bila `hist` kosong/kurang dan `ticker` diberi, jatuh ke snapshot TradingView."""
     if hist is None or hist.empty or "Close" not in hist or len(hist) < 15:
+        fallback = _tv_oneill_fallback(ticker)
+        if fallback is not None:
+            return fallback
         return {"signal": "NO DATA", "score": 0, "rsi": None, "ma_cross": None}
     close = hist["Close"].astype(float)
     vol = hist["Volume"].astype(float) if "Volume" in hist else None

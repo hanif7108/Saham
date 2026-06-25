@@ -29,7 +29,7 @@ def analyze_stock(ticker: str) -> dict[str, Any]:
     fund = fundamental.evaluate_fundamental(ticker, info=info)
     cslim = canslim.evaluate_canslim(ticker, info=info, hist=hist, index_hist=index_hist)
     tech = technical.analyze_technical(ticker, hist=hist)
-    osignal = technical.oneill_signal(hist)
+    osignal = technical.oneill_signal(hist, ticker)
     j7 = jalur7.evaluate_jalur7(ticker, hist=hist)
     bandar = bandarmologi.get_bandar_analysis(ticker, hist=hist)
 
@@ -184,7 +184,7 @@ def screen_universe(
             fund = fundamental.evaluate_fundamental(t, info=info)
             cslim = canslim.evaluate_canslim(t, info=info, hist=hist, index_hist=index_hist)
             tech = technical.analyze_technical(t, hist=hist)
-            osignal = technical.oneill_signal(hist)
+            osignal = technical.oneill_signal(hist, t)
             j7 = jalur7.evaluate_jalur7(t, hist=hist)
             bandar = bandarmologi.get_bandar_analysis(t, hist=hist)
 

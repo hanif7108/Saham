@@ -48,6 +48,15 @@ COLUMNS = [
 _IDX = {c: i for i, c in enumerate(COLUMNS)}
 
 _CACHE_FILE = CACHE_DIR / "tradingview_scan.json"
+_TECH_CACHE_FILE = CACHE_DIR / "tradingview_tech.json"
+
+# Indikator snapshot (1 timeframe) dari tradingview-ta — dipakai sebagai fallback
+# teknikal saat OHLCV yfinance gagal. Nilai = persis seperti chart TradingView.
+_TECH_FIELDS = [
+    "close", "open", "high", "low", "volume", "change",
+    "RSI", "Stoch.K", "Stoch.D", "SMA20", "SMA50", "SMA200", "EMA20",
+    "MACD.macd", "MACD.signal", "ADX", "ADX+DI", "ADX-DI", "ATR",
+]
 
 
 # --------------------------------------------------------------------------- #
@@ -89,17 +98,17 @@ def recommendation_label(rec_all: Optional[float]) -> str:
 # --------------------------------------------------------------------------- #
 #  Cache disk (per-ticker, TTL)                                               #
 # --------------------------------------------------------------------------- #
-def _load_cache() -> dict[str, dict[str, Any]]:
+def _load_cache(path: Path = _CACHE_FILE) -> dict[str, dict[str, Any]]:
     try:
-        return json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
 
-def _save_cache(cache: dict[str, dict[str, Any]]) -> None:
+def _save_cache(cache: dict[str, dict[str, Any]], path: Path = _CACHE_FILE) -> None:
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        _CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+        path.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
 
@@ -205,3 +214,49 @@ def available() -> bool:
         return metrics("BBCA") is not None
     except Exception:
         return False
+
+
+# --------------------------------------------------------------------------- #
+#  Snapshot teknikal (tradingview-ta) — fallback saat OHLCV yfinance gagal     #
+# --------------------------------------------------------------------------- #
+def technical_snapshot(ticker: str, *, interval: str = "1d",
+                       force: bool = False) -> Optional[dict[str, Any]]:
+    """Indikator teknikal terkini 1 saham dari TradingView (RSI/Stoch/SMA/MACD/ADX
+    + rekomendasi MA/Oscillator/Summary). None bila lib/jaringan gagal. Cache TTL."""
+    tk = ticker.strip().upper()
+    ttl = settings.tradingview_ttl_seconds
+    cache = {} if force else _load_cache(_TECH_CACHE_FILE)
+    entry = cache.get(tk)
+    if entry and _fresh(entry, ttl) and entry.get("data"):
+        return entry["data"]
+
+    try:
+        from tradingview_ta import TA_Handler, Interval
+    except Exception:
+        return None
+
+    imap = {
+        "1d": Interval.INTERVAL_1_DAY, "1w": Interval.INTERVAL_1_WEEK,
+        "1m": Interval.INTERVAL_1_MONTH, "4h": Interval.INTERVAL_4_HOURS,
+        "1h": Interval.INTERVAL_1_HOUR,
+    }
+    try:
+        handler = TA_Handler(
+            symbol=tk, screener=settings.tradingview_screener,
+            exchange=settings.tradingview_exchange,
+            interval=imap.get(interval, Interval.INTERVAL_1_DAY),
+        )
+        a = handler.get_analysis()
+    except Exception:  # noqa: BLE001 — jaringan/symbol tak dikenal
+        return None
+
+    ind = a.indicators or {}
+    snap: dict[str, Any] = {f: _num(ind.get(f)) for f in _TECH_FIELDS}
+    snap["rec_ma"] = (a.moving_averages or {}).get("RECOMMENDATION")
+    snap["rec_osc"] = (a.oscillators or {}).get("RECOMMENDATION")
+    snap["rec_summary"] = (a.summary or {}).get("RECOMMENDATION")
+    snap["source"] = "tradingview_ta"
+
+    cache[tk] = {"ts": time.time(), "data": snap}
+    _save_cache(cache, _TECH_CACHE_FILE)
+    return snap
