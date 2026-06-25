@@ -833,8 +833,12 @@ async function loadCrossCheck(){
   const ambang = (Number(d.min_acc)>0) ? ` · ambang akurasi ≥ ${d.min_acc}%` : '';
   h+=`<h3 class="cc-sec">🎯 ${d.top_n} Kandidat Trading — Akurasi Tertinggi <span class="mut" style="font-weight:500;font-size:.72rem">(maks ${d.top_n} saham/hari${ambang})</span></h3>`;
   if(!cands.length){
-    const why = (d.hidden_by_threshold>0) ? `Tidak ada kandidat dengan akurasi ≥ ${d.min_acc}% (${d.hidden_by_threshold} di bawah ambang). Turunkan "Min. akurasi" untuk melihat lebih banyak.` : 'Belum ada kandidat BELI (pasar lesu / semua AVOID atau sudah dimiliki).';
-    h+=`<div class="cc-ok-banner mutbox">${why}</div>`;
+    // Hanya kosong bila benar-benar tak ada kandidat BELI (pasar lesu / semua AVOID/dimiliki).
+    h+='<div class="cc-ok-banner mutbox">Belum ada kandidat BELI saat ini (pasar lesu / semua AVOID atau sudah dimiliki).</div>';
+  } else if(d.below_threshold){
+    // Tak ada yang lolos ambang → tetap tampilkan akurasi terbaik yang tersedia (peringatan).
+    h+=`<div class="cc-note-top amber">⚠️ Tidak ada kandidat dengan akurasi ≥ <b>${d.min_acc}%</b> saat ini — menampilkan <b>${cands.length}</b> dengan <b>akurasi terbaik yang tersedia</b>. Pertimbangkan menunggu setup lebih baik, atau turunkan "Min. akurasi".</div>`;
+    h+='<div class="cc-grid">'+cands.map(candCard).join('')+'</div>';
   } else {
     const hid = (d.hidden_by_threshold>0) ? ` <span class="mut">(${d.hidden_by_threshold} kandidat lain di bawah ambang ${d.min_acc}% disembunyikan)</span>` : '';
     h+='<div class="cc-note-top neutral">Diurutkan dari <b>akurasi prediksi</b> (win-rate backtest) tertinggi. ✅ <b>SELARAS</b> = teknikal TradingView mendukung, disertai saran alokasi MM · ⚠️ <b>TUNDA BELI</b> = teknikal TradingView SELL, tunggu konfirmasi.'+hid+'</div>';

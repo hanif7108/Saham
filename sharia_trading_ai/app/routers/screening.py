@@ -240,14 +240,24 @@ def cross_check(top: int = Query(5, ge=1, le=15),
         it["akurasi_pct"] = a.get("akurasi_pct")
         it["akurasi_n"] = a.get("akurasi_n")
 
-    # Ambang akurasi minimum: hanya kandidat ber-akurasi >= min_acc (None = tak lolos).
+    # Urutkan SEMUA shortlist: akurasi tertinggi dulu (None=paling rendah), tie-break skor.
+    def _acc_key(it):
+        a = it.get("akurasi_pct")
+        return (a if a is not None else -1.0, it.get("skor") or 0)
+    shortlist.sort(key=_acc_key, reverse=True)
+
+    # Ambang akurasi = PREFERENSI, bukan pemutus keras. Bila ada yang lolos, pakai itu;
+    # bila TIDAK ADA, JANGAN kosongkan radar — tampilkan akurasi terbaik yang tersedia
+    # (graceful fallback) + tandai below_threshold agar UI memberi peringatan.
     qualified = [it for it in shortlist
                  if it.get("akurasi_pct") is not None and it["akurasi_pct"] >= min_acc]
     hidden_by_threshold = len(shortlist) - len(qualified)
-
-    # urut: akurasi tertinggi dulu, tie-break skor funnel
-    qualified.sort(key=lambda x: (x["akurasi_pct"], x.get("skor") or 0), reverse=True)
-    candidates = qualified[:top]
+    if qualified:
+        candidates = qualified[:top]
+        below_threshold = False
+    else:
+        candidates = shortlist[:top]    # jaring pengaman: tetap tampilkan yang terbaik
+        below_threshold = True
 
     # Alokasi Money Management hanya untuk kandidat SELARAS (layak beli sekarang).
     # Saring ke RDN yang punya 'advice' (kecualikan akun emas Tring Pegadaian yg
@@ -274,6 +284,7 @@ def cross_check(top: int = Query(5, ge=1, le=15),
         "total_lolos": len(rows),
         "candidate_count": len(candidates),
         "hidden_by_threshold": hidden_by_threshold,
+        "below_threshold": below_threshold,
         "tunda_beli_count": sum(1 for c in candidates if c["status"] == "TUNDA_BELI"),
         "selaras_count": sum(1 for c in candidates if c["status"] == "SELARAS"),
         "candidates": candidates,
