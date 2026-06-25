@@ -250,8 +250,10 @@ def cross_check(top: int = Query(5, ge=1, le=15),
     candidates = qualified[:top]
 
     # Alokasi Money Management hanya untuk kandidat SELARAS (layak beli sekarang).
+    # Saring ke RDN yang punya 'advice' (kecualikan akun emas Tring Pegadaian yg
+    # advice=None — bila tidak, _alloc_buy crash saat membaca advice.open_slots).
     try:
-        rdn_list = accounts.breakdown().get("rdn", [])
+        rdn_list = [r for r in accounts.breakdown().get("rdn", []) if r.get("advice")]
     except Exception:  # noqa: BLE001
         rdn_list = []
     for it in candidates:
