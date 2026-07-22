@@ -74,6 +74,46 @@ header{display:flex;justify-content:space-between;align-items:center;gap:1rem;fl
 
 .panel{display:none;animation:rise .3s ease}
 .panel.active{display:block}
+
+.sub-panel{display:none;animation:rise .3s ease}
+.sub-panel.active{display:block}
+
+.sub-tabs-nav {
+  display: flex;
+  gap: .5rem;
+  padding: .5rem;
+  margin-bottom: 1.2rem;
+  background: var(--panel-solid);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.sub-tabs-nav::-webkit-scrollbar {
+  display: none;
+}
+.sub-tab-btn {
+  padding: .45rem .8rem;
+  font-size: .8rem;
+  font-weight: 600;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .25s ease;
+  font-family: inherit;
+}
+.sub-tab-btn:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+.sub-tab-btn.active {
+  background: var(--hover);
+  color: var(--brand);
+  border-color: rgba(59, 130, 246, 0.15);
+}
 .panel-header{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;margin-bottom:1rem}
 .panel-header h2{margin:0;font-size:1.25rem;font-weight:700}
 .panel-header .ts{color:var(--mute);font-size:.8rem}
@@ -403,3 +443,74 @@ label.fld .l{display:block;color:var(--dim);font-size:.78rem;font-weight:600;mar
 .ai-verdict-meta{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.78rem;color:var(--dim);margin-top:.4rem}
 .ai-verdict-risk{font-size:.78rem;color:var(--text);margin-top:.45rem;padding-top:.4rem;border-top:1px dashed var(--border)}
 .ai-verdict-plan{font-size:.8rem;color:var(--text);margin-top:.5rem;padding:.4rem .55rem;border-radius:8px;background:color-mix(in srgb,var(--brand) 8%,transparent);border:1px solid color-mix(in srgb,var(--brand) 22%,transparent)}
+
+/* ===================== Tab BSJP ===================== */
+.bsjp-header-panel{border:2px solid rgba(139,92,246,.4)}
+
+/* Session bar */
+.bsjp-session-bar{margin-top:1rem;padding:.7rem 1rem;border-radius:12px;background:var(--input);border:1px solid var(--border)}
+.bsjp-session-inner{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+.bsjp-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;background:var(--mute);transition:background .3s,box-shadow .3s}
+.bsjp-dot.pre-closing{background:#ef4444;box-shadow:0 0 10px #ef4444;animation:led-blink .8s infinite}
+.bsjp-dot.pre-opening{background:#eab308;box-shadow:0 0 10px #eab308;animation:led-blink .8s infinite}
+.bsjp-dot.regular{background:#10b981;box-shadow:0 0 8px #10b981}
+.bsjp-dot.closed{background:var(--mute)}
+.bsjp-session-label{font-weight:700;font-size:.9rem;color:var(--text)}
+
+/* Stat cards */
+.bsjp-stat-card{background:var(--card);border:1px solid var(--card-bd);border-radius:12px;padding:.9rem 1.1rem;text-align:center}
+.bsjp-stat-card.bsjp-buy{border-color:rgba(16,185,129,.35);background:rgba(16,185,129,.06)}
+.bsjp-stat-card.bsjp-sell{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.06)}
+.bsjp-stat-num{font-size:2rem;font-weight:800;line-height:1;color:var(--text)}
+.bsjp-stat-card.bsjp-buy .bsjp-stat-num{color:var(--buy)}
+.bsjp-stat-card.bsjp-sell .bsjp-stat-num{color:var(--sell)}
+.bsjp-stat-lbl{font-size:.72rem;color:var(--mute);margin-top:.3rem;font-weight:600}
+
+/* BSJP table rows */
+.bsjp-row{display:grid;grid-template-columns:90px 1fr 1fr 1fr 80px 100px 90px;gap:.5rem;align-items:center;padding:.6rem .8rem;border-bottom:1px solid var(--border);transition:.12s;font-size:.83rem}
+.bsjp-row:hover{background:var(--hover)}
+.bsjp-row.header{font-size:.7rem;font-weight:700;color:var(--mute);text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border);background:var(--input);border-radius:8px 8px 0 0}
+.bsjp-row.signal-strong{border-left:4px solid var(--buy);background:rgba(16,185,129,.04)}
+.bsjp-row.signal-weak{border-left:4px solid var(--border)}
+.bsjp-badge-kuat{padding:.18rem .5rem;border-radius:8px;font-size:.68rem;font-weight:800;background:rgba(16,185,129,.18);color:var(--buy);border:1px solid rgba(16,185,129,.4);white-space:nowrap}
+.bsjp-badge-tahan{padding:.18rem .5rem;border-radius:8px;font-size:.68rem;font-weight:700;background:var(--card);color:var(--mute);border:1px solid var(--border);white-space:nowrap}
+.bsjp-score-bar{height:5px;border-radius:3px;background:var(--input);overflow:hidden;margin-top:.25rem;width:100%}
+.bsjp-score-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--brand),var(--buy))}
+
+/* BSJP sell table */
+.bsjp-sell-row{display:grid;grid-template-columns:90px 1fr 1fr 1fr 90px 1fr;gap:.5rem;align-items:center;padding:.6rem .8rem;border-bottom:1px solid var(--border);font-size:.83rem;transition:.12s}
+.bsjp-sell-row:hover{background:var(--hover)}
+.bsjp-sell-row.header{font-size:.7rem;font-weight:700;color:var(--mute);text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border);background:var(--input);border-radius:8px 8px 0 0}
+.bsjp-sell-row.sell-now{border-left:4px solid var(--sell);background:rgba(239,68,68,.04)}
+
+/* BSJP Advisor verdict */
+.bsjp-verdict{margin:.2rem 0 1rem;padding:.8rem 1rem;border-radius:10px;border:1px solid var(--border);background:var(--panel)}
+.bsjp-verdict.beli-kuat{border-left:4px solid var(--buy)}
+.bsjp-verdict.beli-hati{border-left:4px solid var(--hold)}
+.bsjp-verdict.tahan{border-left:4px solid var(--brand)}
+.bsjp-verdict.hindari{border-left:4px solid var(--sell)}
+.bsjp-verdict-head{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.5rem}
+.bsjp-verdict-label{font-weight:800;font-size:.9rem}
+.bsjp-verdict-plan{font-size:.82rem;margin-top:.5rem;padding:.5rem .65rem;border-radius:8px;background:color-mix(in srgb,var(--brand) 8%,transparent);border:1px solid color-mix(in srgb,var(--brand) 22%,transparent);display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem}
+.bsjp-verdict-plan-item{display:flex;flex-direction:column;gap:.15rem}
+.bsjp-verdict-plan-lbl{font-size:.65rem;color:var(--mute);text-transform:uppercase;letter-spacing:.3px}
+.bsjp-verdict-plan-val{font-weight:800;color:var(--text)}
+
+/* Guide cards */
+.bsjp-guide-card{border-radius:12px;padding:1rem 1.1rem;border:1px solid var(--border)}
+.bsjp-guide-card.bsjp-buy{background:rgba(16,185,129,.05);border-color:rgba(16,185,129,.3)}
+.bsjp-guide-card.bsjp-sell{background:rgba(239,68,68,.05);border-color:rgba(239,68,68,.3)}
+.bsjp-guide-title{font-weight:800;font-size:.9rem;margin-bottom:.7rem;color:var(--text)}
+.bsjp-guide-list{margin:.4rem 0;padding-left:1.3rem;line-height:1.9;color:var(--dim);font-size:.85rem}
+.bsjp-guide-list li{margin:.05rem 0}
+
+/* Warning box */
+.bsjp-warning{padding:.75rem 1rem;border-radius:10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);color:var(--text);font-size:.84rem;line-height:1.55}
+
+/* Responsive */
+@media(max-width:860px){
+  .bsjp-row{grid-template-columns:70px 1fr 1fr 1fr;}.bsjp-row > :nth-child(n+5){display:none}
+  .bsjp-sell-row{grid-template-columns:70px 1fr 1fr 1fr}.bsjp-sell-row > :nth-child(n+5){display:none}
+  .bsjp-verdict-plan{grid-template-columns:1fr 1fr}
+}
+

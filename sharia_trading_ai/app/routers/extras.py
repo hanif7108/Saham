@@ -7,7 +7,7 @@ from fastapi import APIRouter
 from fastapi import HTTPException
 
 from app.config import settings
-from app.core import alerts, bei_calendar, commodities, decisions, dividend, reminders, telegram_notify, watcher
+from app.core import alerts, bei_calendar, commodities, decisions, dividend, funnel_cache, reminders, telegram_notify, watcher
 from app.data import build_master
 from app.models.schemas import DividendIn, HolidayIn, TelegramSendIn
 
@@ -16,19 +16,31 @@ router = APIRouter(prefix="/api", tags=["extras"])
 
 @router.get("/decisions")
 def get_decisions(limit: int | None = None, target: int | None = None,
-                  force_open: bool | None = None):
+                  force_open: bool | None = None, refresh: bool = False):
     """Pusat Keputusan portfolio-aware dgn strategi N-emiten terkonsentrasi.
 
     - `target`     = jumlah emiten yang dijaga (default config = 3).
     - `force_open` = Mode Uji: paksa sinyal penuh walau bursa libur (pengembangan).
+    - `refresh`    = True → hitung ulang sekarang (tombol Jalankan Funnel).
+                     False → pakai cache prefetch bila masih ≤ funnel_cache_minutes.
     """
-    return decisions.build_decisions(limit=limit, target=target, force_open=force_open)
+    return funnel_cache.get_decisions(
+        refresh=refresh, limit=limit, target=target, force_open=force_open,
+    )
+
+
+@router.get("/decisions/cache")
+def decisions_cache_status():
+    """Status cache Funnel periodik (umur, TTL, jam bursa)."""
+    return funnel_cache.status()
 
 
 @router.get("/market/status")
 def market_status():
-    """Status bursa buka/tutup (kalender libur BEI + akhir pekan + data)."""
-    return decisions.market_status()
+    """Status bursa IDX (BEI) + US (NYSE) — jam sesi & tren ringkas."""
+    idx = decisions.market_status()
+    us = decisions.market_status_us()
+    return {"idx": idx, "us": us}
 
 
 @router.get("/market/holidays")

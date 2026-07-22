@@ -44,15 +44,24 @@ def set_account(broker: str, cash: float, rdn: Optional[str] = None,
                 cash_at_broker: Optional[float] = None,
                 cash_at_rdn: Optional[float] = None,
                 gold_balance_grams: Optional[float] = None,
-                gold_avg_price: Optional[float] = None) -> dict[str, Any]:
+                gold_avg_price: Optional[float] = None,
+                currency: str = "IDR") -> dict[str, Any]:
     """Upsert saldo cash + biaya transaksi sebuah RDN (kunci = broker, dinormalisasi)."""
     broker = _norm_broker(broker) or (broker or "").strip()
     if not broker:
         raise ValueError("broker wajib diisi")
     rows = _load()
+    currency = (currency or "IDR").upper().strip()
+    # Trading US hanya di Pluang → akun Pluang default USD
+    if "pluang" in broker.lower() and (not currency or currency == "IDR"):
+        currency = "USD"
+    if currency not in ("IDR", "USD"):
+        currency = "IDR"
+        
     for r in rows:
         if r["broker"] == broker:
             r["cash"] = float(cash)
+            r["currency"] = currency
             if rdn:
                 r["rdn"] = rdn
             if bank:
@@ -74,7 +83,8 @@ def set_account(broker: str, cash: float, rdn: Optional[str] = None,
     new = {"id": max((r["id"] for r in rows), default=0) + 1,
            "broker": broker, "cash": float(cash), "rdn": rdn, "bank": bank,
            "fee_buy_pct": float(fee_buy_pct) if fee_buy_pct is not None else MM.FEE_BUY_PCT,
-           "fee_sell_pct": float(fee_sell_pct) if fee_sell_pct is not None else MM.FEE_SELL_PCT}
+           "fee_sell_pct": float(fee_sell_pct) if fee_sell_pct is not None else MM.FEE_SELL_PCT,
+           "currency": currency}
     if cash_at_broker is not None:
         new["cash_at_broker"] = float(cash_at_broker)
     if cash_at_rdn is not None:
@@ -116,7 +126,8 @@ def adjust_cash(broker: str, delta: float) -> dict[str, Any]:
     rows = _load()
     for r in rows:
         if r["broker"] == broker:
-            r["cash"] = round(float(r.get("cash") or 0) + float(delta))
+            is_us = r.get("currency") == "USD"
+            r["cash"] = round(float(r.get("cash") or 0) + float(delta), 2 if is_us else 0)
             _save(rows)
             return r
     return set_account(broker, max(0.0, float(delta)))
@@ -199,6 +210,7 @@ def _health(cash_pct: Optional[float], open_slots: int) -> Optional[str]:
 # --------------------------- breakdown per RDN --------------------------- #
 def breakdown() -> dict[str, Any]:
     from app.core import commodities
+    from app.data.provider import is_us_ticker, get_usd_idr_rate
     
     # Ambil harga emas per gram IDR
     gold_price_g = None
@@ -210,6 +222,7 @@ def breakdown() -> dict[str, Any]:
     except Exception:
         pass
 
+    usd_rate = get_usd_idr_rate()
     accounts = {a["broker"]: a for a in _load()}
     positions = portfolio.list_positions()["positions"]
     target = max(1, int(settings.target_holdings))
@@ -219,16 +232,24 @@ def breakdown() -> dict[str, Any]:
         groups.setdefault(p.get("broker") or "Tanpa RDN", []).append(p)
 
     rdns: list[dict[str, Any]] = []
-    tot_cash = tot_asset = tot_pl = tot_net_pl = tot_gold_value = tot_gold_pl = tot_gold_cost = 0.0
-    tot_trading_asset = tot_investasi_asset = tot_trading_pl = tot_investasi_pl = 0.0
+    tot_cash_idr = tot_asset_idr = tot_pl_idr = tot_net_pl_idr = tot_gold_value = tot_gold_pl = tot_gold_cost = 0.0
+    tot_trading_asset_idr = tot_investasi_asset_idr = tot_trading_pl_idr = tot_investasi_pl_idr = 0.0
     
     for broker in sorted(set(groups) | set(accounts)):
         ps = groups.get(broker, [])
-        asset = sum((p.get("value") or 0) for p in ps)                 # nilai pasar (gross)
-        net_asset = sum((p.get("net_value") if p.get("net_value") is not None else (p.get("value") or 0)) for p in ps)
-        cost = sum((p.get("total_cost") or p.get("cost") or 0) for p in ps)
-        pl = sum((p.get("pl") or 0) for p in ps)                       # P/L kotor
-        net_pl = sum((p.get("net_pl") if p.get("net_pl") is not None else (p.get("pl") or 0)) for p in ps)
+        
+        acc = accounts.get(broker, {})
+        acc_currency = acc.get("currency") or "IDR"
+        cash_rate = usd_rate if acc_currency == "USD" else 1.0
+        cash = float(acc.get("cash") or 0)
+        cash_idr = cash * cash_rate
+        
+        # Hitung asset-asset dalam IDR (konversi jika ticker adalah US)
+        asset_idr = sum((p.get("value") or 0) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in ps)                 # nilai pasar (gross) IDR
+        net_asset_idr = sum((p.get("net_value") if p.get("net_value") is not None else (p.get("value") or 0)) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in ps)
+        cost_idr = sum((p.get("total_cost") or p.get("cost") or 0) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in ps)
+        pl_idr = sum((p.get("pl") or 0) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in ps)                       # P/L kotor IDR
+        net_pl_idr = sum((p.get("net_pl") if p.get("net_pl") is not None else (p.get("pl") or 0)) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in ps)
         
         # Hanya hitung emiten trading untuk money management bursa
         emiten = len({p["ticker"] for p in ps if p.get("type", "trading") == "trading"})
@@ -236,18 +257,16 @@ def breakdown() -> dict[str, Any]:
         trading_ps = [p for p in ps if p.get("type", "trading") == "trading"]
         investasi_ps = [p for p in ps if p.get("type", "trading") == "investasi"]
         
-        trading_asset = sum((p.get("value") or 0) for p in trading_ps)
-        trading_net_asset = sum((p.get("net_value") if p.get("net_value") is not None else (p.get("value") or 0)) for p in trading_ps)
-        trading_cost = sum((p.get("total_cost") or p.get("cost") or 0) for p in trading_ps)
-        trading_pl_val = sum((p.get("net_pl") if p.get("net_pl") is not None else (p.get("pl") or 0)) for p in trading_ps)
+        trading_asset_idr = sum((p.get("value") or 0) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in trading_ps)
+        trading_net_asset_idr = sum((p.get("net_value") if p.get("net_value") is not None else (p.get("value") or 0)) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in trading_ps)
+        trading_cost_idr = sum((p.get("total_cost") or p.get("cost") or 0) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in trading_ps)
+        trading_pl_val_idr = sum((p.get("net_pl") if p.get("net_pl") is not None else (p.get("pl") or 0)) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in trading_ps)
         
-        investasi_asset = sum((p.get("value") or 0) for p in investasi_ps)
-        investasi_net_asset = sum((p.get("net_value") if p.get("net_value") is not None else (p.get("value") or 0)) for p in investasi_ps)
-        investasi_cost = sum((p.get("total_cost") or p.get("cost") or 0) for p in investasi_ps)
-        investasi_pl_val = sum((p.get("net_pl") if p.get("net_pl") is not None else (p.get("pl") or 0)) for p in investasi_ps)
+        investasi_asset_idr = sum((p.get("value") or 0) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in investasi_ps)
+        investasi_net_asset_idr = sum((p.get("net_value") if p.get("net_value") is not None else (p.get("value") or 0)) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in investasi_ps)
+        investasi_cost_idr = sum((p.get("total_cost") or p.get("cost") or 0) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in investasi_ps)
+        investasi_pl_val_idr = sum((p.get("net_pl") if p.get("net_pl") is not None else (p.get("pl") or 0)) * (usd_rate if is_us_ticker(p["ticker"]) else 1.0) for p in investasi_ps)
         
-        acc = accounts.get(broker, {})
-        cash = float(acc.get("cash") or 0)
         cash_at_broker = acc.get("cash_at_broker")
         cash_at_rdn = acc.get("cash_at_rdn")
         fee_buy = float(acc.get("fee_buy_pct", MM.FEE_BUY_PCT))
@@ -264,26 +283,35 @@ def breakdown() -> dict[str, Any]:
                 gold_pl = gold_value - gold_cost
                 gold_pl_pct = round(gold_pl / gold_cost * 100, 2) if gold_cost else 0.0
                 
-        equity = cash + asset + gold_value
+        equity_idr = cash_idr + asset_idr + gold_value
         advice = _mm_advice(cash, emiten, target, fee_buy, fee_sell) if broker != "Tring Pegadaian" else None
-        cash_pct = round(cash / equity * 100, 1) if equity else None
-        cr = round(cash / cost * 100, 2) if (cost and cash is not None) else None
+        
+        # Jika mata uang RDN adalah USD, sesuaikan note/saran dengan simbol $
+        if advice and acc_currency == "USD":
+            advice["note"] = advice["note"].replace("Rp ", "$").replace("Rp", "$").replace("Rp.", "$")
+            
+        cash_pct = round(cash_idr / equity_idr * 100, 1) if equity_idr else None
+        cr = round(cash_idr / cost_idr * 100, 2) if (cost_idr and cash_idr is not None) else None
+        
         rdns.append({
             "broker": broker, "rdn": acc.get("rdn"), "bank": acc.get("bank"),
             "account_id": acc.get("id"), "has_cash": broker in accounts,
             "fee_buy_pct": fee_buy, "fee_sell_pct": fee_sell,
-            "cash": round(cash), "asset_value": round(asset), "net_asset": round(net_asset),
-            "cost": round(cost),
-            "pl": round(net_pl), "pl_gross": round(pl),
-            "pl_pct": round(net_pl / cost * 100, 2) if cost else None,
-            "equity": round(equity),
+            "cash": round(cash, 2) if acc_currency == "USD" else round(cash), 
+            "cash_idr": round(cash_idr),
+            "currency": acc_currency,
+            "asset_value": round(asset_idr), "net_asset": round(net_asset_idr),
+            "cost": round(cost_idr),
+            "pl": round(net_pl_idr), "pl_gross": round(pl_idr),
+            "pl_pct": round(net_pl_idr / cost_idr * 100, 2) if cost_idr else None,
+            "equity": round(equity_idr),
             "emiten": emiten if broker != "Tring Pegadaian" else 0,
             "target_emiten": target if broker != "Tring Pegadaian" else 0,
-            "cash_pct": cash_pct, "asset_pct": round(asset / equity * 100, 1) if equity else None,
+            "cash_pct": cash_pct, "asset_pct": round(asset_idr / equity_idr * 100, 1) if equity_idr else None,
             "tickers": sorted({p["ticker"] for p in ps}),
             "advice": advice, "health": _health(cash_pct, advice["open_slots"]) if advice else None,
-            "cash_at_broker": round(cash_at_broker) if cash_at_broker is not None else None,
-            "cash_at_rdn": round(cash_at_rdn) if cash_at_rdn is not None else None,
+            "cash_at_broker": round(cash_at_broker, 2) if (cash_at_broker is not None and acc_currency == "USD") else round(cash_at_broker) if cash_at_broker is not None else None,
+            "cash_at_rdn": round(cash_at_rdn, 2) if (cash_at_rdn is not None and acc_currency == "USD") else round(cash_at_rdn) if cash_at_rdn is not None else None,
             "current_ratio": cr,
             "gold_balance_grams": gold_balance_grams,
             "gold_avg_price": gold_avg_price,
@@ -291,56 +319,57 @@ def breakdown() -> dict[str, Any]:
             "gold_cost": gold_cost if gold_balance_grams else None,
             "gold_pl": gold_pl if gold_balance_grams else None,
             "gold_pl_pct": gold_pl_pct if gold_balance_grams else None,
-            "gold_pct": round(gold_value / equity * 100, 1) if (equity and gold_balance_grams) else None,
+            "gold_pct": round(gold_value / equity_idr * 100, 1) if (equity_idr and gold_balance_grams) else None,
             "gold_price_g": gold_price_g,
             
             # breakdown per tipe
-            "trading_asset_value": round(trading_asset),
-            "trading_net_asset": round(trading_net_asset),
-            "trading_cost": round(trading_cost),
-            "trading_pl": round(trading_pl_val),
-            "investasi_asset_value": round(investasi_asset),
-            "investasi_net_asset": round(investasi_net_asset),
-            "investasi_cost": round(investasi_cost),
-            "investasi_pl": round(investasi_pl_val),
+            "trading_asset_value": round(trading_asset_idr),
+            "trading_net_asset": round(trading_net_asset_idr),
+            "trading_cost": round(trading_cost_idr),
+            "trading_pl": round(trading_pl_val_idr),
+            "investasi_asset_value": round(investasi_asset_idr),
+            "investasi_net_asset": round(investasi_net_asset_idr),
+            "investasi_cost": round(investasi_cost_idr),
+            "investasi_pl": round(investasi_pl_val_idr),
         })
-        tot_cash += cash
-        tot_asset += asset
-        tot_pl += pl
-        tot_net_pl += net_pl
+        tot_cash_idr += cash_idr
+        tot_asset_idr += asset_idr
+        tot_pl_idr += pl_idr
+        tot_net_pl_idr += net_pl_idr
         tot_gold_value += gold_value
         tot_gold_pl += gold_pl
         tot_gold_cost += gold_cost
         
-        tot_trading_asset += trading_asset
-        tot_investasi_asset += investasi_asset
-        tot_trading_pl += trading_pl_val
-        tot_investasi_pl += investasi_pl_val
+        tot_trading_asset_idr += trading_asset_idr
+        tot_investasi_asset_idr += investasi_asset_idr
+        tot_trading_pl_idr += trading_pl_val_idr
+        tot_investasi_pl_idr += investasi_pl_val_idr
 
-    tot_equity = tot_cash + tot_asset + tot_gold_value
-    tot_pl_all = tot_net_pl + tot_gold_pl
+    tot_equity_idr = tot_cash_idr + tot_asset_idr + tot_gold_value
+    tot_pl_all_idr = tot_net_pl_idr + tot_gold_pl
     return {
         "rdn": rdns,
         "total": {
-            "cash": round(tot_cash), "asset_value": round(tot_asset),
+            "cash": round(tot_cash_idr), "asset_value": round(tot_asset_idr),
             "gold_value": round(tot_gold_value),
-            "equity": round(tot_equity), "pl": round(tot_pl_all), "pl_gross": round(tot_pl),
-            "cash_pct": round(tot_cash / tot_equity * 100, 1) if tot_equity else None,
-            "asset_pct": round(tot_asset / tot_equity * 100, 1) if tot_equity else None,
-            "gold_pct": round(tot_gold_value / tot_equity * 100, 1) if tot_equity else None,
+            "equity": round(tot_equity_idr), "pl": round(tot_pl_all_idr), "pl_gross": round(tot_pl_idr),
+            "cash_pct": round(tot_cash_idr / tot_equity_idr * 100, 1) if tot_equity_idr else None,
+            "asset_pct": round(tot_asset_idr / tot_equity_idr * 100, 1) if tot_equity_idr else None,
+            "gold_pct": round(tot_gold_value / tot_equity_idr * 100, 1) if tot_equity_idr else None,
             
             # component breakdown totals
-            "trading_value": round(tot_cash + tot_trading_asset),
-            "trading_pct": round((tot_cash + tot_trading_asset) / tot_equity * 100, 1) if tot_equity else None,
-            "trading_pl": round(tot_trading_pl),
-            "investasi_value": round(tot_investasi_asset),
-            "investasi_pct": round(tot_investasi_asset / tot_equity * 100, 1) if tot_equity else None,
-            "investasi_pl": round(tot_investasi_pl),
+            "trading_value": round(tot_cash_idr + tot_trading_asset_idr),
+            "trading_pct": round((tot_cash_idr + tot_trading_asset_idr) / tot_equity_idr * 100, 1) if tot_equity_idr else None,
+            "trading_pl": round(tot_trading_pl_idr),
+            "investasi_value": round(tot_investasi_asset_idr),
+            "investasi_pct": round(tot_investasi_asset_idr / tot_equity_idr * 100, 1) if tot_equity_idr else None,
+            "investasi_pl": round(tot_investasi_pl_idr),
             
             "target_emiten": target, "jumlah_rdn": len(rdns),
         },
         "catatan": ("Cash & aset dirinci per RDN/Pegadaian. Saran alokasi memakai metode Money Management "
                     f"(dana trading {MM.TRADING_FUND_PCT:.0f}% dari cash, sisanya cadangan) dan menjaga "
                     f"jumlah emiten = {target}. Portofolio terbagi menjadi 3 komponen: Trading Harian, "
-                    "Investasi Saham (tahunan/dividen), dan Investasi Emas."),
+                    "Investasi Saham (tahunan/dividen), dan Investasi Emas. Cash dan posisi RDN asing (USD) "
+                    "secara otomatis dikonversi ke IDR untuk perhitungan total."),
     }

@@ -28,8 +28,13 @@ kepatuhan pada **Fatwa DSN-MUI**.
 EPS(+), ROA>15%, ROE>15%, DER<1, PBV<1, PER<10x; bonus Dividend Yield>7%.
 
 ### 3. CAN SLIM (`core/canslim.py`)
-C (EPS kuartal YoY>25%), A (EPS tahunan>25% 3thn & ROE>17%), N (dekat ATH+volume),
-S (cap & free float), L (relative strength vs IHSG), I (institutional), M (IHSG vs SMA200).
+C (EPS kuartal YoY>25%), A (EPS tahunan>20% 3thn & ROE>17%), N (dekat ATH),
+S (free float <50% + volume/FF ketat), L (rank ≤3 sektor atau RS vs IHSG), I (institutional), M (IHSG vs MA50).
+
+**Satu sumber data dengan 6 Magic Number** via `fundamental.get_metrics()` (hybrid:
+TradingView → master_data → yfinance). Funnel selalu memanggil
+`evaluate_canslim(..., fund=fund)` agar huruf C tidak bisa `n/a` sementara Magic
+sudah terisi (regresi anti-PSAB).
 
 ### 4. Teknikal (`core/technical.py`)
 SMA200 (filter tren), Stochastic (%K/%D, OB/OS, golden/dead cross), support/resistance,
@@ -38,6 +43,14 @@ pola candlestick reversal, deteksi entry: **FBO, 52WBO, BOR, BDTL, Buy-on-Pullba
 ### 5. Money Management & Trading Plan (`core/trading_plan.py`)
 Position sizing (LOT = Modal/MP/100), **Taichi** (OB1/OB2/OB3, konservatif 2:4:8 /
 moderat 30:30:40), average, RRR (min 1:2), trading/loss(3%)/profit(6%) fund.
+
+### 6. Scoring rekomendasi (`core/layered_scoring.py`)
+Default `SCORING_MODEL=layered` (rollback: `legacy` di `.env`):
+
+1. **Hard gate**: DES/ISSI → spread ≤2% & vol median 5d ≥ Rp5jt → IHSG bukan ekstrem (MA20 < MA60 by >5%).
+2. **Quality**: `Fund×0.3 + Tech×0.2 + Bandar×0.15 + Liq×0.15 + IHSG×0.15 + Risk×0.1` (bobot spreadsheet).
+3. **Timing** (terpisah, layak entry ≥65) + **Multiplier**: BULLISH ×1 · NEUTRAL ×0.8 · BEARISH ×0 (×0.5 defensif).
+4. **Final** = Quality × Mult (+ Timing Bonus 0): ≥75 STRONG BUY · 55–74 WATCHLIST · <55 SKIP.
 
 ## Menjalankan
 
@@ -93,34 +106,34 @@ Di `app/templates/index.html` + `app/static/{style.css,app.js}`:
 
 Tombol ✦ Advisor menghasilkan narasi analisa + saran trading plan berbahasa
 Indonesia (ringkasan, kekuatan, risiko, teknikal, saran), tetap dalam koridor syariah.
-**Tiga engine** — pilih di dropdown, atau `auto` (Claude → Ollama → Lokal):
+Pilih di dropdown, atau `auto` (**Gemini → DeepSeek → Lokal**):
 
 | Engine | Biaya | Kecepatan | Modul |
 |---|---|---|---|
-| **Lokal** (berbasis aturan) | gratis | instan | `core/local_advisor.py` |
-| **Ollama** (LLM lokal, mis. gemma4) | gratis | ~20–35 dtk | `core/ollama_advisor.py` |
 | **Gemini** (`gemini-2.5-flash`) | gratis (free tier, ada kuota/RPM) | ~5–10 dtk | `core/gemini_advisor.py` |
-| **Claude** (`claude-opus-4-8`) | ~$0.02–0.03 | ~5–10 dtk | `core/ai_advisor.py` |
+| **DeepSeek** (`deepseek-chat`) | saldo API DeepSeek | ~5–15 dtk | `core/deepseek_advisor.py` |
+| **Lokal** (berbasis aturan) | gratis | instan | `core/local_advisor.py` |
 
-Prioritas `auto`: Claude → Gemini → Ollama → Lokal.
-
-- **Ollama** auto-terdeteksi bila server jalan di `localhost:11434`. Model thinking
-  (gemma4) dipakai dengan `"think": false` agar token tak habis untuk reasoning.
-  Atur via `OLLAMA_BASE_URL` / `OLLAMA_MODEL` di `.env`.
-- **Claude** aktif bila `ANTHROPIC_API_KEY` di-set:
-  ```bash
-  echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env   # lalu restart uvicorn
-  ```
-- Paksa engine: `GET /api/advisor/{ticker}?engine=lokal|ollama|claude`.
-
-- **Gemini** aktif bila `GEMINI_API_KEY` di-set (gratis dari aistudio.google.com):
+- **Gemini** aktif bila `GEMINI_API_KEY` di-set (gratis dari [aistudio.google.com](https://aistudio.google.com/apikey)):
   ```bash
   echo 'GEMINI_API_KEY=AIza...' >> .env   # lalu restart uvicorn
   ```
-  Atur model via `GEMINI_MODEL` (default `gemini-2.5-flash`; model 2.5 = thinking →
-  `thinkingConfig.thinkingBudget=0` agar token tak habis). Pakai REST langsung (httpx),
+  Atur model via `GEMINI_MODEL` (default `gemini-2.5-flash`). Pakai REST langsung (httpx),
   tanpa SDK. Free tier punya batas RPM/harian — bila kena limit/overload, app otomatis
   **fallback ke Advisor Lokal**.
+- **DeepSeek** aktif bila `DEEPSEEK_API_KEY` di-set ([platform.deepseek.com](https://platform.deepseek.com)):
+  ```bash
+  echo 'DEEPSEEK_API_KEY=sk-...' >> .env
+  # opsional: DEEPSEEK_MODEL=deepseek-chat
+  ```
+  Lalu restart uvicorn. Pilih **◈ DeepSeek** di dropdown Advisor.
+- Paksa engine: `GET /api/advisor/{ticker}?engine=gemini|deepseek|lokal`.
+
+### Prefetch Funnel (jam bursa IDX)
+Server menghitung ulang Pusat Keputusan tiap **30 menit** saat jam bursa
+(08:45–16:15 WIB, hari perdagangan). Hasil disimpan di cache; membuka web
+menampilkan data maksimal 30 menit sebelumnya. Tombol **Jalankan Funnel**
+memaksa hitung ulang (`?refresh=true`). Nonaktifkan: `FUNNEL_CACHE_ENABLED=false`.
 
 ## Test
 

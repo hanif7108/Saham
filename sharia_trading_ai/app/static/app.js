@@ -8,34 +8,102 @@ const post = async (u, b) => (await fetch(u, { method: 'POST', headers: { 'Conte
 function toast(m){ const t=$('#toast'); t.textContent=m; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none',2600); }
 let LAST_SCREEN = [];
 let CURRENT_TICKERS = [];
+const MANUAL_TK_KEY = 'sta_manual_tickers';
+
+function normalizeTicker(raw){
+  let t = (raw || '').toString().trim().toUpperCase();
+  if(!t) return '';
+  if(t.endsWith('.JK')) t = t.slice(0, -3);
+  return t;
+}
+
+function getTicker(){
+  return normalizeTicker($('#tk') && $('#tk').value);
+}
+
+function setTicker(tk){
+  const el = $('#tk');
+  if(!el) return;
+  el.value = normalizeTicker(tk);
+}
+
+function loadManualTickers(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(MANUAL_TK_KEY) || '[]');
+    return Array.isArray(raw) ? raw.map(normalizeTicker).filter(Boolean) : [];
+  }catch(_){ return []; }
+}
+
+function saveManualTicker(tk){
+  tk = normalizeTicker(tk);
+  if(!tk) return;
+  if(CURRENT_TICKERS.includes(tk)) return; // sudah di funnel
+  const list = [tk, ...loadManualTickers().filter(x => x !== tk)].slice(0, 12);
+  localStorage.setItem(MANUAL_TK_KEY, JSON.stringify(list));
+  renderManualChips();
+  refreshTickerDatalist();
+}
+
+function clearManualTickers(){
+  localStorage.removeItem(MANUAL_TK_KEY);
+  renderManualChips();
+  refreshTickerDatalist();
+  toast('Riwayat ticker manual dihapus.');
+}
+
+function renderManualChips(){
+  const box = $('#tk-manual-chips');
+  if(!box) return;
+  const manuals = loadManualTickers().filter(t => !CURRENT_TICKERS.includes(t));
+  if(!manuals.length){
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = `<span class="mut" style="font-size:.72rem;margin-right:.15rem">Riwayat manual:</span>` +
+    manuals.map(t => `<button type="button" class="badge na" style="cursor:pointer;font-size:.72rem;padding:3px 8px;border:1px solid var(--line);background:rgba(255,255,255,.04)" onclick="setTicker('${t}');analyze()">${esc(t)}</button>`).join('') +
+    `<button type="button" class="mut" style="font-size:.68rem;cursor:pointer;background:none;border:none;text-decoration:underline;padding:0 4px" onclick="clearManualTickers()">hapus</button>`;
+}
+
+function refreshTickerDatalist(){
+  const dl = $('#tk-list');
+  if(!dl) return;
+  const manuals = loadManualTickers();
+  const seen = new Set();
+  const opts = [];
+  CURRENT_TICKERS.forEach(t => {
+    if(seen.has(t)) return;
+    seen.add(t);
+    opts.push(`<option value="${esc(t)}">Funnel</option>`);
+  });
+  manuals.forEach(t => {
+    if(seen.has(t)) return;
+    seen.add(t);
+    opts.push(`<option value="${esc(t)}">Manual</option>`);
+  });
+  dl.innerHTML = opts.join('');
+}
 
 function populateTickers(list, selectedTicker) {
-  const sel = $('#tk');
-  if (!sel) return;
-  CURRENT_TICKERS = list.map(t => typeof t === 'string' ? t : t.ticker);
-  sel.innerHTML = list.map(t => {
-    if (typeof t === 'string') {
-      return `<option value="${t}">${t}</option>`;
-    } else {
-      const acc = t.akurasi_pct != null ? `${t.akurasi_pct.toFixed(1)}%` : '0.0%';
-      return `<option value="${t.ticker}">${t.ticker} (Akurasi ${acc})</option>`;
-    }
-  }).join('');
+  CURRENT_TICKERS = list.map(t => typeof t === 'string' ? normalizeTicker(t) : normalizeTicker(t.ticker)).filter(Boolean);
+  refreshTickerDatalist();
+  renderManualChips();
   const tickerVal = selectedTicker && (typeof selectedTicker === 'string' ? selectedTicker : selectedTicker.ticker);
-  if (tickerVal && CURRENT_TICKERS.includes(tickerVal)) {
-    sel.value = tickerVal;
-  } else if (list.length > 0) {
-    sel.selectedIndex = 0;
+  if (tickerVal) {
+    setTicker(tickerVal);
+  } else if (!getTicker() && CURRENT_TICKERS.length > 0) {
+    setTicker(CURRENT_TICKERS[0]);
   }
 }
 
 function navigateStock(dir) {
-  const sel = $('#tk');
-  if (!sel || !CURRENT_TICKERS.length) return;
-  let idx = sel.selectedIndex + dir;
+  if (!CURRENT_TICKERS.length) { toast('Daftar funnel belum dimuat.'); return; }
+  const cur = getTicker();
+  let idx = CURRENT_TICKERS.indexOf(cur);
+  if (idx < 0) idx = dir > 0 ? -1 : 0;
+  idx = idx + dir;
   if (idx < 0) idx = CURRENT_TICKERS.length - 1;
   if (idx >= CURRENT_TICKERS.length) idx = 0;
-  sel.selectedIndex = idx;
+  setTicker(CURRENT_TICKERS[idx]);
   analyze();
 }
 
@@ -44,6 +112,46 @@ function toggleTheme(){ const r=document.documentElement; const t=r.getAttribute
   r.setAttribute('data-theme',t); localStorage.setItem('theme',t); $('meta[name=theme-color]').setAttribute('content',t==='dark'?'#0f172a':'#eef2f7'); }
 (function(){ const s=localStorage.getItem('theme'); if(s) document.documentElement.setAttribute('data-theme',s); })();
 
+const TAB_INFOS = {
+  dash: {
+    title: "🏠 Dashboard (Pusat Keputusan)",
+    desc: "Selamat datang di Pusat Keputusan! Tab ini berfungsi sebagai dashboard utama untuk memantau sinyal trading harian Anda. Di sini, Anda dapat melihat sinyal <b>BELI / HOLD / JUAL</b> yang dihasilkan secara otomatis oleh Funnel Kuantitatif berbasis aturan. Di bawahnya, Anda juga dapat memantau arah pasar IHSG (komponen M dalam CAN SLIM) untuk menghindari bertransaksi saat pasar sedang bearish, serta melihat Radar Kontradiksi TradingView untuk menyaring sinyal palsu."
+  },
+  analyze: {
+    title: "🔎 Analisa Saham (Pusat Riset Emiten)",
+    desc: "Masuk ke area riset saham aktif! Tab ini menggabungkan semua alat analisis dan penyaringan emiten syariah Anda. Gunakan sub-tab <b>Analisa Ticker</b> untuk mencari dan meminta saran naratif dari <b>Gemini / Advisor Lokal</b> tentang emiten tertentu. Butuh mencari peluang baru? Alihkan sub-tab ke <b>Screening</b> atau <b>Undervalue</b> untuk menyaring puluhan saham secara konvensional, hitung porsi modal dengan <b>Trading Plan</b>, atau pantau menu saham sore-pagi di sub-tab <b>BSJP</b>."
+  },
+  port: {
+    title: "💼 Portofolio & Manajemen Modal",
+    desc: "Kelola kemakmuran Anda di sini! Tab ini adalah tempat Anda memantau seluruh alokasi modal dan kepemilikan aset. Gunakan sub-tab <b>Portofolio RDN</b> untuk memantau kas di rekening broker riil, sub-tab <b>Simulasi</b> untuk mencatat histori kinerja paper trading (keakuratan prediksi), serta kelola kepemilikan pelindung nilai (safe-haven) Anda pada emas digital dan perak/dinar di sub-tab <b>Emas</b> dan <b>Perak</b>."
+  },
+  learn: {
+    title: "📖 Pembelajaran & Standardisasi",
+    desc: "Tingkatkan keahlian trading syariah Anda! Tab ini dirancang sebagai pustaka edukasi dan panduan kepatuhan. Anda dapat membaca modul kurikulum investasi di sub-tab <b>AI Learning</b>, memantau checklist rutinitas harian trading di sub-tab <b>Strategi Harian</b>, serta membaca standardisasi hukum investasi di sub-tab <b>Pedoman Syariah</b> berdasarkan Fatwa DSN-MUI."
+  }
+};
+
+const SUB_TAB_INFOS = {
+  // Analisa Saham
+  "analyze-core": "🔎 <b>Analisa Ticker:</b> Pilih dari ~100 saham funnel, atau <b>ketik kode manual</b> (BEI / US dengan akhiran .US) untuk Analisa + Advisor on-demand. Gemini (gratis) atau Advisor Lokal.",
+  "screen": "🧮 <b>Screening:</b> Lakukan penyaringan saham dari 75+ emiten syariah berdasarkan parameter Stochastic RSI, tren pergerakan harga, dan pola Golden Cross teknikal.",
+  "underval": "💎 <b>Screener Undervalue:</b> Temukan saham syariah bervaluasi rendah (PBV/PER/PEG Graham murah) yang secara historis memiliki win-rate pembalikan arah (rebound) terbaik.",
+  "investasi_saham": "🌟 <b>Investasi Saham:</b> Halaman evaluasi dan proyeksi dividen jangka panjang (ASII, SIDO, dll) untuk investasi tahunan non-trading.",
+  "bsjp": "🌙 <b>BSJP:</b> Strategi 'Beli Sore Jual Pagi' (overnight trading) yang memantau kekuatan beli IEP di pre-closing untuk dilepas cepat di pre-opening pagi.",
+  "plan": "📊 <b>Trading Plan:</b> Kalkulator alokasi dana per emiten menggunakan formula Money Management defensif dan strategi beli bertahap Taichi (OB1, OB2, OB3).",
+
+  // Portofolio
+  "port-core": "💼 <b>Portofolio RDN:</b> Pantau saldo rekening dana nasabah (RDN) riil Anda, hitung rasio alokasi tunai vs saham, serta pantau floating profit/loss posisi aktif.",
+  "sim": "🧪 <b>Simulasi:</b> Rapor prediksi trading. Sistem merekam otomatis posisi rekomendasi beli harian dan melacak kinerjanya secara teratur untuk melatih adaptasi model AI.",
+  "emas": "🥇 <b>Emas & Komoditas:</b> Catat dan pantau portofolio kepemilikan emas digital Anda di Tring Pegadaian lengkap dengan estimasi keuntungan/kerugian nilai riil.",
+  "perak": "🪙 <b>Perak & Dinar:</b> Catat dan pantau alokasi kepemilikan perak dan koin dinar/dirham sebagai penyeimbang risiko portofolio saham.",
+
+  // Pembelajaran
+  "learn-core": "📖 <b>AI Learning:</b> Kurikulum materi trading pasar modal, panduan penggunaan dashboard, dan fitur pencatatan tingkat penyelesaian materi.",
+  "strat": "📚 <b>Strategi Harian:</b> Checklist dan panduan tugas wajib harian trader dari pra-pembukaan bursa hingga pasca-penutupan bursa.",
+  "ped": "📜 <b>Pedoman Syariah:</b> Standardisasi dan hukum investasi pasar modal syariah berdasarkan fatwa Dewan Syariah Nasional (DSN-MUI)."
+};
+
 /* tabs (+ lazy load) */
 let _loaded = {};
 document.querySelectorAll('.tab-btn-main').forEach(t => t.onclick = () => {
@@ -51,17 +159,58 @@ document.querySelectorAll('.tab-btn-main').forEach(t => t.onclick = () => {
   document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
   t.classList.add('active'); $('#' + t.dataset.p).classList.add('active');
   const p = t.dataset.p;
+  
+  // Update banner info
+  const info = TAB_INFOS[p];
+  if(info) {
+    const titleEl = $('#tab-info-title');
+    const descEl = $('#tab-info-desc');
+    if(titleEl) titleEl.textContent = info.title;
+    if(descEl) descEl.innerHTML = info.desc;
+  }
+  
   if(p==='port') loadPortfolio();
-  if(p==='investasi_saham') loadInvestasiSaham();
-  if(p==='sim') loadSimulation();
-  if((p==='emas'||p==='perak') && !_loaded.cmd){ loadCommodities(); }
   if(p==='learn') loadLearning();
   if(p==='dash' && !_loaded.cc){ loadCrossCheck(); }   // auto-load radar saat buka Dashboard
 });
 
+/* sub-tabs (+ lazy load) */
+document.querySelectorAll('.sub-tab-btn').forEach(btn => {
+  btn.onclick = () => {
+    const parentPanel = btn.closest('.panel');
+    parentPanel.querySelectorAll('.sub-tab-btn').forEach(x => x.classList.remove('active'));
+    parentPanel.querySelectorAll('.sub-panel').forEach(x => x.classList.remove('active'));
+    btn.classList.add('active');
+    const subId = btn.dataset.sub;
+    parentPanel.querySelector('#' + subId).classList.add('active');
+    
+    // Update banner info for sub-tab
+    const subInfo = SUB_TAB_INFOS[subId];
+    if(subInfo) {
+      const mainActive = document.querySelector('.tab-btn-main.active');
+      const mainTitle = mainActive ? mainActive.textContent.trim() : "";
+      const subTitle = btn.textContent.trim();
+      const titleEl = $('#tab-info-title');
+      const descEl = $('#tab-info-desc');
+      if(titleEl) titleEl.textContent = `${mainTitle} · Sub-Tab ${subTitle}`;
+      if(descEl) descEl.innerHTML = subInfo;
+    }
+    
+    // trigger lazy load
+    if(subId==='port-core') loadPortfolio();
+    if(subId==='investasi_saham') loadInvestasiSaham();
+    if(subId==='sim') loadSimulation();
+    if((subId==='emas'||subId==='perak') && !_loaded.cmd){ loadCommodities(); }
+    if(subId==='bsjp') { loadBSJPSession(); }
+  };
+});
+
 /* shared bits */
-function pill(v, t){ const lbl = t || (v === true ? 'Lolos' : v === false ? 'Gagal' : 'n/a');
-  return `<span class="pill ${v===true?'ok':v===false?'no':'na'}">${lbl}</span>`; }
+function pill(v, t, metricName, actualValue){ 
+  const lbl = t || (v === true ? 'Lolos' : v === false ? 'Gagal' : 'n/a');
+  const clickAttr = metricName ? `style="cursor:pointer;" onclick="explainMetric(document.getElementById('tk').value.trim().toUpperCase(), '${esc(metricName)}', '${v === true ? 'Lolos' : 'Gagal'}', '${esc(actualValue || '')}')"` : '';
+  return `<span class="pill ${v===true?'ok':v===false?'no':'na'}" ${clickAttr}>${lbl}</span>`; 
+}
 function ring(pct, label, color){ const c = color || (pct>=66?'var(--buy)':pct>=40?'var(--hold)':'var(--sell)');
   return `<div class="ring" style="--p:${pct};--c:${c}"><div class="v"><b>${Math.round(pct)}</b><span>${label}</span></div></div>`; }
 function ringScore(score, total, label){ const pct=total?score/total*100:0; const c=pct>=66?'var(--buy)':pct>=40?'var(--hold)':'var(--sell)';
@@ -70,12 +219,42 @@ function bar(pct, gold){ return `<div class="bar ${gold?'gold':''}"><i style="wi
 
 /* ===================== MARKET ===================== */
 let _mktChart = null;
+let _mktData = null;
+let _mktTimeframe = 'daily';
+
 async function loadMarket(){
-  try{ const m = await api('/api/market');
-    if(!m.ok){ $('#mkt').innerHTML='<span class="mut">Pasar n/a</span>'; return; }
-    window._marketTrend = m.trend;
-    const up=m.trend==='UPTREND';
-    $('#mkt').innerHTML = `
+  try {
+    const m = await api('/api/market');
+    _mktData = m;
+    renderMarketUI();
+  } catch(e) {
+    $('#mkt').innerHTML = '<span class="mut">Pasar n/a</span>';
+  }
+}
+
+function renderMarketUI() {
+  if (!_mktData || !_mktData.ok) {
+    $('#mkt').innerHTML = '<span class="mut">Pasar n/a</span>';
+    return;
+  }
+  const m = _mktData;
+  window._marketTrend = m.trend;
+  const up = m.trend === 'UPTREND';
+  
+  let usHtml = '';
+  if (m.us && m.us.ok) {
+    const usUp = m.us.trend === 'UPTREND';
+    usHtml = `
+      <div style="display:flex;align-items:center;gap:.7rem;margin-left:1rem;border-left:1px solid var(--line);padding-left:1rem">
+        <span class="market-status-dot ${usUp?'open':'down'}"></span>
+        <b>S&P 500</b> <span class="num">${fmt(m.us.price)}</span>
+        <span class="num" style="color:${m.us.change_pct>=0?'var(--buy)':'var(--sell)'}">${m.us.change_pct>=0?'▲':'▼'}${Math.abs(m.us.change_pct)}%</span>
+      </div>
+    `;
+  }
+
+  $('#mkt').innerHTML = `
+    <div style="display:flex;flex-direction:row;align-items:center;flex-wrap:wrap">
       <div style="display:flex;flex-direction:column;gap:.15rem;align-items:flex-start">
         <div style="display:flex;align-items:center;gap:.7rem">
           <span class="market-status-dot ${up?'open':'down'}"></span>
@@ -83,69 +262,220 @@ async function loadMarket(){
           <span class="num" style="color:${m.change_pct>=0?'var(--buy)':'var(--sell)'}">${m.change_pct>=0?'▲':'▼'}${Math.abs(m.change_pct)}%</span>
         </div>
         ${m.now_wib ? `<div class="mut" style="font-size:.65rem;margin-left:1.4rem;line-height:1">${esc(m.now_wib)}</div>` : ''}
-      </div>`;
-    $('#mkt-body').innerHTML = `<div class="between">
-      <div class="stat"><div class="lbl">IHSG</div><div class="big num ${up?'up':'down'}">${fmt(m.price)}</div>
-        <div style="margin-top:.4rem">${badge(up?'BELI':'SELL', m.trend)} <span class="num" style="color:${m.change_pct>=0?'var(--buy)':'var(--sell)'}">${m.change_pct>=0?'+':''}${m.change_pct}%</span></div>
-        ${m.now_wib ? `<div class="mut" style="font-size:.7rem;margin-top:.5rem;line-height:1.2">${esc(m.now_wib)}</div>` : ''}</div>
-      <div style="text-align:right"><div class="lbl mut">SMA 200</div><div class="big num" style="font-size:1.1rem">${fmt(m.sma200)}</div>
-        <div class="sub" style="max-width:240px">${esc(m.verdict)}</div></div></div>`;
+      </div>
+      ${usHtml}
+    </div>`;
+    
+  $('#mkt-body').innerHTML = `<div class="between">
+    <div class="stat"><div class="lbl">IHSG</div><div class="big num ${up?'up':'down'}">${fmt(m.price)}</div>
+      <div style="margin-top:.4rem">${badge(up?'BELI':'SELL', m.trend)} <span class="num" style="color:${m.change_pct>=0?'var(--buy)':'var(--sell)'}">${m.change_pct>=0?'+':''}${m.change_pct}%</span></div>
+      ${m.now_wib ? `<div class="mut" style="font-size:.7rem;margin-top:.5rem;line-height:1.2">${esc(m.now_wib)}</div>` : ''}</div>
+    <div style="text-align:right"><div class="lbl mut">SMA 200</div><div class="big num" style="font-size:1.1rem">${fmt(m.sma200)}</div>
+      <div class="sub" style="max-width:240px">${esc(m.verdict)}</div></div></div>`;
 
-    // Render grafik trend IHSG
-    if (_mktChart) {
-      try { _mktChart.remove(); } catch(e) {}
-      _mktChart = null;
+  if (m.us && m.us.ok) {
+    const usUp = m.us.trend === 'UPTREND';
+    const usMktBody = $('#us-mkt-body');
+    if (usMktBody) {
+      usMktBody.innerHTML = `<div class="between">
+        <div class="stat"><div class="lbl">S&P 500</div><div class="big num ${usUp?'up':'down'}">${fmt(m.us.price)}</div>
+          <div style="margin-top:.4rem">${badge(usUp?'BELI':'SELL', m.us.trend)} <span class="num" style="color:${m.us.change_pct>=0?'var(--buy)':'var(--sell)'}">${m.us.change_pct>=0?'+':''}${m.us.change_pct}%</span></div>
+          ${m.us.now_est ? `<div class="mut" style="font-size:.7rem;margin-top:.5rem;line-height:1.2">${esc(m.us.now_est)}</div>` : ''}</div>
+        <div style="text-align:right"><div class="lbl mut">SMA 200</div><div class="big num" style="font-size:1.1rem">${fmt(m.us.sma200)}</div>
+          <div class="sub" style="max-width:240px">${esc(m.us.verdict)}</div></div></div>`;
     }
-    if (m.close_series && m.close_series.length) {
-      $('#mkt-chart').innerHTML = ''; // bersihkan skeleton
-      const LC = window.LightweightCharts;
-      const dark = document.documentElement.getAttribute('data-theme') !== 'light';
-      const txt = dark ? '#94a3b8' : '#475569';
-      const grid = dark ? 'rgba(255,255,255,.03)' : 'rgba(15,23,42,.04)';
-      const bd = dark ? '#334155' : '#cbd5e1';
-      
-      const base = {
-        layout: { background: { color: 'transparent' }, textColor: txt, fontFamily: 'Outfit' },
-        grid: { vertLines: { color: grid }, horzLines: { color: grid } },
-        rightPriceScale: { borderColor: bd },
-        timeScale: { borderColor: bd },
-        crosshair: { mode: LC.CrosshairMode.Normal }
-      };
-      
-      const chart = LC.createChart($('#mkt-chart'), {
-        ...base,
-        width: $('#mkt-chart').clientWidth,
-        height: 180
-      });
-      
-      const closeLine = chart.addLineSeries({
-        color: up ? '#10b981' : '#ef4444',
-        lineWidth: 2,
+  } else {
+    const usMktBody = $('#us-mkt-body');
+    if (usMktBody) {
+      usMktBody.innerHTML = '<div class="empty">Data US Market tidak tersedia</div>';
+    }
+  }
+
+  renderMktChart();
+  renderUsMktChart();
+}
+
+function renderMktChart() {
+  if (!_mktData) return;
+  if (_mktChart) {
+    try { _mktChart.remove(); } catch(e) {}
+    _mktChart = null;
+  }
+  
+  const m = _mktData;
+  const isWeekly = _mktTimeframe === 'weekly';
+  const closeSeries = isWeekly ? m.close_series_weekly : m.close_series_daily;
+  const smaSeries = isWeekly ? m.sma200_series_weekly : m.sma200_series_daily;
+  
+  if (closeSeries && closeSeries.length) {
+    const el = $('#mkt-chart');
+    if (!el) return;
+    el.innerHTML = ''; // bersihkan skeleton
+    const LC = window.LightweightCharts;
+    const dark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const txt = dark ? '#94a3b8' : '#475569';
+    const grid = dark ? 'rgba(255,255,255,.03)' : 'rgba(15,23,42,.04)';
+    const bd = dark ? '#334155' : '#cbd5e1';
+    
+    const base = {
+      layout: { background: { color: 'transparent' }, textColor: txt, fontFamily: 'Outfit' },
+      grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+      rightPriceScale: { borderColor: bd },
+      timeScale: { borderColor: bd },
+      crosshair: { mode: LC.CrosshairMode.Normal }
+    };
+    
+    const chart = LC.createChart(el, {
+      ...base,
+      width: el.clientWidth,
+      height: 140
+    });
+    
+    const up = m.trend === 'UPTREND';
+    const closeLine = chart.addLineSeries({
+      color: up ? '#10b981' : '#ef4444',
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      title: isWeekly ? 'IHSG (Pekan)' : 'IHSG'
+    });
+    closeLine.setData(closeSeries);
+    
+    if (smaSeries && smaSeries.length) {
+      const smaLine = chart.addLineSeries({
+        color: '#a78bfa',
+        lineWidth: 1.5,
         priceLineVisible: false,
-        lastValueVisible: true,
-        title: 'IHSG'
+        lastValueVisible: false,
+        title: isWeekly ? 'SMA 40 (W)' : 'SMA 200'
       });
-      closeLine.setData(m.close_series);
-      
-      if (m.sma200_series && m.sma200_series.length) {
-        const smaLine = chart.addLineSeries({
-          color: '#a78bfa',
-          lineWidth: 1.5,
-          priceLineVisible: false,
-          lastValueVisible: false,
-          title: 'SMA 200'
-        });
-        smaLine.setData(m.sma200_series);
-      }
-      
-      chart.timeScale().fitContent();
-      _mktChart = chart;
-      
-      window.addEventListener('resize', () => {
-        try { if (_mktChart) _mktChart.applyOptions({ width: $('#mkt-chart').clientWidth }); } catch(e) {}
-      });
+      smaLine.setData(smaSeries);
     }
-  }catch(e){ $('#mkt').innerHTML='<span class="mut">Pasar n/a</span>'; }
+    
+    chart.timeScale().fitContent();
+    _mktChart = chart;
+    
+    try {
+      window.removeEventListener('resize', handleMktChartResize);
+    } catch(e) {}
+    window.addEventListener('resize', handleMktChartResize);
+  }
+}
+
+let _usMktChart = null;
+let _usMktTimeframe = 'daily';
+
+function renderUsMktChart() {
+  if (!_mktData || !_mktData.us || !_mktData.us.ok) return;
+  if (_usMktChart) {
+    try { _usMktChart.remove(); } catch(e) {}
+    _usMktChart = null;
+  }
+  
+  const m = _mktData.us;
+  const isWeekly = _usMktTimeframe === 'weekly';
+  const closeSeries = isWeekly ? m.close_series_weekly : m.close_series_daily;
+  const smaSeries = isWeekly ? m.sma200_series_weekly : m.sma200_series_daily;
+  
+  if (closeSeries && closeSeries.length) {
+    const el = $('#us-mkt-chart');
+    if (!el) return;
+    el.innerHTML = ''; // bersihkan skeleton
+    const LC = window.LightweightCharts;
+    const dark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const txt = dark ? '#94a3b8' : '#475569';
+    const grid = dark ? 'rgba(255,255,255,.03)' : 'rgba(15,23,42,.04)';
+    const bd = dark ? '#334155' : '#cbd5e1';
+    
+    const base = {
+      layout: { background: { color: 'transparent' }, textColor: txt, fontFamily: 'Outfit' },
+      grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+      rightPriceScale: { borderColor: bd },
+      timeScale: { borderColor: bd },
+      crosshair: { mode: LC.CrosshairMode.Normal }
+    };
+    
+    const chart = LC.createChart(el, {
+      ...base,
+      width: el.clientWidth,
+      height: 140
+    });
+    
+    const up = m.trend === 'UPTREND';
+    const closeLine = chart.addLineSeries({
+      color: up ? '#10b981' : '#ef4444',
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      title: isWeekly ? 'S&P 500 (Pekan)' : 'S&P 500'
+    });
+    closeLine.setData(closeSeries);
+    
+    if (smaSeries && smaSeries.length) {
+      const smaLine = chart.addLineSeries({
+        color: '#a78bfa',
+        lineWidth: 1.5,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        title: isWeekly ? 'SMA 40 (W)' : 'SMA 200'
+      });
+      smaLine.setData(smaSeries);
+    }
+    
+    chart.timeScale().fitContent();
+    _usMktChart = chart;
+    
+    try {
+      window.removeEventListener('resize', handleUsMktChartResize);
+    } catch(e) {}
+    window.addEventListener('resize', handleUsMktChartResize);
+  }
+}
+
+function handleMktChartResize() {
+  try {
+    if (_mktChart && $('#mkt-chart')) {
+      _mktChart.applyOptions({ width: $('#mkt-chart').clientWidth });
+    }
+  } catch(e) {}
+}
+
+function handleUsMktChartResize() {
+  try {
+    if (_usMktChart && $('#us-mkt-chart')) {
+      _usMktChart.applyOptions({ width: $('#us-mkt-chart').clientWidth });
+    }
+  } catch(e) {}
+}
+
+function toggleMktChartTimeframe(tf) {
+  _mktTimeframe = tf;
+  const dailyBtn = document.getElementById('btn-mkt-daily');
+  const weeklyBtn = document.getElementById('btn-mkt-weekly');
+  
+  if (tf === 'daily') {
+    if (dailyBtn) dailyBtn.classList.add('active');
+    if (weeklyBtn) weeklyBtn.classList.remove('active');
+  } else {
+    if (dailyBtn) dailyBtn.classList.remove('active');
+    if (weeklyBtn) weeklyBtn.classList.add('active');
+  }
+  renderMktChart();
+}
+
+function toggleUsMktChartTimeframe(tf) {
+  _usMktTimeframe = tf;
+  const dailyBtn = document.getElementById('btn-us-mkt-daily');
+  const weeklyBtn = document.getElementById('btn-us-mkt-weekly');
+  
+  if (tf === 'daily') {
+    if (dailyBtn) dailyBtn.classList.add('active');
+    if (weeklyBtn) weeklyBtn.classList.remove('active');
+  } else {
+    if (dailyBtn) dailyBtn.classList.remove('active');
+    if (weeklyBtn) weeklyBtn.classList.add('active');
+  }
+  renderUsMktChart();
 }
 function badge(kind, txt){ const c=kind==='BELI'?'buy':kind==='SELL'?'sell':'hold'; return `<span class="badge ${c}">${esc(txt)}</span>`; }
 
@@ -226,6 +556,8 @@ async function loadDashROI(){
 }
 
 /* ===================== DECISION CENTER ===================== */
+let LAST_DECISIONS = null;
+
 function bucket(css){ return css==='buy'?'buy':css==='sell'?'sell':'hold'; }  // warning→hold (tengah)
 function funnelLed(state){
   const led=$('#funnel-led'), txt=$('#funnel-led-txt');
@@ -234,18 +566,162 @@ function funnelLed(state){
   const [cls,label]=map[state]||map.idle;
   led.className='led'+(cls?' '+cls:''); if(txt){ txt.className='led-txt'+(cls?' '+cls:''); txt.textContent=label; }
 }
-async function runDecision(isAuto = false){
+
+function buildFunnelMarkdown(d){
+  if(!d) return '';
+  const now=new Date().toLocaleString('id-ID',{timeZone:'Asia/Jakarta'});
+  const lines=[];
+  const bz=d.bursa||{};
+  const us=bz.us||{};
+  const ad=d.adaptive||{};
+  const roiD=d.roi||{};
+  const jml=d.jumlah||{};
+
+  lines.push('# Hasil Funnel — Sharia Trading AI');
+  lines.push('');
+  lines.push(`> Dihasilkan · ${now} WIB`);
+  lines.push('');
+  lines.push(`**Universe ter-ranking:** ${d.jumlah_ranking??'—'} saham syariah  `);
+  lines.push(`**Ringkasan aksi:** 🟢 BELI ${jml.buy??0} · 🟡 HOLD ${jml.hold??0} · 🔴 SELL ${jml.sell??0}`);
+  lines.push('');
+
+  // Status bursa
+  lines.push('## Status Bursa');
+  lines.push('');
+  lines.push(`- **IDX:** ${bz.reason||'—'} · tren **${bz.trend||'—'}**${bz.now_wib?` · ${bz.now_wib}`:''}`);
+  if(us && Object.keys(us).length){
+    lines.push(`- **US:** ${us.reason||'—'} · tren **${us.trend||'—'}**${us.now_et?` · ${us.now_et}`:''}`);
+  }
+  lines.push('');
+
+  if(roiD.integral){
+    lines.push('## Adaptive Strategy (ROI)');
+    lines.push('');
+    lines.push(`- ROI Integral: **${roiD.integral.roi_pct}%** (target ${roiD.target_pct}%) · ${roiD.on_track?'on-track':`gap ${roiD.gap_to_target}%`}`);
+    if(ad.min_buy_accuracy!=null){
+      lines.push(`- Ambang akurasi BELI: **${ad.min_buy_accuracy}%** · TP net **${ad.take_profit_net_pct}%**`);
+    }
+    if(ad.notes && ad.notes[0]) lines.push(`- Catatan: ${_mdEscape(ad.notes[0])}`);
+    lines.push('');
+  }
+
+  // Top 10
+  const top10 = d.top10_detail || (d.top5_detail||[]).slice(0,10);
+  lines.push('## Top 10 Saham Syariah Ter-ranking');
+  lines.push('');
+  lines.push('Skor Keyakinan = 40% Funnel + 30% Undervalue + 30% Akurasi Backtest.');
+  lines.push('');
+  lines.push('| Rank | Ticker | Nama | Keyakinan | Funnel | Sinyal | UV | Akurasi | Status |');
+  lines.push('|---:|---|---|---:|---:|---|---:|---:|---|');
+  if(top10.length){
+    top10.forEach((t,i)=>{
+      const rank=t.rank||(i+1);
+      lines.push(`| ${rank} | **${t.ticker}** | ${(t.name||'').replace(/\|/g,'/')} | ${t.conviction??'—'} | ${t.funnel_skor??'—'} | ${t.funnel_signal||'—'} | ${t.uv_score??'—'} | ${t.akurasi_pct??'—'}% | ${t.status||'—'} |`);
+    });
+  } else {
+    lines.push('| — | — | — | — | — | — | — | — | — |');
+  }
+  lines.push('');
+
+  function _decSection(title, emoji, list){
+    lines.push(`## ${emoji} ${title} (${(list||[]).length})`);
+    lines.push('');
+    if(!list || !list.length){
+      lines.push('_Tidak ada aksi pada kategori ini._');
+      lines.push('');
+      return;
+    }
+    list.forEach((x,i)=>{
+      lines.push(`### ${i+1}. ${x.ticker}${x.action?` — ${x.action}`:''}`);
+      lines.push('');
+      if(x.urgency) lines.push(`- Urgensi: **${x.urgency}**`);
+      if(x.confidence) lines.push(`- Keyakinan aksi: **${x.confidence}**`);
+      if(x.conviction!=null) lines.push(`- Skor keyakinan: **${x.conviction}**`);
+      if(x.akurasi_pct!=null) lines.push(`- Akurasi backtest: **${x.akurasi_pct}%**`);
+      if(x.funnel_signal) lines.push(`- Sinyal funnel: ${x.funnel_signal}`);
+      if(x.expected_return_pct!=null) lines.push(`- Ekspektasi return: ~${x.expected_return_pct}%`);
+      const sm=x.size_mult ?? (x.details&&x.details.size_mult) ?? (x.alokasi&&x.alokasi.size_mult);
+      if(sm!=null && sm!==1) lines.push(`- Regime size: **×${sm}**`);
+      if(x.details&&(x.details.quality_score!=null||x.details.timing_score!=null)){
+        lines.push(`- Quality/Timing: ${x.details.quality_score??'—'}/${x.details.timing_score??'—'}${x.details.final_score!=null?` · Final ${x.details.final_score}`:''}`);
+      }
+      if(x.reason) lines.push(`- Alasan: ${_mdEscape(x.reason)}`);
+      if(x.next_step) lines.push(`- Langkah berikutnya: ${_mdEscape(x.next_step)}`);
+      if(x.execution_timing) lines.push(`- Timing eksekusi: ${_mdEscape(x.execution_timing)}`);
+      if(x.alokasi){
+        const a=x.alokasi;
+        if(a.tipe==='beli'){
+          lines.push(`- Alokasi: RDN **${a.rdn||'—'}** · ~${a.lots??0} lot ≈ ${a.outlay_idr??a.nilai_idr??'—'} IDR${a.net_target_pct!=null?` · target jual +${a.net_target_pct}%`:''}${a.size_mult!=null&&a.size_mult!==1?` · size ×${a.size_mult}`:''}`);
+          if(a.catatan) lines.push(`  - ${_mdEscape(a.catatan)}`);
+        } else if(a.tipe==='realisasi'){
+          lines.push(`- Realisasi: RDN **${a.rdn||'—'}** · ${a.lots??'—'} lot · nilai ${a.nilai??'—'} → bersih ${a.nilai_net??a.nilai??'—'}`);
+        }
+      }
+      if(x.syariah_note) lines.push(`- Syariah: ${_mdEscape(x.syariah_note)}`);
+      lines.push('');
+    });
+  }
+
+  _decSection('Rekomendasi BELI / Add', '🟢', d.buy);
+  _decSection('Rekomendasi HOLD', '🟡', d.hold);
+  _decSection('Rekomendasi SELL / Exit', '🔴', d.sell);
+
+  if(d.watch && d.watch.length){
+    lines.push('## 🔄 Cadangan Rotasi / Watch');
+    lines.push('');
+    d.watch.forEach(w=>{
+      lines.push(`- **${w.ticker}** (strength ${w.strength??'—'}): ${_mdEscape(w.reason||'')}`);
+    });
+    lines.push('');
+  }
+
+  if(d.strategi){
+    const st=d.strategi;
+    lines.push('## Target RDN & Rotasi');
+    lines.push('');
+    lines.push(`- Mode: ${st.mode} · target ${st.target_emiten} emiten/RDN`);
+    lines.push(`- Dimiliki awal: ${st.dimiliki_awal} · dipertahankan: ${st.dipertahankan} · akan diisi: ${st.akan_diisi} · dipangkas: ${st.dipangkas} · rotasi: ${st.rotasi}`);
+    (st.per_rdn||[]).forEach(r=>{
+      lines.push(`- **${r.broker}**: ${r.perkiraan_setelah_aksi}/${st.target_emiten} · cash ${r.cash??0}${r.blokir_isi?' · ⚠ isi cash dulu':''}`);
+    });
+    lines.push('');
+  }
+
+  lines.push('---');
+  lines.push('');
+  lines.push('*Disclaimer: alat bantu keputusan, bukan ajakan jual/beli. Keputusan & risiko di tangan pengguna. Transaksi tunai, long-only, sesuai Fatwa DSN-MUI.*');
+  lines.push('');
+  return lines.join('\n');
+}
+
+function downloadFunnelMd(){
+  if(!LAST_DECISIONS){ toast('Jalankan Funnel dulu di Pusat Keputusan.'); return; }
+  const md=buildFunnelMarkdown(LAST_DECISIONS);
+  downloadTextFile(`funnel_top10_${_mdStamp()}.md`, md);
+  const j=LAST_DECISIONS.jumlah||{};
+  toast(`Markdown Funnel diunduh (Top-10 · B${j.buy??0}/H${j.hold??0}/S${j.sell??0}).`);
+}
+
+async function runDecision(isAuto = false, opts = {}){
+  // isAuto / opts.refresh===false → pakai cache server (≤30 mnt)
+  // klik tombol / opts.refresh===true → hitung ulang data terbaru
+  const forceRefresh = opts.refresh === true || (!isAuto && opts.refresh !== false && !opts.fromInit);
   if (window._funnelInterval) {
     clearInterval(window._funnelInterval);
   }
-  window._funnelInterval = setInterval(() => runDecision(true), 30 * 60 * 1000);
+  window._funnelInterval = setInterval(() => runDecision(true, {refresh: false}), 30 * 60 * 1000);
 
   if (isAuto) {
-    toast('🔄 Menyegarkan keputusan funnel secara otomatis...');
+    toast('🔄 Memuat keputusan funnel (cache periodik)…');
+  } else if (forceRefresh) {
+    toast('▶ Menghitung Funnel terbaru…');
   }
 
   funnelLed('run');
-  $('#verdict').innerHTML='<span class="spin"></span> <span class="dim">Menjalankan mesin keputusan (Top-5 + radar volume + watchlist/portfolio)… bisa beberapa detik (75 saham)</span>';
+  const waitMsg = forceRefresh
+    ? 'Menjalankan mesin keputusan (hitung ulang)… bisa ~1 menit (universe syariah)'
+    : 'Memuat Pusat Keputusan (cache ≤30 mnt / prefetch jam bursa)…';
+  $('#verdict').innerHTML=`<span class="spin"></span> <span class="dim">${waitMsg}</span>`;
   ['buy','hold','sell'].forEach(c=>$('#col-'+c).innerHTML='<div class="dc-empty">memuat…</div>');
   try{
     try {
@@ -254,7 +730,11 @@ async function runDecision(isAuto = false){
       console.warn("Segar data pasar/portofolio dilewati:", err);
     }
     const testMode=$('#test-mode')&&$('#test-mode').checked;
-    const d=await api('/api/decisions'+(testMode?'?force_open=true':''));
+    const qs = new URLSearchParams();
+    if (testMode) qs.set('force_open', 'true');
+    if (forceRefresh) qs.set('refresh', 'true');
+    const d=await api('/api/decisions'+(qs.toString()?('?'+qs.toString()):''));
+    LAST_DECISIONS = d;
     const map={buy:d.buy,hold:d.hold,sell:d.sell};
     for(const c in map){
       $('#cnt-'+c).textContent=map[c].length;
@@ -280,16 +760,45 @@ async function runDecision(isAuto = false){
     </div>`;
     const bz=d.bursa; let bursaHtml='';
     if(bz){
-      const nx=bz.next_holiday;
-      const nxTxt=nx?` &nbsp;📅 Libur berikutnya: <b>${esc(nx.name)}</b> (${nx.date}${nx.in_days>=0?', '+nx.in_days+' hari lagi':''})`:'';
-      const testTxt=bz.test_mode?` &nbsp;<span class="badge brand" style="font-size:.7rem; padding:2px 6px;">🧪 Mode Uji aktif</span>`:'';
-      const clock=bz.now_wib?` <span class="mut" style="font-size:.78rem">· ${esc(bz.now_wib)}</span>`:'';
-      if(bz.open){
-        bursaHtml=`<div style="font-size: .88rem; line-height: 1.4; color:var(--buy)">🟢 <b>${esc(bz.reason)}</b>${clock}${testTxt}${nxTxt}</div>`;
-      } else {
-        const note = bz.trading_day ? '' : ' — sinyal berbasis penutupan terakhir'+(bz.last_trading_date?' ('+bz.last_trading_date+')':'')+'; eksekusi saat bursa buka.';
-        bursaHtml=`<div style="font-size: .88rem; line-height: 1.4; color:#ca8a04">⏸ <b>${esc(bz.reason)}</b>${clock}${note}${testTxt}${nxTxt}</div>`;
-      }
+      const us=bz.us||null;
+      const trendBadge=(tr)=>{
+        if(!tr) return '';
+        const up=tr==='UPTREND';
+        return `<span class="badge ${up?'buy':'sell'}" style="font-size:.68rem; padding:1px 5px;">${up?'▲':'▼'} ${esc(tr)}</span>`;
+      };
+      const row=(label, m, trend)=>{
+        if(!m) return '';
+        const open=!!m.open;
+        const color=open?'var(--buy)':'#ca8a04';
+        const icon=open?'🟢':'⏸';
+        const tz=m.tz_label||'';
+        let clock=m.now_local||m.now_et||m.now_wib||'';
+        // US: tampilkan ET + padanan WIB; IDX: WIB saja
+        if(m.market==='US' && m.now_et){
+          clock = m.now_et + (m.now_wib?` · ${m.now_wib}`:'');
+        } else if(m.market==='IDX' && m.now_wib){
+          clock = m.now_wib;
+        }
+        const jam = (m.open_time&&m.close_time)
+          ? ` · jam ${m.open_time}–${m.close_time} ${tz}`.trim()
+          : '';
+        const nx=m.next_holiday;
+        const nxTxt=nx?` · Libur berikutnya: <b>${esc(nx.name)}</b> (${nx.date}${nx.in_days>=0?', '+nx.in_days+'h':''})`:'';
+        const note=(!open && m.trading_day===false)
+          ? ` — sinyal berbasis penutupan terakhir${m.last_trading_date?' ('+m.last_trading_date+')':''}`
+          : '';
+        const testTxt=(m.test_mode||bz.test_mode)?` <span class="badge brand" style="font-size:.65rem; padding:1px 5px;">🧪 Uji</span>`:'';
+        return `<div style="margin-top:.45rem;">
+          <div style="display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; margin-bottom:.15rem;">
+            <b style="font-size:.82rem;">${esc(label)}</b> ${trendBadge(trend||m.trend)}
+          </div>
+          <div style="font-size:.84rem; line-height:1.4; color:${color}">
+            ${icon} <b>${esc(m.reason||'—')}</b>
+            ${clock?` <span class="mut" style="font-size:.74rem">· ${esc(clock)}${esc(jam)}</span>`:''}${testTxt}${note}${nxTxt}
+          </div>
+        </div>`;
+      };
+      bursaHtml = row('🇮🇩 Bursa IDX', bz, bz.trend) + row('🇺🇸 Bursa US', us, us&&us.trend);
     }
     const st=d.strategi;
     let stratHtml='';
@@ -326,6 +835,12 @@ async function runDecision(isAuto = false){
         • Total P/L Berjalan: <span class="${plCls}"><b>${plPrefix}${fmt(mm.pl)}</b></span>
       </div>`;
     }
+    const cacheMeta = d.cache || {};
+    const ageSec = cacheMeta.age_seconds;
+    const ageTxt = ageSec==null ? '' : (ageSec < 60 ? `${ageSec}s lalu` : `${Math.round(ageSec/60)} mnt lalu`);
+    const cacheBadge = d.from_cache
+      ? `<span class="badge na" style="font-size:.7rem;padding:2px 7px" title="Prefetch periodik jam bursa IDX">📦 Cache ${esc(ageTxt||'—')}</span>`
+      : `<span class="badge buy" style="font-size:.7rem;padding:2px 7px">✨ Data baru ${esc(d.generated_at||'')}</span>`;
     const ad=d.adaptive, roiD=d.roi; let adHtml='';
     if(ad&&roiD){ 
       const plCls = roiD.integral.roi_pct >= 0 ? 'pl-up' : 'pl-down';
@@ -333,12 +848,19 @@ async function runDecision(isAuto = false){
       const trackBadge = roiD.on_track 
         ? '<span class="badge buy" style="font-size:.72rem; padding:1px 5px;">on-track</span>' 
         : `<span class="badge warning" style="font-size:.72rem; padding:1px 5px;">gap ${roiD.gap_to_target}%</span>`;
+      const basis = ad.based_on_simulations
+        ? `${ad.based_on_simulations} simulasi`
+        : `${ad.based_on_trades || 0} trades`;
+      const noteLine = (ad.notes && ad.notes[0])
+        ? `<div class="mut" style="font-size:.72rem; margin-top:.35rem; line-height:1.35">${esc(ad.notes[0])}</div>`
+        : '';
       
       adHtml=`<div style="font-size: .88rem; line-height: 1.5; color: var(--text); margin-top: .6rem; border-top: 1px dashed var(--border); padding-top: .6rem;">
-        🤖 <b>AI Adaptive Strategy (ROI)</b>:<br>
-        • Ambang Akurasi Beli: <b>${ad.min_buy_accuracy}%</b><br>
+        📈 <b>Adaptive Strategy (ROI)</b>:<br>
+        • Ambang Akurasi Beli: <b>${ad.min_buy_accuracy}%</b> · TP net <b>${ad.take_profit_net_pct}%</b><br>
         • ROI Integral: <span class="${plCls}"><b>${plPrefix}${roiD.integral.roi_pct}%</b></span> (Target ${roiD.target_pct}%) ${trackBadge}<br>
-        • Basis Histori: <b>${ad.based_on_trades || 0} trades</b>
+        • Basis: <b>${basis}</b>${ad.roi_basis?` · metrik <b>${esc(ad.roi_basis)}</b>`:''}
+        ${noteLine}
       </div>`; 
     }
     
@@ -346,11 +868,13 @@ async function runDecision(isAuto = false){
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:1rem; margin-bottom:1rem; flex-wrap:wrap; gap:1rem;">
         <div style="font-size:1.3rem; font-weight:800;">
           📋 Hasil Funnel: <span style="color:var(--brand);">${d.jumlah_ranking}</span> Saham Syariah Ter-ranking
+          ${cacheBadge}
         </div>
-        <div class="flex" style="gap:.6rem;">
+        <div class="flex" style="gap:.6rem; flex-wrap:wrap; align-items:center;">
           <span class="badge buy" style="font-size:.9rem; padding:.35rem .85rem;">🟢 ${d.jumlah.buy} BELI</span>
           <span class="badge hold" style="font-size:.9rem; padding:.35rem .85rem;">🟡 ${d.jumlah.hold} HOLD</span>
           <span class="badge sell" style="font-size:.9rem; padding:.35rem .85rem;">🔴 ${d.jumlah.sell} SELL</span>
+          <button class="btn secondary" style="font-size:.78rem; padding:.35rem .7rem" onclick="downloadFunnelMd()" title="Unduh Top-10 + BELI/HOLD/SELL sebagai Markdown">📥 MD Funnel</button>
         </div>
       </div>
       
@@ -364,10 +888,10 @@ async function runDecision(isAuto = false){
       </div>` : ''}
 
       <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.2rem; margin-top: 1rem;">
-        <!-- Card 1: Bursa & AI Strategi -->
-        <div style="background:var(--card); border:1px solid var(--border); border-radius:10px; padding:1.1rem; display:flex; flex-direction:column; gap:.8rem;">
+        <!-- Card 1: Status Bursa IDX & US -->
+        <div style="background:var(--card); border:1px solid var(--border); border-radius:10px; padding:1.1rem; display:flex; flex-direction:column; gap:.35rem;">
           <div style="font-weight:700; font-size:.95rem; border-bottom:1px solid var(--border); padding-bottom:.4rem; color:var(--brand-2);">
-            🌐 Status Bursa &amp; AI
+            🌐 Status Bursa IDX &amp; US
           </div>
           ${bursaHtml}
           ${adHtml}
@@ -436,13 +960,21 @@ function decCard(x,c){ const u=x.urgency?` · ${x.urgency}`:''; const er=x.expec
   const divBadge = x.context==='HOLD_DIVIDEN' ? '<span class="badge buy" style="font-size:.56rem" title="SELL ditunda demi dividen">💵 tahan dividen</span>'
     : (db>0?`<span class="badge na" style="font-size:.54rem" title="pembayar dividen rutin (+${db} skor)">💵 +${db}</span>`:'');
   const syariahBadge = x.syariah_note ? `<span class="badge buy" style="font-size:.56rem" title="${esc(x.syariah_note)}">✓ Syariah</span>` : '';
+  const sm = x.size_mult ?? (x.details&&x.details.size_mult) ?? (x.alokasi&&x.alokasi.size_mult);
+  const sizeBadge = (sm!=null && sm!==1)
+    ? `<span class="badge ${sm<=0?'sell':'warning'}" style="font-size:.56rem" title="multiplier ukuran posisi dari regime IHSG/US">size ×${sm}</span>` : '';
   const comp = (x.funnel_signal||x.uv_score!=null||x.akurasi_pct!=null)
-    ? `<div class="mut" style="font-size:.66rem;margin-top:.2rem">${x.funnel_signal?'funnel '+esc(x.funnel_signal):''}${x.uv_score!=null?' · UV '+x.uv_score:''}${x.akurasi_pct!=null?' · akurasi '+x.akurasi_pct+'%':''}${db>0?' · 💵 dividen +'+db:''}</div>` : '';
+    ? `<div class="mut" style="font-size:.66rem;margin-top:.2rem">${x.funnel_signal?'funnel '+esc(x.funnel_signal):''}${x.uv_score!=null?' · UV '+x.uv_score:''}${x.akurasi_pct!=null?' · akurasi '+x.akurasi_pct+'%':''}${db>0?' · 💵 dividen +'+db:''}${(x.details&&x.details.quality_score!=null)?` · Q${x.details.quality_score}/T${x.details.timing_score??'—'}`:''}</div>` : '';
   const a=x.alokasi; let alloc='';
+  const venueBadge = (x.details&&x.details.venue)
+    ? `<span class="badge na" style="font-size:.56rem" title="venue eksekusi">📱 ${esc(x.details.venue)}</span>`
+    : (a&&a.venue?`<span class="badge na" style="font-size:.56rem">📱 ${esc(a.venue)}</span>`:'');
   if(a){
-    if(a.tipe==='beli' && a.lots>0) alloc=`<div class="mut" style="margin-top:.3rem;font-size:.7rem">💰 <b>${esc(a.rdn)}</b>: ~${a.lots} lot ≈ ${fmt(a.outlay_idr||a.nilai_idr)} <span title="termasuk biaya beli">incl. fee</span> (${a.pct_cash}% cash) · jual <b>+${a.net_target_pct}%</b> utk profit ${a.profit_pct}% bersih</div>`;
+    const unit=(a.currency==='USD'||(a.shares_per_lot===1))?'lembar':'lot';
+    const cur=a.currency==='USD'?'USD ':'';
+    if(a.tipe==='beli' && a.lots>0) alloc=`<div class="mut" style="margin-top:.3rem;font-size:.7rem">💰 <b>${esc(a.rdn||a.venue||'')}</b>: ~${a.lots} ${unit} ≈ ${cur}${fmt(a.outlay_idr||a.nilai_idr)} <span title="termasuk biaya beli">incl. fee</span>${a.pct_cash!=null?` (${a.pct_cash}% cash)`:''}${a.net_target_pct!=null?` · jual <b>+${a.net_target_pct}%</b>`:''}${a.size_mult!=null&&a.size_mult!==1?` · size ×${a.size_mult}`:''}${a.sesuai_portofolio?' · ✓ sesuai portofolio':''}</div>`;
     else if(a.tipe==='beli') alloc=`<div class="mut" style="margin-top:.3rem;font-size:.7rem">💰 ${esc(a.catatan)}</div>`;
-    else if(a.tipe==='realisasi') alloc=`<div class="mut" style="margin-top:.3rem;font-size:.7rem">💰 ${esc(a.rdn||'')} · nilai jual ${a.lots} lot: ${fmt(a.nilai)} <span title="nilai pasar kotor">kotor</span> → <b style="color:var(--buy)">${fmt(a.nilai_net??a.nilai)}</b> <span title="hasil yg masuk cash, stlh fee jual">bersih</span></div>`;
+    else if(a.tipe==='realisasi') alloc=`<div class="mut" style="margin-top:.3rem;font-size:.7rem">💰 ${esc(a.rdn||'')} · jual portofolio ${a.lots} ${unit}: ${cur}${fmt(a.nilai)} <span title="nilai pasar kotor">kotor</span> → <b style="color:var(--buy)">${cur}${fmt(a.nilai_net??a.nilai)}</b> <span title="hasil yg masuk cash, stlh fee jual">bersih</span>${a.sesuai_portofolio?' · ✓ sesuai portofolio':''}</div>`;
   }
   const ep=x.exit_plan; let exitHtml='';
   if(ep && ep.lots_total>0){
@@ -457,16 +989,49 @@ function decCard(x,c){ const u=x.urgency?` · ${x.urgency}`:''; const er=x.expec
       <div class="mut" style="margin-top:.25rem">${rows}</div>
       <div class="mut" style="margin-top:.2rem">Impas ${fmt(ep.breakeven_price)} · cut-loss ${fmt(ep.cut_loss_price)} (−7%) · nilai = bersih stlh fee jual ${ep.fee_sell_pct}%</div></div>`;
   }
+  
+  // Strategy AI Verdict Card (Zeta AI Style)
+  const v = x.ai_verdict;
+  let aiVerdictHtml = '';
+  if (v && typeof v === 'object') {
+    const rec = v.rekomendasi_claude || v.rekomendasi || '';
+    const keyak = v.keyakinan || '';
+    const entry = v.entry_ideal || v.entry_pre_closing || '';
+    const tp = v.target_harga || v.target_pre_opening || '';
+    const sl = v.stop_loss || '';
+    const risk = v.risiko_utama || '';
+    const justification = v.justifikasi_teknikal || v.alasan_utama || '';
+    
+    const recClass = /STRONG BUY|^BUY|ACCUMULATE/.test(rec.toUpperCase()) ? 'buy' : /AVOID|SELL/.test(rec.toUpperCase()) ? 'sell' : 'hold';
+    
+    aiVerdictHtml = `
+      <div style="margin-top: .6rem; padding: .65rem; background: rgba(59, 130, 246, 0.04); border: 1px solid rgba(59, 130, 246, 0.15); border-radius: 8px; font-size: .74rem; line-height: 1.4;">
+        <div style="font-weight: 700; color: var(--brand-2); display: flex; align-items: center; justify-content: space-between; margin-bottom: .3rem;">
+          <span style="display: flex; align-items: center; gap: .3rem;">🧠 Strategy AI Verdict</span>
+          <span class="badge ${recClass}" style="font-size: .64rem; padding: 1px 5px;">${esc(rec)} (${esc(keyak)})</span>
+        </div>
+        ${justification ? `<div style="color: var(--text); font-style: italic; margin-bottom: .4rem; border-left: 2px solid var(--brand); padding-left: 5px;">"${esc(justification)}"</div>` : ''}
+        <div style="display: flex; gap: .8rem; flex-wrap: wrap; margin-bottom: .2rem;">
+          ${entry ? `<span>Entry: <b>Rp ${Number(entry).toLocaleString('id-ID')}</b></span>` : ''}
+          ${tp ? `<span>TP: <b>Rp ${Number(tp).toLocaleString('id-ID')}</b></span>` : ''}
+          ${sl ? `<span>SL: <b style="color: var(--sell)">Rp ${Number(sl).toLocaleString('id-ID')}</b></span>` : ''}
+        </div>
+        ${risk ? `<div style="color: var(--text-muted); font-size: .68rem; margin-top: .2rem;"><span style="color: var(--accent-red); font-weight: 600;">⚠️ Risiko:</span> ${esc(risk)}</div>` : ''}
+      </div>
+    `;
+  }
+
   const isGold = x.ticker==='🪙 EMAS'||x.ticker==='EMAS';
   return `<div class="decision-card ${c}" onclick="gotoAnalyze('${x.ticker}')">
-    <div class="dc-top"><span class="tkr${isGold?' tkr-emas':''}">${x.ticker}</span><div class="flex" style="gap:.3rem">${syariahBadge}${divBadge}${conv}<span class="badge ${c}" style="font-size:.6rem">${esc(x.action)}${u}</span></div></div>
+    <div class="dc-top"><span class="tkr${isGold?' tkr-emas':''}">${x.ticker}</span><div class="flex" style="gap:.3rem">${syariahBadge}${venueBadge}${sizeBadge}${divBadge}${conv}<span class="badge ${c}" style="font-size:.6rem">${esc(x.action)}${u}</span></div></div>
     <div class="meta" style="display:block"><div>${esc(x.reason)}</div>
       ${comp}
       ${alloc}
       ${exitHtml}
+      ${aiVerdictHtml}
       <div class="mut" style="margin-top:.25rem">
         → ${esc(x.next_step||'')}
-        ${x.execution_timing ? `<br><span class="badge warning" style="font-size:.65rem;margin-top:.35rem;display:inline-block;background:rgba(234,179,8,.08);color:#ca8a04;border:1px solid rgba(234,179,8,.2)">⏱ Eksekusi: ${esc(x.execution_timing)}</span>` : ''}
+        ${x.execution_timing ? `<br><span class="badge warning" style="font-size:.65rem;margin-top:.35rem;display:inline-block;background:rgba(234,179,8,.08);color:#ca8a04;border:1px solid rgba(234,179,8,.2)">⏱ Eksekusi${x.execution_market?` ${esc(x.execution_market)}`:''}: ${esc(x.execution_timing)}</span>` : ''}
         ${er}
       </div></div></div>`; }
 function dcard(s,c){ const isGold = s.ticker==='🪙 EMAS'||s.ticker==='EMAS';
@@ -476,27 +1041,307 @@ function dcard(s,c){ const isGold = s.ticker==='🪙 EMAS'||s.ticker==='EMAS';
     <span>J7 ${s.jalur7_score??'-'}/4</span><span>skor ${s.skor}</span></div></div>`; }
 
 /* ===================== ANALISA ===================== */
+let LAST_ANALYZE = null;
+let LAST_ADVISOR = null;
+
 function aiSlot(){ let s=$('#ai-slot'); if(!s){ s=document.createElement('div'); s.id='ai-slot'; $('#aout').prepend(s);} return s; }
+
+function downloadTextFile(filename, text, mime){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([text],{type: mime||'text/markdown;charset=utf-8'}));
+  a.download=filename;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+}
+
+function _mdEscape(s){
+  return String(s??'').replace(/\r\n/g,'\n');
+}
+
+function _mdYesNo(v){
+  if(v===true) return '✓ Lolos';
+  if(v===false) return '✕ Gagal';
+  return '—';
+}
+
+function buildAnalyzeMarkdown(d){
+  if(!d) return '';
+  const now=new Date().toLocaleString('id-ID',{timeZone:'Asia/Jakarta'});
+  const rec=d.rekomendasi||{}, sh=d.sharia||{}, f=d.fundamental||{}, c=d.canslim||{}, t=d.technical||{}, b=d.bandarmologi;
+  const lines=[];
+  lines.push(`# Analisa Saham Syariah — ${d.ticker}`);
+  lines.push('');
+  lines.push(`> Dihasilkan oleh Sharia Trading AI · ${now} WIB`);
+  lines.push('');
+  lines.push(`**Nama:** ${d.name||'—'}  `);
+  lines.push(`**Sektor:** ${d.sector||'—'}  `);
+  lines.push(`**Mode:** ${d.input_mode==='manual'||d.in_funnel_universe===false?'Manual (di luar funnel)':'Universe funnel'}  `);
+  lines.push(`**Syariah:** ${sh.compliant?'✓ Lolos DES/ISSI':'✕ Non-syariah'}${sh.des_status==='outside_curated'?' (verifikasi DES mandiri)':''}  `);
+  lines.push(`**Rekomendasi:** ${rec.final_signal||rec.aksi||'—'}  `);
+  lines.push(`**Skor Funnel:** ${rec.skor??'—'}/100`);
+  if(d.data_notes && d.data_notes.length){
+    lines.push(`**Catatan data:** ${d.data_notes.map(_mdEscape).join(' · ')}`);
+  }
+  lines.push('');
+  if(rec.alasan && rec.alasan.length){
+    lines.push('## Alasan Rekomendasi');
+    lines.push('');
+    rec.alasan.forEach(a=>lines.push(`- ${_mdEscape(a)}`));
+    lines.push('');
+  }
+  const sc=rec.scoring;
+  if(sc && sc.model==='layered'){
+    const reg=sc.regime||{};
+    lines.push('## Skor Dua Lapis');
+    lines.push('');
+    lines.push(`- Model: **layered** · Keputusan: **${sc.keputusan||'—'}** · Final: **${sc.final_score??sc.skor??'—'}**/100 · Eligible BELI: **${sc.eligible_for_buy?'Ya':'Tidak'}** · Multiplier: **×${sc.size_mult??1}**`);
+    lines.push(`- Quality: **${sc.quality_score??'—'}**/100 · Timing: **${sc.timing_score??'—'}**/100${sc.timing_layak_entry?' (layak entry)':' (tunggu ≥65)'}${sc.timing_bonus?` · bonus ${sc.timing_bonus}`:''}`);
+    lines.push(`- Regime: **${reg.regime||'—'}** ${reg.label?`— ${_mdEscape(reg.label)}`:''}${reg.pct_vs_sma200!=null?` (${reg.pct_vs_sma200}% vs SMA200)`:''}`);
+    lines.push('');
+    const gates=(sc.gates&&sc.gates.gates)||[];
+    if(gates.length){
+      lines.push('| Gate | Status | Detail |');
+      lines.push('|---|---|---|');
+      gates.forEach(g=>{
+        lines.push(`| ${g.nama||g.id||'—'} | ${g.passed?'✓ Lolos':'✕ Gagal'} | ${_mdEscape(g.detail||'')} |`);
+      });
+      lines.push('');
+    }
+    const comps=sc.components||{};
+    const keys=Object.keys(comps);
+    if(keys.length){
+      lines.push('| Komponen | Nilai | Bobot | Kontribusi |');
+      lines.push('|---|---:|---:|---:|');
+      keys.forEach(k=>{
+        const c=comps[k];
+        lines.push(`| ${k} | ${Math.round((c.nilai||0)*100)} | ${Math.round((c.bobot||0)*100)}% | ${c.kontribusi??'—'} |`);
+      });
+      lines.push('');
+    }
+  }
+  lines.push('## 1. Screening Syariah');
+  lines.push('');
+  lines.push(`- Compliant: **${sh.compliant?'Ya':'Tidak'}**`);
+  if(sh.in_des!=null) lines.push(`- Dalam DES/ISSI: **${sh.in_des?'Ya':'Tidak'}**`);
+  if(sh.notes) lines.push(`- Catatan: ${_mdEscape(Array.isArray(sh.notes)?sh.notes.join('; '):sh.notes)}`);
+  lines.push('');
+  lines.push('## 2. 6 Magic Number');
+  lines.push('');
+  lines.push(`Skor: **${f.magic_score??'—'}/6** · Verdict: **${f.verdict||'—'}** · Sumber: \`${f.source||'—'}\``);
+  lines.push('');
+  lines.push('| Kriteria | Nilai | Target | Status |');
+  lines.push('|---|---|---|---|');
+  (f.checks||[]).forEach(cr=>{
+    lines.push(`| ${cr.kriteria||''} | ${cr.nilai??'—'} | ${cr.target??'—'} | ${_mdYesNo(cr.lolos)} |`);
+  });
+  if(f.bonus_dividend){
+    const bd=f.bonus_dividend;
+    lines.push(`| ${bd.kriteria||'Dividend Yield'} (bonus) | ${bd.nilai??'—'} | ${bd.target??'—'} | ${_mdYesNo(bd.lolos)} |`);
+  }
+  lines.push('');
+  lines.push('## 3. CAN SLIM');
+  lines.push('');
+  lines.push(`Skor: **${c.canslim_score??'—'}/7** · Verdict: **${c.verdict||'—'}**`);
+  lines.push('');
+  lines.push('| Letter | Kriteria | Nilai | Status |');
+  lines.push('|---|---|---|---|');
+  const letters=c.letters||{};
+  Object.keys(letters).forEach(k=>{
+    const L=letters[k];
+    lines.push(`| **${k}** | ${L.kriteria||''} | ${L.nilai??'—'} | ${_mdYesNo(L.lolos)} |`);
+  });
+  lines.push('');
+  lines.push('## 4. Teknikal');
+  lines.push('');
+  if(t.ok){
+    lines.push(`- Harga: **${t.price??'—'}**`);
+    lines.push(`- Tren: **${t.trend||'—'}** · Bias: ${t.bias||'—'}`);
+    lines.push(`- vs SMA200: ${t.sma?.price_vs_sma200||'—'} (SMA200 ${t.sma?.sma200??'—'})`);
+    if(t.stochastic){
+      lines.push(`- Stochastic: %K ${t.stochastic.k??'—'} · zona ${t.stochastic.zona||'—'} · ${t.stochastic.sinyal||'—'}`);
+    }
+    lines.push(`- Support: ${t.support??'—'} · Resistance: ${t.resistance??'—'}`);
+    if(t.adx) lines.push(`- ADX: ${t.adx.value??'—'} (${t.adx.strength||'—'})`);
+    if(t.atr) lines.push(`- ATR: ${t.atr.value??'—'} (${t.atr.pct??'—'}%) · SL ${t.atr.sl_2atr??'—'} · TP ${t.atr.tp_4atr??'—'}`);
+    if(t.candlestick?.length) lines.push(`- Pola candle: ${t.candlestick.join(', ')}`);
+    if(t.entry_signals?.length){
+      lines.push('');
+      lines.push('### Sinyal Entry');
+      lines.push('');
+      t.entry_signals.forEach(s=>{
+        lines.push(`- **${s.kode}** — ${s.nama}: ${_mdEscape(s.detail||'')}${s.volume_konfirmasi?' · volume kuat':''}`);
+      });
+    } else {
+      lines.push('- Belum ada sinyal entry pada candle terakhir.');
+    }
+  } else {
+    lines.push(`Data teknikal tidak cukup${t.error?`: ${_mdEscape(t.error)}`:'.'}`);
+  }
+  lines.push('');
+  if(b){
+    lines.push('## 5. Bandarmologi');
+    lines.push('');
+    lines.push(`- Sentiment: **${b.sentiment||'—'}** (skor ${b.score??'—'}/100)`);
+    if(b.note) lines.push(`- Catatan: ${_mdEscape(b.note)}`);
+    lines.push('');
+  }
+  if(d.jalur7 && d.jalur7.ok){
+    const j=d.jalur7;
+    lines.push('## 6. Jalur 7%');
+    lines.push('');
+    lines.push(`- Layak: **${j.layak?'Ya':'Tidak'}** · Skor: ${j.score??'—'}`);
+    if(j.catatan) lines.push(`- ${_mdEscape(Array.isArray(j.catatan)?j.catatan.join('; '):j.catatan)}`);
+    lines.push('');
+  }
+  lines.push('---');
+  lines.push('');
+  lines.push('*Disclaimer: alat bantu analisa, bukan ajakan jual/beli. Keputusan & risiko di tangan pengguna. Transaksi tunai, long-only, sesuai Fatwa DSN-MUI.*');
+  lines.push('');
+  return lines.join('\n');
+}
+
+function buildAdvisorMarkdown(adv, analyze){
+  if(!adv) return '';
+  const now=new Date().toLocaleString('id-ID',{timeZone:'Asia/Jakarta'});
+  const tk=adv.ticker || (analyze&&analyze.ticker) || 'SAHAM';
+  const v=adv.verdict||{};
+  const lines=[];
+  lines.push(`# Advisor — ${tk} (${(adv.engine||'—').toString().toUpperCase()})`);
+  lines.push('');
+  lines.push(`> Dihasilkan oleh Sharia Trading AI · ${now} WIB`);
+  lines.push('');
+  lines.push(`**Engine:** ${adv.engine||'—'}  `);
+  lines.push(`**Model:** ${adv.model||'—'}  `);
+  if(adv.fallback_dari) lines.push(`**Fallback dari:** ${adv.fallback_dari}  `);
+  if(adv.rekomendasi_mesin){
+    const rm=adv.rekomendasi_mesin;
+    lines.push(`**Rekomendasi mesin:** ${rm.final_signal||rm.aksi||'—'} (skor ${rm.skor??'—'})`);
+  }
+  lines.push('');
+  if(v && Object.keys(v).length){
+    lines.push('## Verdict');
+    lines.push('');
+    const rec=v.rekomendasi_claude||v.rekomendasi||'—';
+    lines.push(`- **Rekomendasi:** ${rec}`);
+    if(v.keyakinan) lines.push(`- **Keyakinan:** ${v.keyakinan}`);
+    if(v.vs_mesin) lines.push(`- **vs Mesin:** ${String(v.vs_mesin).replace(/_/g,' ')}`);
+    if(v.penyesuaian_conviction!=null) lines.push(`- **Penyesuaian conviction:** ${v.penyesuaian_conviction}`);
+    if(v.entry_ideal!=null) lines.push(`- **Entry ideal:** ${v.entry_ideal}`);
+    if(v.stop_loss!=null) lines.push(`- **Stop loss:** ${v.stop_loss}`);
+    if(v.target_harga!=null) lines.push(`- **Target:** ${v.target_harga}`);
+    if(v.rrr) lines.push(`- **RRR:** ${v.rrr}`);
+    if(v.horizon) lines.push(`- **Horizon:** ${v.horizon}`);
+    if(v.risiko_utama) lines.push(`- **Risiko utama:** ${v.risiko_utama}`);
+    lines.push('');
+  }
+  lines.push('## Analisa Naratif');
+  lines.push('');
+  lines.push(_mdEscape(adv.analisa||'(kosong)'));
+  lines.push('');
+  if(adv.usage){
+    const u=adv.usage;
+    const parts=[];
+    if(u.input_tokens) parts.push(`${u.input_tokens} token input`);
+    if(u.output_tokens) parts.push(`${u.output_tokens} token output`);
+    if(u.durasi_detik) parts.push(`${u.durasi_detik}s`);
+    if(parts.length){
+      lines.push('---');
+      lines.push(`*Usage: ${parts.join(' · ')}*`);
+      lines.push('');
+    }
+  }
+  lines.push('---');
+  lines.push('');
+  lines.push('*Disclaimer: alat bantu analisa, bukan ajakan jual/beli. Keputusan & risiko di tangan pengguna.*');
+  lines.push('');
+  return lines.join('\n');
+}
+
+function downloadAnalyzeMd(){
+  if(!LAST_ANALYZE){ toast('Jalankan Analisa dulu.'); return; }
+  const tk=LAST_ANALYZE.ticker||'SAHAM';
+  const md=buildAnalyzeMarkdown(LAST_ANALYZE);
+  downloadTextFile(`analisa_${tk}_${_mdStamp()}.md`, md);
+  toast(`Markdown Analisa ${tk} diunduh.`);
+}
+
+function _advisorEngineSlug(adv){
+  const eng = ((adv && adv.engine) || '').toString().toLowerCase().trim();
+  if(eng === 'gemini' || eng === 'deepseek' || eng === 'lokal') return eng;
+  // fallback dari nama model bila engine kosong
+  const model = ((adv && adv.model) || '').toString().toLowerCase();
+  if(model.includes('deepseek')) return 'deepseek';
+  if(model.includes('gemini')) return 'gemini';
+  if(model.includes('lokal') || model.includes('local')) return 'lokal';
+  return 'advisor';
+}
+
+function downloadAdvisorMd(){
+  if(!LAST_ADVISOR){ toast('Jalankan Advisor dulu.'); return; }
+  const tk=LAST_ADVISOR.ticker||(LAST_ANALYZE&&LAST_ANALYZE.ticker)||'SAHAM';
+  const eng=_advisorEngineSlug(LAST_ADVISOR);
+  const md=buildAdvisorMarkdown(LAST_ADVISOR, LAST_ANALYZE);
+  downloadTextFile(`advisor_${eng}_${tk}_${_mdStamp()}.md`, md);
+  toast(`Markdown Advisor ${eng.toUpperCase()} · ${tk} diunduh.`);
+}
+
+function downloadAnalyzeAdvisorMd(){
+  if(!LAST_ANALYZE && !LAST_ADVISOR){ toast('Jalankan Analisa / Advisor dulu.'); return; }
+  const tk=(LAST_ANALYZE&&LAST_ANALYZE.ticker)||(LAST_ADVISOR&&LAST_ADVISOR.ticker)||'SAHAM';
+  const parts=[];
+  if(LAST_ANALYZE) parts.push(buildAnalyzeMarkdown(LAST_ANALYZE));
+  if(LAST_ADVISOR){
+    if(parts.length) parts.push('\n\n---\n\n');
+    parts.push(buildAdvisorMarkdown(LAST_ADVISOR, LAST_ANALYZE));
+  }
+  const eng = LAST_ADVISOR ? _advisorEngineSlug(LAST_ADVISOR) : 'analisa';
+  const fname = LAST_ADVISOR
+    ? `analisa_advisor_${eng}_${tk}_${_mdStamp()}.md`
+    : `analisa_${tk}_${_mdStamp()}.md`;
+  downloadTextFile(fname, parts.join(''));
+  toast(`Markdown gabungan ${LAST_ADVISOR?eng.toUpperCase()+' · ':''}${tk} diunduh.`);
+}
+
+function _mdStamp(){
+  const d=new Date();
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
 async function analyze(){
-  const tk=$('#tk').value.trim().toUpperCase(); if(!tk) return;
+  const tk=getTicker(); if(!tk){ toast('Masukkan kode saham dulu.'); return; }
+  setTicker(tk);
+  LAST_ADVISOR = null; // analisa baru → advisor lama tidak relevan
   $('#aout').innerHTML=`<section class="glass-panel"><div class="flex"><span class="spin"></span>
-    <span class="dim">Menjalankan funnel untuk <b>${tk}</b>…</span></div>
+    <span class="dim">Menjalankan funnel untuk <b>${esc(tk)}</b>…</span></div>
     <div class="skel" style="margin-top:1rem"></div><div class="skel" style="margin-top:.5rem;width:70%"></div></section>`;
-  let d; try{ d=await api('/api/analyze/'+tk); }catch(e){ $('#aout').innerHTML='<section class="glass-panel"><div class="empty">Gagal memuat.</div></section>'; return; }
+  let d; try{ d=await api('/api/analyze/'+encodeURIComponent(tk)); }catch(e){ $('#aout').innerHTML='<section class="glass-panel"><div class="empty">Gagal memuat.</div></section>'; return; }
+  if(d && d.detail){ $('#aout').innerHTML=`<section class="glass-panel"><div class="empty">${esc(d.detail)}</div></section>`; return; }
+  LAST_ANALYZE = d;
+  if(d.input_mode==='manual' || d.in_funnel_universe===false) saveManualTicker(d.ticker||tk);
   const rec=d.rekomendasi, sh=d.sharia, f=d.fundamental, c=d.canslim, t=d.technical, b=d.bandarmologi;
   const bk=bucket(rec.css);
+  const manualMode = d.input_mode==='manual' || d.in_funnel_universe===false || (sh&&sh.des_status==='outside_curated');
+  const syariahLabel = sh.compliant ? (manualMode ? '✓ Syariah*' : '✓ Syariah') : 'Non-Syariah';
+  const syariahTip = manualMode
+    ? 'Di luar universe funnel terkurasi — verifikasi DES/ISSI mandiri'
+    : (sh.compliant ? 'Kompatibel DES' : 'Non-DES');
 
   let h=`<div id="ai-slot"></div>`;
-  h+=`<section class="glass-panel decision-panel" style="border: 2px solid var(--brand); padding: 1.7rem; box-shadow: 0 8px 32px rgba(59, 130, 246, 0.15);"><div class="between">
+  h+=`<section class="glass-panel decision-panel" style="border: 2px solid var(--brand); padding: 1.7rem; box-shadow: 0 8px 32px rgba(59, 130, 246, 0.15);"><div class="between" style="align-items:flex-start">
     <div style="flex: 1; padding-right: 1.5rem;">
-      <div class="flex" style="gap: .7rem; align-items: center;">
-        <div style="font-size: 2.1rem; font-weight: 800; tracking: -0.5px;">${d.ticker}</div>
-        <span class="badge ${sh.compliant?'buy':'sell'}" style="font-size: .85rem; padding: .3rem .75rem;">${sh.compliant?'✓ Syariah':'Non-Syariah'}</span>
+      <div class="flex" style="gap: .7rem; align-items: center; flex-wrap:wrap;">
+        <div style="font-size: 2.1rem; font-weight: 800; tracking: -0.5px;">${esc(d.ticker)}</div>
+        <span class="badge ${sh.compliant?'buy':'sell'}" style="font-size: .85rem; padding: .3rem .75rem; cursor: pointer;" onclick="explainMetric('${esc(d.ticker)}', 'Kepatuhan Syariah', '${sh.compliant?'Lolos':'Gagal'}', '${esc(syariahTip)}')">${syariahLabel}</span>
+        ${manualMode?`<span class="badge warning" style="font-size:.75rem;padding:.25rem .6rem" title="Analisa on-demand di luar ~100 saham funnel">✎ Manual</span>`:`<span class="badge na" style="font-size:.75rem;padding:.25rem .6rem" title="Termasuk universe funnel">Funnel</span>`}
+        <button class="btn secondary" style="font-size:.75rem;padding:.25rem .55rem;margin-left:auto" onclick="downloadAnalyzeMd()" title="Unduh Markdown Analisa">📥 MD Analisa</button>
       </div>
       <div class="dim" style="margin-top:.2rem; font-size: .95rem; font-weight: 500;">${esc(d.name)||''} · ${esc(d.sector)||''}</div>
+      ${manualMode?`<div class="mut" style="font-size:.78rem;margin-top:.45rem;padding:.45rem .65rem;border-radius:8px;background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.25);line-height:1.45">✎ <b>Input manual</b> — di luar universe funnel terkurasi. Fundamental mungkin dari yfinance (kurang lengkap). Verifikasi keanggotaan DES/ISSI sebelum bertransaksi.</div>`:''}
+      ${(d.data_notes&&d.data_notes.length)?`<div class="mut" style="font-size:.75rem;margin-top:.4rem;color:var(--mute)">📎 ${d.data_notes.map(esc).join(' · ')}</div>`:''}
       <div class="mut" style="font-size:.74rem;margin-top:.6rem;display:flex;gap:.8rem;flex-wrap:wrap;align-items:center">
         <span>🌐 <b>Teknikal & Harga:</b> Yahoo Finance (Intraday ~10-15m)</span>
-        <span>📊 <b>Fundamental:</b> Laporan Keuangan Aktual (DES Terkurasi)</span>
+        <span>📊 <b>Fundamental:</b> ${manualMode?'yfinance / data tersedia':'Laporan Keuangan Aktual (DES Terkurasi)'}</span>
         <span>⏱️ <b>Cache TTL:</b> 10 Menit</span>
       </div>
       <div style="margin-top: 1.1rem;">
@@ -520,6 +1365,48 @@ async function analyze(){
       ${ring(rec.skor,'Skor Funnel')}
     </div>
   </div></section>`;
+
+  // Skor dua lapis (Hard Gate → Quality → Timing → Regime → Final)
+  const sc=rec.scoring;
+  if(sc && sc.model==='layered'){
+    const reg=sc.regime||{};
+    const regCls=reg.regime==='BULLISH'?'buy':reg.regime==='BEARISH'?'sell':'warning';
+    const elig=sc.eligible_for_buy;
+    const kep=(sc.keputusan||'').toUpperCase();
+    const kepCls=kep==='STRONG BUY'?'buy':kep==='WATCHLIST'?'warning':'sell';
+    const gates=((sc.gates&&sc.gates.gates)||[]);
+    const comps=sc.components||{};
+    const gateHtml=gates.map(g=>`<span class="badge ${g.passed?'buy':'sell'}" style="font-size:.68rem;padding:2px 7px" title="${esc(g.detail||'')}">${g.passed?'✓':'✕'} ${esc(g.nama||g.id||'')}</span>`).join(' ');
+    const compRows=Object.keys(comps).map(k=>{
+      const c=comps[k];
+      const pct=Math.round((c.nilai||0)*100);
+      const w=Math.round((c.bobot||0)*100);
+      return `<div style="display:flex;align-items:center;gap:.5rem;margin-top:.35rem;font-size:.78rem">
+        <span style="width:7.2rem;text-transform:capitalize">${esc(k)}</span>
+        <div style="flex:1;height:7px;background:var(--line);border-radius:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--brand)"></div></div>
+        <span class="mut" style="width:5.5rem;text-align:right">${c.skor_100??pct} · ${w}% → ${c.kontribusi??'—'}</span>
+      </div>`;
+    }).join('');
+    const maNote = reg.pct_ma20_vs_ma60!=null
+      ? `(MA20 vs MA60 ${reg.pct_ma20_vs_ma60}%)`
+      : (reg.pct_vs_sma200!=null?`(${reg.pct_vs_sma200}% vs SMA200)`:'');
+    h+=`<section class="glass-panel" style="margin-top:1rem">
+      <div class="between" style="margin-bottom:.7rem;align-items:flex-start;flex-wrap:wrap;gap:.5rem">
+        <h3 class="sec" style="margin:0">🧮 Skor Rekomendasi</h3>
+        <div class="flex" style="gap:.35rem;flex-wrap:wrap">
+          <span class="badge ${kepCls}" style="font-size:.7rem">${esc(sc.keputusan||'—')} · Final ${sc.final_score??sc.skor??'—'}</span>
+          <span class="badge ${elig?'buy':'sell'}" style="font-size:.7rem">${elig?'Eligible BELI':'Tidak eligible'}</span>
+          <span class="badge ${regCls}" style="font-size:.7rem">${esc(reg.regime||'—')} · ×${sc.size_mult??1}</span>
+          <span class="badge na" style="font-size:.7rem">Q ${sc.quality_score??'—'} · T ${sc.timing_score??'—'}${sc.timing_layak_entry?' ✓':' <65'}</span>
+        </div>
+      </div>
+      <div class="mut" style="font-size:.78rem;margin-bottom:.55rem">${esc(reg.label||'')} ${maNote}</div>
+      <div class="flex" style="gap:.35rem;flex-wrap:wrap;margin-bottom:.7rem">${gateHtml||'<span class="mut">—</span>'}</div>
+      ${compRows}
+      <div class="mut" style="font-size:.7rem;margin-top:.7rem;line-height:1.5">Hard gate: DES/ISSI → spread≤2% &amp; vol median 5d ≥Rp5jt → IHSG bukan ekstrem (MA20&lt;MA60 by &gt;5%). Quality = Fund×0.3 + Tech×0.2 + Bandar×0.15 + Liq×0.15 + IHSG×0.15 + Risk×0.1. Final = Quality×Multiplier (+ Timing Bonus 0). ≥75 STRONG BUY · 55–74 WATCHLIST · &lt;55 SKIP. Timing layak entry ≥65.</div>
+    </section>`;
+  }
+
   h+=shariaCard(sh);
 
   h+=`<section class="glass-panel"><div class="between" style="margin-bottom:.8rem">
@@ -534,7 +1421,7 @@ async function analyze(){
   h+=`<section class="glass-panel"><div class="between" style="margin-bottom:.6rem"><h3 class="sec" style="margin:0">💎 6 Magic Number <span class="badge ${f.source==='master_data'?'buy':'na'}" style="font-size:.58rem;text-transform:none">${f.source==='master_data'?'data terkurasi':'yfinance'}</span></h3>
     ${ringScore(f.magic_score,6,f.verdict)}</div>${f.checks.map(crow).join('')}
     <div class="crow" style="margin-top:.2rem"><div><div class="nm">${esc(f.bonus_dividend.kriteria)}</div><div class="tg">${esc(f.bonus_dividend.target)}</div></div>
-      <div class="flex"><span class="vl">${esc(f.bonus_dividend.nilai)}</span>${pill(f.bonus_dividend.lolos)}</div></div></section>`;
+      <div class="flex"><span class="vl">${esc(f.bonus_dividend.nilai)}</span>${pill(f.bonus_dividend.lolos, null, f.bonus_dividend.kriteria, f.bonus_dividend.nilai)}</div></div></section>`;
   let lt=''; for(const k in c.letters){ const L=c.letters[k];
     lt+=`<div class="lt ${L.lolos===true?'pass':L.lolos===false?'fail':''}" title="${esc(L.kriteria)}: ${esc(L.nilai)}"><b>${k}</b><small>${L.lolos===true?'✓':L.lolos===false?'✕':'·'}</small></div>`; }
   h+=`<section class="glass-panel"><div class="between" style="margin-bottom:.6rem"><h3 class="sec" style="margin:0">⚡ CAN SLIM</h3>
@@ -620,16 +1507,16 @@ function shariaCard(sh){
   const aa=(sh.aaoifi||{}).summary||'-';
   const aac=aa==='PASS'?'buy':aa==='FAIL'?'sell':'warning';
   const rows=(sh.checks||[]).map(c=>`<div class="crow"><div style="min-width:0"><div class="nm">${esc(c.kriteria)}</div><div class="tg">${esc(c.acuan||'')}</div></div>
-    <div class="flex"><span class="vl">${esc(c.nilai)}</span>${pill(c.lolos)}</div></div>`).join('');
+    <div class="flex"><span class="vl">${esc(c.nilai)}</span>${pill(c.lolos, null, c.kriteria, c.nilai)}</div></div>`).join('');
   return `<section class="glass-panel"><div class="between" style="margin-bottom:.6rem">
     <h3 class="sec" style="margin:0">☪ Kepatuhan Syariah</h3>
-    <div class="flex"><span class="badge ${dvc}">DSN-MUI: ${esc(dv)}</span><span class="badge ${aac}">AAOIFI: ${esc(aa)}</span></div></div>
+    <div class="flex"><span class="badge ${dvc}" style="cursor: pointer;" onclick="explainMetric(document.getElementById('tk').value.trim().toUpperCase(), 'Kepatuhan Syariah (DSN-MUI)', '${esc(dv)}', '${esc(dv)}')">DSN-MUI: ${esc(dv)}</span><span class="badge ${aac}" style="cursor: pointer;" onclick="explainMetric(document.getElementById('tk').value.trim().toUpperCase(), 'Kepatuhan Syariah (AAOIFI)', '${esc(aa)}', '${esc(aa)}')">AAOIFI: ${esc(aa)}</span></div></div>
     ${rows}<p class="sub">${esc(sh.catatan||'')}</p></section>`;
 }
 function crow(c){ return `<div class="crow"><div><div class="nm">${esc(c.kriteria)}</div><div class="tg">target ${esc(c.target)}</div></div>
-  <div class="flex"><span class="vl">${esc(c.nilai)}</span>${pill(c.lolos)}</div></div>`; }
+  <div class="flex"><span class="vl">${esc(c.nilai)}</span>${pill(c.lolos, null, c.kriteria, c.nilai)}</div></div>`; }
 function cslimRows(L){ return Object.keys(L).map(k=>`<div class="crow"><div><div class="nm"><b style="color:var(--brand-2)">${k}</b> ${esc(L[k].kriteria)}</div>
-  <div class="tg">${esc(L[k].nilai)}</div></div>${pill(L[k].lolos)}</div>`).join(''); }
+  <div class="tg">${esc(L[k].nilai)}</div></div>${pill(L[k].lolos, null, L[k].kriteria, L[k].nilai)}</div>`).join(''); }
 function stat(lbl,val,cls,sub,tip){ return `<div class="stat"${tip?` title="${esc(tip)}"`:''} style="${tip?'cursor:help;':''}"><div class="lbl">${lbl}</div><div class="big num ${cls||''}" style="font-size:1.15rem">${val}</div>${sub?`<div class="sub num">${esc(sub)}</div>`:''}</div>`; }
 function srZones(t){
   const lv=(t.sr_levels||[]);
@@ -753,41 +1640,73 @@ async function loadEngines(){
   try{ const s=await api('/api/advisor/status'); const e=s.engines; const sel=$('#adv-engine');
     const opt=(v,l)=>`<option value="${v}">${l}</option>`;
     let html=opt('auto','⚙ Auto');
-    // Claude selalu tampil (walau belum aktif) — labeli bila perlu API key.
-    html+=opt('claude', e.claude.tersedia ? '✦ Claude' : '✦ Claude (perlu API key)');
-    if(e.gemini.tersedia) html+=opt('gemini','✧ Gemini (gratis)');
-    if(e.ollama.tersedia) html+=opt('ollama','🖥 Ollama (gratis)');
+    if(e.gemini && e.gemini.tersedia) html+=opt('gemini','✦ Gemini (gratis)');
+    if(e.deepseek && e.deepseek.tersedia) html+=opt('deepseek','◈ DeepSeek');
     html+=opt('lokal','⚡ Lokal (instan)');
-    sel.innerHTML=html; sel.value=s.default;
+    sel.innerHTML=html; sel.value=s.default||'lokal';
     const notes=[];
-    if(e.gemini.tersedia) notes.push(`Gemini: <b>${esc(e.gemini.model)}</b>`);
-    if(e.ollama.tersedia) notes.push(`Ollama: <b>${esc(e.ollama.model)}</b>`);
-    if(notes.length) $('#adv-hint').innerHTML += ` · <span class="dim">${notes.join(' · ')} (gratis)</span>`;
-    if(!e.claude.tersedia) $('#adv-hint').innerHTML += ` · <span class="dim">Claude (${esc(e.claude.model)}) perlu <code>ANTHROPIC_API_KEY</code> di .env</span>`;
+    if(e.gemini && e.gemini.tersedia) notes.push(`Gemini: <b>${esc(e.gemini.model)}</b>`);
+    else notes.push('Gemini: <b>nonaktif</b> (set <code>GEMINI_API_KEY</code>)');
+    if(e.deepseek && e.deepseek.tersedia) notes.push(`DeepSeek: <b>${esc(e.deepseek.model)}</b>`);
+    else notes.push('DeepSeek: <b>nonaktif</b> (set <code>DEEPSEEK_API_KEY</code>)');
+    notes.push('Lokal: selalu siap');
+    $('#adv-hint').innerHTML = `Engine: ${notes.join(' · ')}`;
+    
+    const strategyLed = document.getElementById('led-agent-strategy');
+    if (strategyLed) {
+      const on = (e.gemini && e.gemini.tersedia) || (e.deepseek && e.deepseek.tersedia);
+      strategyLed.style.background = on ? '#00d26a' : '#eab308';
+      strategyLed.style.boxShadow = on ? '0 0 8px #00d26a' : '0 0 8px #eab308';
+    }
+  }catch(e){}
+  
+  // Update Telegram Agent LED
+  try {
+    const t = await api('/api/telegram/status');
+    const telegramLed = document.getElementById('led-agent-telegram');
+    if (telegramLed) {
+      if (t.configured && t.enabled) {
+        telegramLed.style.background = '#00d26a';
+        telegramLed.style.boxShadow = '0 0 8px #00d26a';
+      } else {
+        telegramLed.style.background = '#666';
+        telegramLed.style.boxShadow = 'none';
+      }
+    }
   }catch(e){}
 }
 async function advisor(){
-  const tk=$('#tk').value.trim().toUpperCase(); if(!tk) return;
+  const tk=getTicker(); if(!tk){ toast('Masukkan kode saham dulu.'); return; }
+  setTicker(tk);
   if(!$('#aout').innerHTML.trim()) await analyze();
   const eng=$('#adv-engine').value||'auto';
   const slot=aiSlot();
-  const wait = eng==='ollama' ? `Model lokal <b>Ollama</b> sedang berpikir untuk ${tk}… <span class="dim">(±20–35 dtk, tanpa biaya)</span>`
-    : eng==='gemini' ? `<b>Gemini</b> menyusun analisa untuk ${tk}… <span class="dim">(free tier)</span>`
-    : eng==='claude' ? `Claude menyusun analisa untuk ${tk}…` : `Menyusun analisa ${tk}…`;
+  const wait = (eng==='gemini' || (eng==='auto' && !$('#adv-engine').querySelector('option[value=deepseek]')))
+    ? `Gemini sedang menganalisa ${esc(tk)}… <span class="dim">(±5–10 dtk)</span>`
+    : eng==='deepseek'
+    ? `DeepSeek sedang menganalisa ${esc(tk)}… <span class="dim">(±5–15 dtk)</span>`
+    : eng==='auto'
+    ? `Advisor AI sedang menganalisa ${esc(tk)}…`
+    : `Menyusun analisa ${esc(tk)}…`;
   slot.innerHTML=`<section class="glass-panel ai-box"><h3 class="sec">✦ Advisor</h3><div class="flex"><span class="spin"></span><span>${wait}</span></div></section>`;
-  try{ const d=await api('/api/advisor/'+tk+'?engine='+eng);
+  try{ const d=await api('/api/advisor/'+encodeURIComponent(tk)+'?engine='+eng);
     if(d.enabled===false){ slot.innerHTML=`<section class="glass-panel ai-box"><h3 class="sec">✦ Advisor</h3><p class="dim">${esc(d.message)}</p></section>`; return; }
     if(d.error){ slot.innerHTML=`<section class="glass-panel ai-box"><h3 class="sec">✦ Advisor</h3><p style="color:var(--sell)">${esc(d.error)}</p></section>`; return; }
+    LAST_ADVISOR = d;
+    if(!CURRENT_TICKERS.includes(tk)) saveManualTicker(tk);
     let u='';
     if(d.usage){ const parts=[]; if(d.usage.output_tokens)parts.push(d.usage.output_tokens+' tok');
       if(d.usage.durasi_detik)parts.push(d.usage.durasi_detik+'s'); if(d.usage.cache_read_input_tokens)parts.push('cache hit');
+      if(d.usage.input_tokens)parts.push(d.usage.input_tokens+' in');
       if(parts.length)u=' · '+parts.join(' · '); }
-    slot.innerHTML=`<section class="glass-panel ai-box"><h3 class="sec">✦ Advisor <span class="mut" style="font-weight:600;text-transform:none">${esc(d.model||'')}${u}</span></h3>${aiVerdict(d.verdict)}<div class="ai-text">${mdb(d.analisa)}</div></section>`;
+    const fb = d.fallback_dari ? ` <span class="mut">(fallback dari ${esc(d.fallback_dari)})</span>` : '';
+    slot.innerHTML=`<section class="glass-panel ai-box"><div class="between" style="align-items:center;gap:.5rem;margin-bottom:.35rem"><h3 class="sec" style="margin:0">✦ Advisor <span class="mut" style="font-weight:600;text-transform:none">${esc(d.model||'')}${u}</span>${fb}</h3>
+      <button class="btn secondary" style="font-size:.75rem;padding:.25rem .55rem" onclick="downloadAdvisorMd()" title="Unduh Markdown Advisor">📥 MD</button></div>${aiVerdict(d.verdict)}<div class="ai-text">${mdb(d.analisa)}</div></section>`;
   }catch(e){ slot.innerHTML=`<section class="glass-panel ai-box"><p class="dim">Gagal: ${e}</p></section>`; }
 }
 function aiVerdict(v){
   if(!v) return '';
-  const rec=(v.rekomendasi_claude||'').toString().toUpperCase();
+  const rec=(v.rekomendasi_claude||v.rekomendasi||'').toString().toUpperCase();
   const cls = /STRONG BUY|^BUY|ACCUMULATE/.test(rec)?'buy' : /AVOID|SELL/.test(rec)?'sell' : 'hold';
   const adj=v.penyesuaian_conviction;
   const adjStr = (adj!=null && Number(adj)!==0) ? `${Number(adj)>0?'+':''}${adj} conviction vs mesin` : 'sejalan dgn mesin';
@@ -831,7 +1750,21 @@ function screenTable(rows){
       <td style="text-align:right"><b class="num" style="font-size:.95rem">${s.skor}</b></td></tr>`; });
   return r+'</tbody></table>';
 }
-function gotoAnalyze(tk){ if(tk==='🪙 EMAS'||tk==='EMAS'){ document.querySelector('.tab-btn-main[data-p="emas"]').click(); window.scrollTo({top:0,behavior:'smooth'}); return; } $('#tk').value=tk; document.querySelector('.tab-btn-main[data-p="analyze"]').click(); analyze(); window.scrollTo({top:0,behavior:'smooth'}); }
+function gotoAnalyze(tk){
+  if(tk==='🪙 EMAS'||tk==='EMAS'){
+    document.querySelector('.tab-btn-main[data-p="port"]').click();
+    const subBtn = document.querySelector('.sub-tab-btn[data-sub="emas"]');
+    if(subBtn) subBtn.click();
+    window.scrollTo({top:0,behavior:'smooth'});
+    return;
+  }
+  setTicker(tk);
+  document.querySelector('.tab-btn-main[data-p="analyze"]').click();
+  const subBtn = document.querySelector('.sub-tab-btn[data-sub="analyze-core"]');
+  if(subBtn) subBtn.click();
+  analyze();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
 
 /* ===================== RADAR KONTRADIKSI TRADINGVIEW ===================== */
 async function loadCrossCheck(){
@@ -1381,7 +2314,7 @@ function loadPedoman(){
 
   <h4>C. Mesin Fundamental</h4>
   <p><b>6 Magic Number</b> (skor 0–6): EPS QnQ ≥ 25% · ROA &gt; 15% · ROE &gt; 15% · DER &lt; 100% · PBV &lt; 1 · PER &lt; 10×; bonus Dividend Yield &gt; 7% + nilai intrinsik.</p>
-  <p><b>CAN SLIM</b> (skor 0–7): <b>C</b> EPS QnQ ≥ 25% · <b>A</b> pertumbuhan tahunan ≥ 20% (3 thn) · <b>N</b> harga ≥ 85% high-52-pekan · <b>S</b> volume ≥ 1,5× &amp; free-float &lt; 50% · <b>L</b> peringkat ≤ 3 di sektor · <b>I</b> institusi ≥ 1% · <b>M</b> IHSG vs SMA50. Label: STRONG BUY / BUY / HOLD / AVOID.</p>
+  <p><b>CAN SLIM</b> (skor 0–7): <b>C</b> EPS QnQ ≥ 25% (sumber sama 6 Magic: TV/hybrid) · <b>A</b> pertumbuhan tahunan/YoY ≥ 20% &amp; ROE ≥ 17% · <b>N</b> harga ≥ 85% high-52-pekan · <b>S</b> free-float &lt; 50% &amp; (volume ≥ 1,5× atau FF &lt; 25%) · <b>L</b> peringkat ≤ 3 di sektor atau RS 6 bulan &gt; indeks · <b>I</b> institusi ≥ 1% · <b>M</b> IHSG vs SMA50.</p>
 
   <h4>D. Mesin Teknikal &amp; Jalur 7%</h4>
   <ul>
@@ -1411,6 +2344,7 @@ function loadPedoman(){
     <li>Portofolio dijaga tepat <b>N emiten</b> (default 3) <b>per RDN/broker</b> (tiap broker dikelola terpisah karena skema biaya berbeda).</li>
     <li>Kurang dari N → <b>BELI</b> isi slot (kandidat terkuat yang punya cash). Lebih → <b>JUAL</b> emiten terlemah (pangkas). Penuh → <b>ROTASI</b> bila kandidat jauh lebih kuat (selisih conviction ≥ ambang).</li>
     <li>Eksit wajib lebih dulu: <b>CUT LOSS</b> P/L ≤ −7% (Jalur 7%), <b>TAKE PROFIT</b> ≥ +20%, fundamental AVOID.</li>
+    <li><b>Trading US hanya di Pluang</b> (USD, 1 lembar = 1 unit). RDN BEI (mis. Profits Anywhere) hanya untuk saham IDX. Nilai BUY/SELL selalu mengikuti lot &amp; cash portofolio aktual.</li>
   </ul>
 
   <h4>I. Money Management &amp; Biaya Transaksi (per-RDN)</h4>
@@ -1491,10 +2425,20 @@ function loadPedoman(){
     <li><b>Filter Universe Awal</b>: Pemindaian hanya dilakukan pada 75 saham syariah pilihan utama terkurasi (komponen JII/IDX80/LQ45) pada database <i>master_data_syariah.csv</i>. Saham gorengan lapis ketiga (micro-cap) secara otomatis diabaikan sejak awal.</li>
     <li><b>Filter Fundamental (Anti-Avoid)</b>: Kriteria 6 Magic Numbers dan CAN SLIM memblokir saham berkinerja buruk (rugi bersih, utang terlalu tinggi) dengan label <b>AVOID</b>. Saham berlabel AVOID tidak akan pernah direkomendasikan beli walau harganya melonjak naik.</li>
     <li><b>Deteksi Risiko Likuiditas (Volume Rata-Rata)</b>: Sistem memantau volume harian rata-rata 20 hari terakhir (MA20 Volume):
-      <br>• <i>Illiquid (Risiko Sangat Tinggi)</i>: Rata-rata &lt; 500.000 lembar (~5.000 lot/hari). Diberikan peringatan risiko likuiditas tinggi.
+      <br>• <i>Illiquid (Risiko Sangat Tinggi)</i>: Rata-rata &lt; 500.000 lembar (~5.000 lot/hari). <b>Hard gate</b> — digugurkan dari kandidat BELI.
       <br>• <i>Likuiditas Rendah (Sangat Likuid)</i>: Rata-rata &ge; 2.000.000 lembar (~20.000 lot/hari). Sangat direkomendasikan untuk keamanan eksekusi masuk &amp; keluar.
     </li>
     <li><b>Validasi Volume Spike</b>: Sinyal breakout harga (tembus resistance/52-weeks high) wajib dikonfirmasi oleh volume spike &gt; 1.5x rata-rata untuk menyaring pompa harga palsu (*false breakout*) yang dimanipulasi sepihak pada saham gorengan.</li>
+  </ul>
+
+  <h4>Q2. Scoring Rekomendasi (Hard Gate → Quality → Timing → Final)</h4>
+  <p class="dim">Model skor Funnel default (<code>SCORING_MODEL=layered</code>). Rollback ke lama: set <code>SCORING_MODEL=legacy</code> di <code>.env</code>.</p>
+  <ul>
+    <li><b>Hard Gate</b> (satu FAIL = skip): DES/ISSI → spread ≤2% &amp; vol median 5 hari ≥ Rp5jt → IHSG bukan downtrend ekstrem (MA20 &lt; MA60 by &gt;5%).</li>
+    <li><b>Quality Score 0–100+</b>: <code>Fund×0.3 + Tech×0.2 + Bandar×0.15 + Liq×0.15 + IHSG×0.15 + Risk×0.1</code> (bobot spreadsheet, jumlah 105%).</li>
+    <li><b>Timing Score</b> (terpisah): RSI zona, volume spike &gt;2×, gap, support/MA — layak entry bila ≥65 (filter, bukan penambah Final).</li>
+    <li><b>Regime Multiplier</b>: BULLISH ×1.0 · NEUTRAL ×0.8 · BEARISH ×0 (×0.5 bila saham defensif &amp; bukan ekstrem). Regime dari MA20 vs MA60 indeks.</li>
+    <li><b>Final = Quality × Multiplier + Timing Bonus (0)</b>: ≥75 STRONG BUY · 55–74 WATCHLIST · &lt;55 SKIP. Eligible BELI penuh hanya STRONG BUY + timing layak.</li>
   </ul>
 
   <h4>R. Sumber Data &amp; Caching Timing</h4>
@@ -1521,20 +2465,30 @@ async function loadPortfolio(){
       let h = `<h3 class="sec" style="margin: 1.5rem 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .4rem; display: flex; justify-content: space-between; align-items: center;">
         <span>📊 ${title}</span>
         <span style="font-size: .8rem; font-weight: normal; color: var(--mute);">
-          Modal: <b>${fmt(summary.total_modal)}</b> · pasar: <b>${fmt(summary.total_value)}</b> · P/L: <b class="${summary.total_pl>=0?'pl-up':'pl-down'}">${summary.total_pl>=0?'+':''}${fmt(summary.total_pl)} (${summary.total_pl_pct>=0?'+':''}${summary.total_pl_pct}%)</b>
+          Modal: <b>Rp ${fmt(summary.total_modal)}</b> · pasar: <b>Rp ${fmt(summary.total_value)}</b> · P/L: <b class="${summary.total_pl>=0?'pl-up':'pl-down'}">${summary.total_pl>=0?'+':''}Rp ${fmt(Math.abs(summary.total_pl))} (${summary.total_pl_pct>=0?'+':''}${summary.total_pl_pct}%)</b>
         </span>
       </h3>`;
       if (!ps.length) {
         h += '<div class="empty" style="padding: 1rem 0;">Belum ada posisi di portfolio ini.</div>';
         return h;
       }
-      h += '<table><thead><tr><th>Kode</th><th>Lot</th><th style="text-align:right">Avg</th><th style="text-align:right" title="harga impas setelah biaya beli+jual">Impas</th><th style="text-align:right">Harga</th><th style="text-align:right" title="nilai pasar kotor → hasil bersih bila dijual (stlh fee jual)">Nilai (kotor → jual bersih)</th><th style="text-align:right" title="setelah biaya beli & jual">P/L Bersih</th><th></th></tr></thead><tbody>';
-      ps.forEach(p => { const up=(p.net_pl||0)>=0; const beUp=p.current_price>=p.break_even;
+      h += '<table><thead><tr><th>Kode</th><th>Lot / Lembar (US)</th><th style="text-align:right">Avg</th><th style="text-align:right" title="harga impas setelah biaya beli+jual">Impas</th><th style="text-align:right">Harga</th><th style="text-align:right" title="nilai pasar kotor → hasil bersih bila dijual (stlh fee jual)">Nilai (kotor → jual bersih)</th><th style="text-align:right" title="setelah biaya beli & jual">P/L Bersih</th><th></th></tr></thead><tbody>';
+      ps.forEach(p => { 
+        const isUSD = p.currency === 'USD';
+        const cSymbol = isUSD ? '$' : 'Rp ';
+        const cFmt = val => {
+          if (val === null || val === undefined || val === '') return '—';
+          return isUSD ? Number(val).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : Number(val).toLocaleString('id-ID');
+        };
+        const up=(p.net_pl||0)>=0; 
+        const beUp=p.current_price>=p.break_even;
         h += `<tr><td><span class="tkr">${p.ticker}</span> ${p.syariah?'<span class="badge buy" style="font-size:.6rem">✓</span>':'<span class="badge sell" style="font-size:.6rem">non</span>'}${p.broker?` <span class="badge na" style="font-size:.55rem" title="fee beli ${p.fee_buy_pct}% / jual ${p.fee_sell_pct}%">${esc(p.broker)}</span>`:''}</td>
-          <td class="num">${p.lots}</td><td style="text-align:right" class="num">${fmt(p.avg_price)}</td>
-          <td style="text-align:right" class="num ${beUp?'pl-up':'pl-down'}" title="impas (sudah hitung biaya)">${fmt(p.break_even)}</td>
-          <td style="text-align:right" class="num">${fmt(p.current_price)}</td><td style="text-align:right" class="num">${fmt(p.value)}<br><span class="mut" style="font-size:.62rem" title="hasil bersih bila dijual semua kini (stlh fee jual ${p.fee_sell_pct}%)">jual ≈ <b style="color:var(--buy)">${fmt(p.net_value)}</b></span></td>
-          <td style="text-align:right" class="num ${up?'pl-up':'pl-down'}"><b>${p.net_pl>=0?'+':''}${fmt(p.net_pl)}</b><br><span style="font-size:.72rem">${p.net_pl_pct>=0?'+':''}${p.net_pl_pct}%</span><br><span class="mut" style="font-size:.62rem" title="P/L kotor (harga saja)">kotor ${p.pl>=0?'+':''}${fmt(p.pl)}</span></td>
+          <td class="num">${p.lots} <span class="mut" style="font-size:.65rem">${isUSD?'sh':'lot'}</span></td>
+          <td style="text-align:right" class="num">${cSymbol}${cFmt(p.avg_price)}</td>
+          <td style="text-align:right" class="num ${beUp?'pl-up':'pl-down'}" title="impas (sudah hitung biaya)">${cSymbol}${cFmt(p.break_even)}</td>
+          <td style="text-align:right" class="num">${cSymbol}${cFmt(p.current_price)}</td>
+          <td style="text-align:right" class="num">${cSymbol}${cFmt(p.value)}<br><span class="mut" style="font-size:.62rem" title="hasil bersih bila dijual semua kini (stlh fee jual ${p.fee_sell_pct}%)">jual ≈ <b style="color:var(--buy)">${cSymbol}${cFmt(p.net_value)}</b></span></td>
+          <td style="text-align:right" class="num ${up?'pl-up':'pl-down'}"><b>${p.net_pl>=0?'+':''}${cSymbol}${cFmt(Math.abs(p.net_pl))}</b><br><span style="font-size:.72rem">${p.net_pl_pct>=0?'+':''}${p.net_pl_pct}%</span><br><span class="mut" style="font-size:.62rem" title="P/L kotor (harga saja)">kotor ${p.pl>=0?'+':''}${cSymbol}${cFmt(Math.abs(p.pl))}</span></td>
           <td style="text-align:right;white-space:nowrap"><button class="btn ghost" style="padding:.2rem .5rem;font-size:.7rem" onclick="openSell(${p.id},'${p.ticker}',${p.lots},${p.current_price||p.avg_price},${p.fee_sell_pct||0.25})" title="Jual (sebagian/penuh) & sinkron">💰 Jual</button>
             <button class="del-btn" onclick="delPosition(${p.id})" title="Hapus tanpa catat">🗑</button></td></tr>`;
       });
@@ -1648,9 +2602,9 @@ async function loadInvestasiSaham() {
         return;
       }
       
-      const verdClass = ev.verdict_class === 'buy' ? 'buy' : ev.verdict_class === 'warning' ? 'warning' : 'sell';
-      const scoreC = ev.val_score >= 55 ? 'pl-up' : 'pl-down';
-      const timeC = (ev.technical_score || 0) >= 50 ? 'pl-up' : 'pl-down';
+      const verdClass = ev.css === 'buy' ? 'buy' : ev.css === 'warning' ? 'warning' : 'sell';
+      const scoreC = ev.valuation_score >= 55 ? 'pl-up' : 'pl-down';
+      const timeC = (ev.timing_score || 0) >= 50 ? 'pl-up' : 'pl-down';
       
       // Proyeksi dividen yang diumumkan atau diestimasi
       let upcomingHtml = '<span class="mut">Tidak ada dalam waktu dekat</span>';
@@ -1711,19 +2665,19 @@ async function loadInvestasiSaham() {
       const divStreak = div ? (div.pay_streak || div.years_paid || 0) : 0;
 
       recsHtml += `
-        <div class="cardlet" style="padding:1.2rem;display:flex;flex-direction:column;gap:.6rem;border-top:3px solid ${ev.verdict_class === 'buy' ? 'var(--buy)' : ev.verdict_class === 'warning' ? 'var(--hold)' : 'var(--line)'}">
+        <div class="cardlet" style="padding:1.2rem;display:flex;flex-direction:column;gap:.6rem;border-top:3px solid ${ev.css === 'buy' ? 'var(--buy)' : ev.css === 'warning' ? 'var(--hold)' : 'var(--line)'}">
           <div class="between" style="align-items:flex-start">
             <div>
               <h3 style="margin:0"><span class="tkr">${r.ticker}</span> <span class="badge buy" style="font-size:.65rem">✓ Syariah</span></h3>
               <div class="mut" style="font-size:.7rem;margin-top:.1rem">Yield Tahunan: <b>${divYield}%</b> · Streak: <b>${divStreak} tahun</b></div>
             </div>
-            <span class="badge ${verdClass}" style="font-size:.85rem;padding:.3rem .6rem">${ev.verdict}</span>
+            <span class="badge ${verdClass}" style="font-size:.85rem;padding:.3rem .6rem">${ev.label}</span>
           </div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-top:.3rem">
             <div>
               <div class="mut" style="font-size:.7rem">SKOR VALUASI FUNDAMENTAL</div>
-              <div style="font-size:1.3rem;font-weight:800" class="${scoreC}">${Math.round(ev.val_score)}<span style="font-size:.78rem;color:var(--mute)">/100</span></div>
+              <div style="font-size:1.3rem;font-weight:800" class="${scoreC}">${ev.valuation_score != null ? Math.round(ev.valuation_score) : '-'}<span style="font-size:.78rem;color:var(--mute)">/100</span></div>
               ${factorsHtml}
               <div style="font-size:.72rem;margin-top:.4rem" class="mut">
                 Harga Graham: <b>${ev.valuation_extra && ev.valuation_extra.graham_number != null ? fmt(ev.valuation_extra.graham_number) : '-'}</b><br>
@@ -1732,7 +2686,7 @@ async function loadInvestasiSaham() {
             </div>
             <div>
               <div class="mut" style="font-size:.7rem">SKOR TIMING TEKNIKAL</div>
-              <div style="font-size:1.3rem;font-weight:800" class="${timeC}">${Math.round(ev.technical_score)}<span style="font-size:.78rem;color:var(--mute)">/100</span></div>
+              <div style="font-size:1.3rem;font-weight:800" class="${timeC}">${ev.timing_score != null ? Math.round(ev.timing_score) : '-'}<span style="font-size:.78rem;color:var(--mute)">/100</span></div>
               ${timingHtml}
               <div style="margin-top:.6rem;border-top:1px solid rgba(255,255,255,.03);padding-top:.4rem">
                 <div class="mut" style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:var(--brand-2)">Dividen Mendatang</div>
@@ -1776,7 +2730,9 @@ async function loadROI(){
       <div class="bar" style="height:9px;margin-top:.3rem"><i style="width:${prog}%;background:${ok?'var(--buy)':'var(--brand-2)'}"></i></div></div>`;
     h+=`<div style="margin-top:.7rem"><div class="mut" style="font-size:.74rem;margin-bottom:.2rem">📈 Equity curve — ROI kumulatif realized vs target ${d.target_pct}%</div>${roiChart(d.curve, d.target_pct)}</div>`;
     h+=`<div class="sub" style="margin-top:.6rem;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:10px;padding:.55rem .8rem">
-      🤖 <b>Strategi adaptif</b> (AI pakai ROI): ambang akurasi BELI = <b>${a.min_buy_accuracy}%</b> · target jual net <b>${a.take_profit_net_pct}%</b>
+      🤖 <b>Strategi adaptif</b> (ROI Integral): ambang akurasi BELI = <b>${a.min_buy_accuracy}%</b> · target jual net <b>${a.take_profit_net_pct}%</b>
+      ${a.roi_pct!=null?` · ROI basis <b>${a.roi_pct}%</b> (${esc(a.roi_basis||'integral')})`:''}
+      ${(a.notes&&a.notes[0])?`<div class="mut" style="font-size:.72rem;margin-top:.25rem">${esc(a.notes[0])}</div>`:''}
       ${(a.notes||[]).map(n=>`<div class="mut" style="font-size:.74rem;margin-top:.2rem">• ${esc(n)}</div>`).join('')}</div>`;
     if(d.trades&&d.trades.length){
       h+=`<div style="margin-top:.6rem;font-size:.76rem"><span class="mut">Riwayat:</span> `+d.trades.slice(-6).reverse().map(t=>`<span class="badge ${t.win?'buy':'sell'}" title="${t.lots} lot @ ${fmt(t.avg_price)}→${fmt(t.exit_price)}">${t.ticker} ${t.roi_pct>=0?'+':''}${t.roi_pct}%</span>`).join(' ')+`</div>`;
@@ -1987,6 +2943,13 @@ function rdnCard(r){
     </div>`;
   }
 
+  const isUSD = r.currency === 'USD';
+  const aSymbol = isUSD ? '$' : 'Rp ';
+  const aFmt = val => {
+    if (val === null || val === undefined || val === '') return '—';
+    return isUSD ? Number(val).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : fmt(val);
+  };
+
   return `<div class="glass-panel" style="margin-bottom:.7rem;padding:.9rem 1.1rem">
     <div class="between" style="align-items:flex-start">
       <div class="flex" style="gap:.5rem;flex-wrap:wrap;align-items:center">
@@ -1994,13 +2957,14 @@ function rdnCard(r){
         ${r.rdn?`<span class="badge na" style="font-size:.58rem">${esc(r.rdn)}</span>`:''}
         ${r.bank?`<span class="mut" style="font-size:.7rem">${esc(r.bank)}</span>`:''}
         <span class="badge ${full?'buy':'warning'}">${r.emiten}/${r.target_emiten} emiten</span>
+        ${isUSD ? `<span class="badge buy" style="font-size:.58rem">USD</span>` : ''}
       </div>
-      <div style="text-align:right"><div class="mut" style="font-size:.62rem">EKUITAS</div><b style="font-size:1.05rem">${fmt(r.equity)}</b></div>
+      <div style="text-align:right"><div class="mut" style="font-size:.62rem">EKUITAS (IDR)</div><b style="font-size:1.05rem">Rp ${fmt(r.equity)}</b></div>
     </div>
     <div class="grid g-3" style="gap:.6rem;margin:.55rem 0;font-size:.8rem">
-      <div>💵 Cash <b>${fmt(r.cash)}</b> <span class="mut">${r.cash_pct??'–'}%</span></div>
-      <div>📦 Aset Saham <b>${fmt(r.asset_value)}</b> <span class="mut">${r.asset_pct??'–'}%</span></div>
-      <div>${(r.pl||0)>=0?'📈':'📉'} P/L Saham <b class="${(r.pl||0)>=0?'pl-up':'pl-down'}">${(r.pl||0)>=0?'+':''}${fmt(r.pl)}</b> <span class="mut">${r.pl_pct??'–'}%</span></div>
+      <div>💵 Cash <b>${isUSD ? '$' + Number(r.cash).toLocaleString('en-US', {minimumFractionDigits: 2}) : 'Rp ' + fmt(r.cash)}</b>${isUSD ? ` <span class="mut" style="font-size:.68rem">(Rp ${fmt(r.cash_idr)})</span>` : ''} <span class="mut">${r.cash_pct??'–'}%</span></div>
+      <div>📦 Aset Saham <b>Rp ${fmt(r.asset_value)}</b> <span class="mut">${r.asset_pct??'–'}%</span></div>
+      <div>${(r.pl||0)>=0?'📈':'📉'} P/L Saham <b class="${(r.pl||0)>=0?'pl-up':'pl-down'}">${(r.pl||0)>=0?'+':''}Rp ${fmt(Math.abs(r.pl))}</b> <span class="mut">${r.pl_pct??'–'}%</span></div>
     </div>
     ${goldHtml}
     <div class="mut" style="font-size:.7rem;margin:-.2rem 0 .4rem">💸 Biaya: beli ${r.fee_buy_pct}% · jual ${r.fee_sell_pct}% (pulang-pergi ${r.advice?.roundtrip_pct??'–'}%) — target jual ≥ +${r.advice?.net_profit_min_pct??'–'}% utk profit bersih</div>
@@ -2008,10 +2972,10 @@ function rdnCard(r){
       <div class="mut" style="font-size:.66rem;margin:.2rem 0 .5rem">saham ${r.asset_pct??0}% · emas ${r.gold_pct??0}% · cash ${r.cash_pct??0}%</div>`:''}
     ${detailHtml}
     <div style="background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem;font-size:.78rem;margin-top:.6rem">
-      <b>🧮 Saran Money Management</b>
-      <div style="margin-top:.3rem">Dana trading <b>${a.trading_fund_pct||50}%</b> = <b>${fmt(a.trading_fund)}</b> · cadangan ${fmt(a.reserve_fund)}</div>
-      <div>Per emiten (÷${r.target_emiten}): <b>${fmt(a.per_emiten)}</b> · slot kosong <b>${a.open_slots??'–'}</b> · siap deploy <b style="color:var(--buy)">${fmt(a.deployable_now)}</b></div>
-      ${a.risk_per_bid!=null?`<div class="mut">Per bid: risk ${a.risk_pct}% = ${fmt(a.risk_per_bid)} · target ${a.profit_pct}% = ${fmt(a.profit_per_bid)}</div>`:''}
+      <b>🧮 Saran Money Management (${r.currency})</b>
+      <div style="margin-top:.3rem">Dana trading <b>${a.trading_fund_pct||50}%</b> = <b>${aSymbol}${aFmt(a.trading_fund)}</b> · cadangan ${aSymbol}${aFmt(a.reserve_fund)}</div>
+      <div>Per emiten (÷${r.target_emiten}): <b>${aSymbol}${aFmt(a.per_emiten)}</b> · slot kosong <b>${a.open_slots??'–'}</b> · siap deploy <b style="color:var(--buy)">${aSymbol}${aFmt(a.deployable_now)}</b></div>
+      ${a.risk_per_bid!=null?`<div class="mut">Per bid: risk ${a.risk_pct}% = ${aSymbol}${aFmt(a.risk_per_bid)} · target ${a.profit_pct}% = ${aSymbol}${aFmt(a.profit_per_bid)}</div>`:''}
       <div style="margin-top:.35rem">${esc(a.note||'')}</div>
       ${integrationAdvice}
       ${r.health?`<div class="mut" style="margin-top:.2rem">ℹ️ ${esc(r.health)}</div>`:''}
@@ -2072,12 +3036,12 @@ function showExplain(param){
 async function saveRDN(){
   const broker=$('#rdn-broker').value, cash=+$('#rdn-cash').value||0, rdn=$('#rdn-no').value.trim()||null;
   const fb=$('#rdn-feeb').value, fs=$('#rdn-fees').value;
-  const body={broker,cash,rdn};
+  const body={broker,cash,rdn, currency: /pluang/i.test(broker)?'USD':'IDR'};
   if(fb!=='') body.fee_buy_pct=+fb;
   if(fs!=='') body.fee_sell_pct=+fs;
   const d=await post('/api/accounts',body);
   if(d&&d.detail){ toast(d.detail); return; }
-  toast(broker+' RDN disimpan.'); $('#rdn-cash').value=0; $('#rdn-no').value=''; $('#rdn-feeb').value=''; $('#rdn-fees').value=''; loadRDN();
+  toast(broker+' RDN disimpan'+(body.currency==='USD'?' (USD)':'')+'.'); $('#rdn-cash').value=0; $('#rdn-no').value=''; $('#rdn-feeb').value=''; $('#rdn-fees').value=''; loadRDN();
 }
 async function saveGold(){
   const grams = parseFloat($('#gold-grams').value) || 0;
@@ -2316,6 +3280,44 @@ function cmd(it){ const c=it.change_pct>=0?'var(--buy)':'var(--sell)';
 
 /* ===================== ALERT & TELEGRAM ===================== */
 function closeModal(){ $('#modal').classList.remove('open'); }
+async function explainMetric(ticker, metric, status, value) {
+  $('#modal').classList.add('open');
+  const h3 = document.querySelector('#modal h3.sec') || document.querySelector('#modal-title');
+  if(h3) h3.innerHTML = `🤖 Analisa Claude — ${metric}`;
+  const footer = document.querySelector('#modal .modal > div:last-child');
+  if(footer) footer.style.display = 'none';
+  
+  $('#modal-body').innerHTML = `
+    <div class="flex" style="flex-direction:column;gap:.6rem;padding:.4rem 0">
+      <div style="font-size:.85rem;background:rgba(255,255,255,.03);padding:.5rem;border-radius:6px;border:1px solid var(--line)">
+        <div>Saham: <b>${ticker}</b></div>
+        <div>Kriteria: <b>${metric}</b></div>
+        <div>Nilai Aktual: <b style="color:var(--buy)">${value || '—'}</b> · Status: <span class="badge ${status === 'Lolos' || status.includes('HALAL') || status === 'PASS' ? 'buy' : 'sell'}">${status}</span></div>
+      </div>
+      <div id="metric-explanation-content">
+        <div class="flex"><span class="spin"></span> <span class="dim">Meminta penjelasan Claude…</span></div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const eng = $('#adv-engine')?.value || 'auto';
+    const r = await api(`/api/advisor/explain/${ticker}/${encodeURIComponent(metric)}?status=${encodeURIComponent(status)}&value=${encodeURIComponent(value)}&engine=${eng}`);
+    if (r && r.detail === "Not Found") {
+      document.getElementById('metric-explanation-content').innerHTML = `
+        <p class="sub" style="color:var(--sell)"><b>Rute baru tidak ditemukan (Error 404).</b><br>Harap <b>jalankan ulang (restart) server backend FastAPI</b> Anda agar kode Python baru termuat.</p>
+      `;
+      return;
+    }
+    const explanationHtml = mdb(r.explanation || 'Tidak ada penjelasan.');
+    document.getElementById('metric-explanation-content').innerHTML = `
+      <div class="ai-text" style="font-size:.9rem;line-height:1.6;margin-top:.4rem">${explanationHtml}</div>
+      <div class="mut" style="font-size:.65rem;margin-top:.8rem;border-top:1px solid var(--line);padding-top:.4rem">Dianalisa oleh: ${esc(r.model)}</div>
+    `;
+  } catch(e) {
+    document.getElementById('metric-explanation-content').innerHTML = `<p class="sub" style="color:var(--sell)">Gagal memuat penjelasan dari AI Advisor.</p>`;
+  }
+}
 async function checkAlerts(){
   $('#modal').classList.add('open');
   const h3 = document.querySelector('#modal h3.sec');
@@ -3102,6 +4104,218 @@ async function toggleLearningProgress() {
   }
 }
 
+
+/* ===================== BSJP ===================== */
+let _bsjpCandidates = [];
+let _bsjpAutoRefresh = null;
+
+function rp(n){ try{ return 'Rp '+Number(n).toLocaleString('id-ID'); } catch(e){ return '—'; } }
+function pct(n,plus=true){ if(n===null||n===undefined) return '—'; const s=Number(n).toFixed(2)+'%'; return plus&&n>0?'+'+s:s; }
+
+async function loadBSJPSession() {
+  try {
+    const s = await api('/api/bsjp/status');
+    const dot = $('#bsjp-dot');
+    const lbl = $('#bsjp-session-label');
+    const aksi = $('#bsjp-session-aksi');
+    const time = $('#bsjp-session-time');
+    if(dot){ dot.className = 'bsjp-dot ' + (s.sesi||'closed'); }
+    if(lbl) lbl.textContent = s.label || '—';
+    if(aksi) aksi.textContent = s.aksi || '';
+    if(time) time.textContent = s.waktu_server || '';
+  } catch(e) {}
+}
+
+async function runBSJP() {
+  const btn = $('#bsjp-scan-btn');
+  const force = $('#bsjp-force')?.checked || false;
+  if(btn){ btn.textContent = '⏳ Memindai…'; btn.disabled = true; }
+  document.getElementById('bsjp-cnt-kandidat').textContent = '…';
+  document.getElementById('bsjp-cnt-beli').textContent = '…';
+  document.getElementById('bsjp-cnt-jual').textContent = '…';
+  document.getElementById('bsjp-buy-table').innerHTML = '<div class="empty"><span class="spin"></span> Memindai saham syariah…</div>';
+  document.getElementById('bsjp-sell-table').innerHTML = '<div class="empty"><span class="spin"></span> Mengecek posisi portofolio…</div>';
+
+  try {
+    await loadBSJPSession();
+    const [cands, sells] = await Promise.all([
+      api(`/api/bsjp/candidates?limit=20${force?'&force=true':''}`),
+      api('/api/bsjp/sell-signals')
+    ]);
+
+    _bsjpCandidates = cands.candidates || [];
+    const sellSignals = sells.signals || [];
+
+    // Update summary
+    document.getElementById('bsjp-cnt-kandidat').textContent = _bsjpCandidates.length;
+    document.getElementById('bsjp-cnt-beli').textContent = cands.sinyal_kuat || 0;
+    document.getElementById('bsjp-cnt-jual').textContent = sells.sinyal_jual || 0;
+
+    // Render buy table
+    renderBSJPBuyTable(_bsjpCandidates);
+
+    // Render sell table
+    renderBSJPSellTable(sellSignals);
+
+    // Populate advisor ticker dropdown
+    const advSel = $('#bsjp-adv-ticker');
+    if(advSel && _bsjpCandidates.length > 0){
+      advSel.innerHTML = _bsjpCandidates.map(c =>
+        `<option value="${c.ticker}">${c.ticker}${c.buy_signal?' ✅':''}</option>`
+      ).join('');
+    }
+
+    // Setup auto-refresh jika sesi aktif
+    if(cands.sesi?.aktif){
+      if(!_bsjpAutoRefresh){
+        _bsjpAutoRefresh = setInterval(runBSJP, 5 * 60 * 1000); // tiap 5 menit
+        toast('Auto-refresh aktif tiap 5 menit (sesi aktif).');
+      }
+    } else {
+      if(_bsjpAutoRefresh){ clearInterval(_bsjpAutoRefresh); _bsjpAutoRefresh = null; }
+    }
+
+  } catch(e) {
+    document.getElementById('bsjp-buy-table').innerHTML = `<div class="empty">Gagal memuat: ${esc(String(e))}</div>`;
+  } finally {
+    if(btn){ btn.textContent = '▶ Scan Sekarang'; btn.disabled = false; }
+  }
+}
+
+function renderBSJPBuyTable(candidates) {
+  const el = document.getElementById('bsjp-buy-table');
+  if(!candidates || !candidates.length){
+    el.innerHTML = '<div class="empty">Tidak ada kandidat BSJP saat ini. Coba saat sesi pre-closing (15:45–16:00).</div>';
+    return;
+  }
+  const header = `<div class="bsjp-row header">
+    <span>Ticker</span><span>IEP (est.)</span><span>CP Kemarin</span>
+    <span>Gap IEP-CP</span><span>Skor</span><span>TV Signal</span><span>Aksi</span>
+  </div>`;
+  const rows = candidates.map(c => {
+    const signal = c.buy_signal;
+    const gapStr = c.gap_iep_cp_pct !== null && c.gap_iep_cp_pct !== undefined
+      ? `<span style="color:${c.gap_iep_cp_pct>0?'var(--buy)':'var(--sell)'};">${pct(c.gap_iep_cp_pct)}</span>`
+      : '<span class="mut">—</span>';
+    const badge = signal
+      ? '<span class="bsjp-badge-kuat">✅ BELI KUAT</span>'
+      : '<span class="bsjp-badge-tahan">⏸ Pantau</span>';
+    const scoreBar = `<div>${c.bsjp_score}</div><div class="bsjp-score-bar"><div class="bsjp-score-fill" style="width:${c.bsjp_score}%"></div></div>`;
+    const recColor = c.rec_tv==='STRONG BUY'||c.rec_tv==='BUY' ? 'var(--buy)' : c.rec_tv==='NEUTRAL'?'var(--dim)':'var(--sell)';
+    return `<div class="bsjp-row ${signal?'signal-strong':'signal-weak'}" style="cursor:pointer" onclick="selectBSJPAdvisor('${c.ticker}')">
+      <span class="tkr">${esc(c.ticker)}</span>
+      <span class="num">${c.iep ? rp(c.iep) : '—'}</span>
+      <span class="num mut">${c.cp ? rp(c.cp) : '—'}</span>
+      <span>${gapStr}</span>
+      <span>${scoreBar}</span>
+      <span style="color:${recColor};font-weight:700;font-size:.78rem">${esc(c.rec_tv||'—')}</span>
+      <span>${badge}</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">${header}${rows}</div>
+    <p class="sub" style="margin:.5rem 0 0">Klik baris untuk analisa Advisor BSJP. IEP = estimasi dari TradingView (proksi harga pre-closing).</p>`;
+}
+
+function renderBSJPSellTable(signals) {
+  const el = document.getElementById('bsjp-sell-table');
+  if(!signals || !signals.length){
+    el.innerHTML = '<div class="empty">Tidak ada posisi portofolio aktif untuk BSJP. Tambahkan posisi di tab Portofolio.</div>';
+    return;
+  }
+  const header = `<div class="bsjp-sell-row header">
+    <span>Ticker</span><span>CP Kemarin</span><span>IEP Pagi</span>
+    <span>Gap</span><span>Lot</span><span>Status / Aksi</span>
+  </div>`;
+  const rows = signals.map(s => {
+    const sell = s.sell_signal;
+    const gapStr = s.gap_pct !== null && s.gap_pct !== undefined
+      ? `<span style="color:${s.gap_pct>0?'var(--buy)':'var(--sell)'};">${pct(s.gap_pct)}</span>`
+      : '—';
+    const statusEl = sell
+      ? `<span style="color:var(--buy);font-weight:700">✅ JUAL 08:45–09:00</span>`
+      : `<span class="mut">⏸ Tahan (IEP ≤ CP)</span>`;
+    return `<div class="bsjp-sell-row ${sell?'sell-now':''}">
+      <span class="tkr">${esc(s.ticker)}</span>
+      <span class="num">${s.cp_kemarin ? rp(s.cp_kemarin) : '—'}</span>
+      <span class="num">${s.iep_pagi ? rp(s.iep_pagi) : '—'}</span>
+      <span>${gapStr}</span>
+      <span>${s.lots||'—'} lot</span>
+      <span>${statusEl}</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">${header}${rows}</div>`;
+}
+
+function selectBSJPAdvisor(ticker) {
+  const sel = $('#bsjp-adv-ticker');
+  if(sel) sel.value = ticker;
+  document.getElementById('bsjp-advisor-sec')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+async function runBSJPAdvisor() {
+  const ticker = $('#bsjp-adv-ticker')?.value;
+  if(!ticker){ toast('Pilih ticker dulu.'); return; }
+  const out = document.getElementById('bsjp-advisor-out');
+  out.innerHTML = '<div class="empty"><span class="spin"></span> Menyusun analisa BSJP (Gemini / lokal)…</div>';
+  try {
+    const r = await api(`/api/bsjp/advisor/${encodeURIComponent(ticker)}`);
+    if(!r.enabled){
+      out.innerHTML = `<div class="empty mut">${esc(r.message||'Advisor tidak aktif.')}</div>`;
+      return;
+    }
+    if(r.error){
+      out.innerHTML = `<div class="empty" style="color:var(--sell)">${esc(r.error)}</div>`;
+      return;
+    }
+    const v = r.verdict || {};
+    const recClass = {BELI_KUAT:'beli-kuat',BELI_HATI:'beli-hati',TAHAN:'tahan',HINDARI:'hindari'}[v.rekomendasi] || 'tahan';
+    const recColor = {BELI_KUAT:'var(--buy)',BELI_HATI:'var(--hold)',TAHAN:'var(--brand)',HINDARI:'var(--sell)'}[v.rekomendasi] || 'var(--dim)';
+    const verdictHtml = v.rekomendasi ? `
+      <div class="bsjp-verdict ${recClass}">
+        <div class="bsjp-verdict-head">
+          <span class="bsjp-verdict-label" style="color:${recColor}">${esc(v.rekomendasi)} — Keyakinan: ${esc(v.keyakinan||'—')}</span>
+          ${v.risiko_utama ? `<span class="badge sell" style="font-size:.7rem">${esc(v.risiko_utama)}</span>` : ''}
+        </div>
+        ${(v.entry_pre_closing||v.target_pre_opening||v.stop_loss) ? `
+          <div class="bsjp-verdict-plan">
+            <div class="bsjp-verdict-plan-item">
+              <span class="bsjp-verdict-plan-lbl">Entry Pre-Closing</span>
+              <span class="bsjp-verdict-plan-val" style="color:var(--buy)">${v.entry_pre_closing?rp(v.entry_pre_closing):'—'}</span>
+            </div>
+            <div class="bsjp-verdict-plan-item">
+              <span class="bsjp-verdict-plan-lbl">Target Pre-Opening</span>
+              <span class="bsjp-verdict-plan-val" style="color:var(--buy)">${v.target_pre_opening?rp(v.target_pre_opening):'—'}</span>
+            </div>
+            <div class="bsjp-verdict-plan-item">
+              <span class="bsjp-verdict-plan-lbl">Stop Loss</span>
+              <span class="bsjp-verdict-plan-val" style="color:var(--sell)">${v.stop_loss?rp(v.stop_loss):'—'}</span>
+            </div>
+          </div>
+        ` : ''}
+      </div>` : '';
+    out.innerHTML = `
+      <div class="glass-panel ai-box" style="margin-top:.5rem">
+        <div class="between" style="margin-bottom:.5rem">
+          <h3 class="sec" style="margin:0;color:#a99bff">🤖 Analisa BSJP — ${esc(ticker)}</h3>
+          <span class="mut" style="font-size:.7rem">${esc(r.model||'')}</span>
+        </div>
+        ${verdictHtml}
+        <div class="ai-text">${mdb(r.analisa||'')}</div>
+      </div>`;
+  } catch(e) {
+    out.innerHTML = `<div class="empty" style="color:var(--sell)">Gagal: ${esc(String(e))}</div>`;
+  }
+}
+
+async function sendBSJPTelegram() {
+  toast('Mengirim alert BSJP ke Telegram…');
+  try {
+    const r = await fetch('/api/bsjp/alert', {method:'POST'}).then(x=>x.json());
+    if(r.telegram?.ok) toast('✅ Alert BSJP terkirim ke Telegram!');
+    else toast('⚠️ Telegram gagal: ' + JSON.stringify(r.telegram));
+  } catch(e) { toast('Error: ' + e); }
+}
+
 /* ===================== INIT ===================== */
 function refreshAll(){ loadMarket(); loadUniverse(); _loaded.cmd=false; toast('Data pasar disegarkan.'); }
 (async()=>{
@@ -3109,7 +4323,7 @@ function refreshAll(){ loadMarket(); loadUniverse(); _loaded.cmd=false; toast('D
   try{ const dc=await api('/api/disclaimer');
     $('#disc').innerHTML=`<b>Disclaimer:</b> ${esc(dc.disclaimer)}<br><br><b>Acuan:</b> ${dc.acuan.map(esc).join(' · ')}`;
   }catch(e){}
-  runDecision(false);
+  runDecision(false, {fromInit: true, refresh: false});
   // Auto-load Radar Kontradiksi saat Dashboard dibuka (ditunda agar Pusat Keputusan
   // & kartu dashboard ter-render dulu; guard _loaded.cc cegah pemuatan ganda).
   setTimeout(()=>{ if(!_loaded.cc) loadCrossCheck(); }, 2500);

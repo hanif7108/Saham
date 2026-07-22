@@ -46,22 +46,32 @@ def record_trade(ticker: str, lots: int, avg_price: float, exit_price: float,
                  broker: Optional[str] = None, opened: Optional[str] = None,
                  closed: Optional[str] = None, context: Optional[str] = None) -> dict[str, Any]:
     """Catat 1 transaksi tertutup → ROI bersih (termasuk biaya beli+jual broker)."""
+    from app.data.provider import is_us_ticker, get_usd_idr_rate
     ticker = ticker.upper().strip()
-    shares = int(lots) * MM.SHARES_PER_LOT
+    is_us = is_us_ticker(ticker)
+    shares = int(lots) * (1 if is_us else MM.SHARES_PER_LOT)
     fee_buy, fee_sell = accounts.fees_for(broker)
     cost = shares * float(avg_price) * (1 + fee_buy / 100)        # modal riil (incl. biaya beli)
     proceeds = shares * float(exit_price) * (1 - fee_sell / 100)  # hasil bersih (incl. biaya jual)
-    roi_idr = proceeds - cost
-    roi_pct = (roi_idr / cost * 100) if cost else 0.0
+    
+    rate = get_usd_idr_rate() if is_us else 1.0
+    roi_val = proceeds - cost
+    roi_idr = roi_val * rate
+    roi_pct = (roi_val / cost * 100) if cost else 0.0
+    
     rows = _load()
     rec = {
         "id": max((r["id"] for r in rows), default=0) + 1,
         "ticker": ticker, "broker": broker, "lots": int(lots),
         "avg_price": float(avg_price), "exit_price": float(exit_price),
-        "cost": round(cost), "proceeds": round(proceeds),
+        "cost": round(cost * rate), "proceeds": round(proceeds * rate),
+        "cost_native": round(cost, 2) if is_us else round(cost),
+        "proceeds_native": round(proceeds, 2) if is_us else round(proceeds),
+        "roi_native": round(roi_val, 2) if is_us else round(roi_val),
         "roi_idr": round(roi_idr), "roi_pct": round(roi_pct, 2),
         "win": roi_idr > 0, "opened": opened,
         "closed": closed or datetime.now().isoformat(timespec="seconds"), "context": context,
+        "currency": "USD" if is_us else "IDR", "rate": rate
     }
     rows.append(rec)
     _save(rows)
@@ -139,7 +149,7 @@ def portfolio_roi(target: Optional[float] = None) -> dict[str, Any]:
     }
 
 
-# --------------------------- strategi ADAPTIF (AI pakai ROI) --------------------------- #
+# --------------------------- strategi ADAPTIF (pakai ROI Integral) --------------------------- #
 def _simulation_learning() -> Optional[dict[str, Any]]:
     """Statistik SIMULASI eksekusi (paper trading) — cadangan learning saat
     data realized masih sedikit. Lazy import agar bebas siklus impor."""
@@ -152,60 +162,124 @@ def _simulation_learning() -> Optional[dict[str, Any]]:
 
 
 def adaptive_strategy(target: Optional[float] = None) -> dict[str, Any]:
-    """Setel ambang strategi dari kinerja ROI nyata → kejar target profit.
-    Bila transaksi realized < 3, pakai track-record SIMULASI sebagai dasar."""
+    """Setel ambang strategi dari kinerja ROI → kejar target profit.
+
+    Metrik utama = **ROI Integral** (realized+unrealized, berbobot modal) — sama
+    dengan yang ditampilkan di UI / on_track. Bukan rata-rata % per trade
+    (avg_roi) yang bisa menyimpang jauh dari ROI berbobot modal.
+
+    Bila transaksi realized < 3, pakai track-record SIMULASI sebagai dasar.
+    """
     target = float(target if target is not None else MM.PROFIT_FUND_PCT)
     rs = realized_stats()
+    pr = portfolio_roi(target)
     n = rs["n_trades"]
     notes: list[str] = []
 
-    if n < 3:
+    # ROI yang dipakai untuk menyesuaikan ambang = integral (konsisten UI)
+    roi_pct = float(pr["integral"]["roi_pct"] or 0)
+    roi_basis = "integral"
+
+    if n < 3 and (pr["integral"]["invested"] or 0) <= 0:
         sim = _simulation_learning()
         if sim:
             # cold-start TERINFORMASI: belajar dari simulasi paper-trade harian
             sim_avg = sim["avg_roi"] or 0
             sim_wr = sim["win_rate"] or 0
+            roi_pct = float(sim_avg)
+            roi_basis = "simulasi"
             if sim_avg < target:
                 gap = target - sim_avg
                 min_acc = min(70.0, 35.0 + gap * 2)
-                notes.append(f"Belajar dari SIMULASI ({sim['n_closed']} sinyal): ROI {sim_avg:.1f}% "
-                             f"< target {target:.0f}% → ambang akurasi BELI {min_acc:.0f}% (lebih selektif).")
+                notes.append(
+                    f"Belajar dari SIMULASI ({sim['n_closed']} sinyal): ROI {sim_avg:.1f}% "
+                    f"< target {target:.0f}% → ambang akurasi BELI {min_acc:.0f}% (lebih selektif)."
+                )
             else:
                 min_acc = 35.0
-                notes.append(f"Belajar dari SIMULASI ({sim['n_closed']} sinyal): ROI {sim_avg:.1f}% "
-                             f"≥ target {target:.0f}% → ambang {min_acc:.0f}%.")
+                notes.append(
+                    f"Belajar dari SIMULASI ({sim['n_closed']} sinyal): ROI {sim_avg:.1f}% "
+                    f"≥ target {target:.0f}% → ambang {min_acc:.0f}%."
+                )
             if sim_wr < 50:
                 min_acc = max(min_acc, 50.0)
-                notes.append(f"Win-rate simulasi {sim_wr:.0f}% < 50% → ambang dinaikkan ke {min_acc:.0f}% "
-                             "(utamakan akurasi tinggi).")
-            notes.append("Catatan: ambang dari simulasi otomatis (tab Simulasi); akan digantikan "
-                         "data realized setelah ≥3 transaksi nyata tutup.")
-            return {"target_pct": target, "min_buy_accuracy": round(min_acc, 1),
-                    "take_profit_net_pct": round(target, 2), "based_on_trades": n,
-                    "based_on_simulations": sim["n_closed"],
-                    "realized_roi_pct": rs["realized_roi_pct"], "notes": notes}
+                notes.append(
+                    f"Win-rate simulasi {sim_wr:.0f}% < 50% → ambang dinaikkan ke {min_acc:.0f}% "
+                    "(utamakan akurasi tinggi)."
+                )
+            notes.append(
+                "Catatan: ambang dari simulasi otomatis (tab Simulasi); akan digantikan "
+                "data realized/integral setelah ada posisi atau ≥3 transaksi nyata tutup."
+            )
+            return {
+                "target_pct": target,
+                "min_buy_accuracy": round(min_acc, 1),
+                "take_profit_net_pct": round(target, 2),
+                "based_on_trades": n,
+                "based_on_simulations": sim["n_closed"],
+                "roi_basis": roi_basis,
+                "roi_pct": round(roi_pct, 2),
+                "realized_roi_pct": rs["realized_roi_pct"],
+                "integral_roi_pct": pr["integral"]["roi_pct"],
+                "avg_roi_per_trade": rs["avg_roi"],
+                "notes": notes,
+            }
         min_acc = 25.0                                               # cold-start longgar
-        notes.append("Belum cukup data realized (<3 transaksi tutup) & simulasi → ambang akurasi dasar 25%. "
-                     "Tutup posisi via tombol Jual agar ROI tercatat & strategi mulai belajar.")
+        notes.append(
+            "Belum cukup data realized (<3 transaksi tutup) & simulasi → ambang akurasi dasar 25%. "
+            "Tutup posisi via tombol Jual agar ROI tercatat & strategi mulai belajar."
+        )
+        return {
+            "target_pct": target,
+            "min_buy_accuracy": round(min_acc, 1),
+            "take_profit_net_pct": round(target, 2),
+            "based_on_trades": n,
+            "roi_basis": "cold_start",
+            "roi_pct": round(roi_pct, 2),
+            "realized_roi_pct": rs["realized_roi_pct"],
+            "integral_roi_pct": pr["integral"]["roi_pct"],
+            "avg_roi_per_trade": rs["avg_roi"],
+            "notes": notes,
+        }
+
+    # Ada data integral / realized cukup
+    if roi_pct < target:
+        gap = target - roi_pct
+        min_acc = min(70.0, 40.0 + gap * 2)                      # makin jauh dari target → makin ketat
+        notes.append(
+            f"ROI Integral {roi_pct:.1f}% < target {target:.0f}% → ambang akurasi BELI "
+            f"dinaikkan ke {min_acc:.0f}% (lebih selektif, kejar {target:.0f}%)."
+        )
     else:
-        realized = rs["avg_roi"] or 0
-        if realized < target:
-            gap = target - realized
-            min_acc = min(70.0, 40.0 + gap * 2)                      # makin jauh dari target → makin ketat
-            notes.append(f"ROI realized {realized:.1f}% < target {target:.0f}% → ambang akurasi BELI "
-                         f"dinaikkan ke {min_acc:.0f}% (lebih selektif, kejar 6%).")
-        else:
-            min_acc = 40.0
-            notes.append(f"ROI realized {realized:.1f}% ≥ target {target:.0f}% → ambang {min_acc:.0f}% (pertahankan).")
-        if (rs["win_rate"] or 0) < 50:
-            min_acc = max(min_acc, 50.0)
-            notes.append(f"Win-rate {rs['win_rate']:.0f}% < 50% → prioritaskan akurasi tinggi & disiplin cut-loss.")
+        min_acc = 40.0
+        notes.append(
+            f"ROI Integral {roi_pct:.1f}% ≥ target {target:.0f}% → ambang {min_acc:.0f}% (pertahankan)."
+        )
+
+    wr = rs["win_rate"]
+    if n >= 3 and wr is not None and wr < 50:
+        min_acc = max(min_acc, 50.0)
+        notes.append(
+            f"Win-rate {wr:.0f}% < 50% → prioritaskan akurasi tinggi & disiplin cut-loss."
+        )
+
+    # Catatan diagnostik: avg_roi per-trade boleh berbeda dari ROI berbobot modal
+    if n >= 3 and rs.get("avg_roi") is not None and rs.get("realized_roi_pct") is not None:
+        if abs((rs["avg_roi"] or 0) - (rs["realized_roi_pct"] or 0)) >= 1.0:
+            notes.append(
+                f"Catatan: avg ROI/trade {rs['avg_roi']:.1f}% ≠ ROI berbobot modal "
+                f"{rs['realized_roi_pct']:.1f}% — strategi memakai ROI Integral (berbobot)."
+            )
 
     return {
         "target_pct": target,
         "min_buy_accuracy": round(min_acc, 1),
-        "take_profit_net_pct": round(target, 2),
+        "take_profit_net_pct": round(target, 2),  # target profit fund tetap (Money Management)
         "based_on_trades": n,
+        "roi_basis": roi_basis,
+        "roi_pct": round(roi_pct, 2),
         "realized_roi_pct": rs["realized_roi_pct"],
+        "integral_roi_pct": pr["integral"]["roi_pct"],
+        "avg_roi_per_trade": rs["avg_roi"],
         "notes": notes,
     }

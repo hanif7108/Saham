@@ -24,6 +24,8 @@ from typing import Any
 
 from app.config import settings
 
+VERDICT_MARKER = "@@VERDICT@@"
+
 # System prompt STABIL (tidak ada tanggal/nilai volatil) -> bisa di-cache.
 SYSTEM_PROMPT = """\
 Anda adalah asisten analis saham SYARIAH untuk Bursa Efek Indonesia (BEI),
@@ -34,6 +36,12 @@ Prinsip yang WAJIB Anda pegang:
 - Hanya saham yang lolos screening syariah (DES/ISSI). Tolak saran pada saham non-syariah.
 - Transaksi TUNAI, long-only: tanpa margin (riba), tanpa short selling, tanpa
   bai' al-ma'dum, najsy, ghisysy, insider trading, atau pump-and-dump.
+- DATA TEKNIKAL WAJIB dari payload (jangan mengarang angka):
+  * Pakai 'teknikal.price', 'teknikal.rsi', 'teknikal.stochastic', 'signal.rsi'
+    PERSIS seperti yang dikirim. Jangan ganti dengan memori/training Anda.
+  * Sebut sumber: IDX / yfinance (lihat teknikal.data_source). Harga BEI dalam Rupiah
+    (mis. TINS ≈ ribuan rupiah, BUKAN puluhan).
+  * Bila data di payload bertentangan dengan 'intuisi' Anda, PERCAYAI payload.
 - Kerangka keputusan:
   * Fundamental "6 Magic Number": EPS+, ROA>15%, ROE>15%, DER<1, PBV<1, PER<10x;
     bonus Dividend Yield>7%.
@@ -49,8 +57,7 @@ seimbang dalam Bahasa Indonesia, dengan struktur:
 2. Kekuatan (poin yang lolos).
 3. Kelemahan / risiko (poin yang gagal / data kurang). **PENTING**: Jika volume transaksi harian saham rendah atau likuiditasnya bertanda 'Sangat Tinggi'/'Sedang', berikan peringatan konkret tentang risiko likuiditas (sulit menjual kembali), bahaya jebakan Fake Bid / Fake Offer (antrean palsu), bias analisis order book (antrean tidak mencerminkan tren sebenarnya), dan manipulasi saat sesi pre-closing (khususnya untuk strategi Beli Sore Jual Pagi / BSJP).
 4. Pandangan teknikal & timing.
-5. Saran trading plan ringkas BILA layak (level entry/CL/TP konseptual, RRR), atau
-   alasan menunggu. Tegaskan transaksi tunai (non-margin).
+5. Saran money management & trading plan bertahap (metode Taichi OB1/OB2/OB3) BILA layak beli (BUY/ACCUMULATE/SPECULATIVE BUY). Hubungkan dengan saldo cash RDN Anda ('data_akun_dan_cash') dan hitung nilai Rupiah dan Lot riil untuk setiap tahap pembelian (OB1, OB2, OB3) berdasarkan porsi alokasi dana per emiten. Berikan perkiraan waktu masuk ke tahap berikutnya (misal: "tahap 2 jika RSI menyentuh oversold < 30", atau "tahap 3 saat breakout re-entry"). Jika Anda sudah memiliki saham ini di portofolio ('portofolio_aktif_anda'), berikan rekomendasi hold atau average up/down berdasarkan tingkat keuntungan/kerugian (P/L) saat ini. Tegaskan transaksi tunai (non-margin). Jika kondisi urgent/mendesak (seperti menyentuh level stop-loss keras -7% atau breakdown support besar), infokan bahwa alert/notifikasi darurat otomatis akan dikirim ke Telegram Anda.
 6. Satu kalimat disclaimer: ini alat bantu analisa, bukan ajakan jual/beli; keputusan
    & risiko di tangan pengguna.
 
@@ -79,7 +86,7 @@ Ringkas (maksimal ~400 kata untuk narasi), tanpa basa-basi pembuka.
 
 WAJIB diakhiri TEPAT dengan SATU baris machine-readable (tidak ada teks apa pun
 setelahnya), format persis:
-@@VERDICT@@ {"rekomendasi_claude":"<STRONG BUY|BUY|ACCUMULATE|HOLD|WAIT|AVOID>","keyakinan":"<TINGGI|SEDANG|RENDAH>","vs_mesin":"<SETUJU|LEBIH_KONSERVATIF|LEBIH_AGRESIF>","penyesuaian_conviction":<bilangan bulat -3..3>,"entry_ideal":<harga|null>,"stop_loss":<harga|null>,"target_harga":<harga|null>,"rrr":"<mis. 1:2.5|null>","horizon":"<mis. swing 1-4 minggu|null>","risiko_utama":"<maks 12 kata>"}
+@@VERDICT@@ {"rekomendasi":"<STRONG BUY|BUY|ACCUMULATE|HOLD|WAIT|AVOID>","keyakinan":"<TINGGI|SEDANG|RENDAH>","vs_mesin":"<SETUJU|LEBIH_KONSERVATIF|LEBIH_AGRESIF>","penyesuaian_conviction":<bilangan bulat -3..3>,"entry_ideal":<harga|null>,"stop_loss":<harga|null>,"target_harga":<harga|null>,"rrr":"<mis. 1:2.5|null>","horizon":"<mis. swing 1-4 minggu|null>","risiko_utama":"<maks 12 kata>"}
 Aturan:
 - 'penyesuaian_conviction' = seberapa besar Anda menggeser skor keyakinan mesin
   (negatif = turunkan, 0 = setuju, positif = naikkan).
@@ -93,24 +100,18 @@ Aturan:
 
 
 def is_enabled() -> bool:
-    return bool(settings.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY"))
+    return False
 
 
 def _disabled_payload() -> dict[str, Any]:
     return {
         "enabled": False,
-        "message": (
-            "AI Advisor nonaktif. Set ANTHROPIC_API_KEY di file .env "
-            "(atau environment) lalu jalankan ulang server untuk mengaktifkan."
-        ),
+        "message": "Claude AI Advisor dinonaktifkan. Gunakan Advisor Lokal (berbasis aturan).",
     }
 
 
-VERDICT_MARKER = "@@VERDICT@@"
-
-
 def _price_context(ticker: str) -> Any:
-    """Ringkasan price action terkini agar Claude 'melihat' pergerakan harga,
+    """Ringkasan price action terkini agar LLM 'melihat' pergerakan harga,
     bukan hanya indikator. Opsional — None bila data tak cukup."""
     try:
         from app.data import provider
@@ -167,10 +168,23 @@ def _split_verdict(text: str) -> tuple[str, Any]:
 
 def _format_report(report: dict[str, Any]) -> str:
     """Data per-saham (VOLATIL) -> diletakkan di user turn, bukan system prompt."""
+    from app.data import provider
+
+    market_trend_str = "UPTREND (Bullish)"
+    try:
+        idx_df = provider.get_index_history(period="5y")
+        if idx_df is not None and not idx_df.empty and len(idx_df) >= 200:
+            close_val = float(idx_df["Close"].iloc[-1])
+            sma200_val = float(idx_df["Close"].rolling(200).mean().iloc[-1])
+            market_trend_str = f"UPTREND (Bullish) - IHSG ({close_val:.0f}) > SMA200 ({sma200_val:.0f})" if close_val > sma200_val else f"DOWNTREND (Bearish) - IHSG ({close_val:.0f}) <= SMA200 ({sma200_val:.0f})"
+    except Exception:
+        pass
+
     slim = {
         "ticker": report.get("ticker"),
         "name": report.get("name"),
         "sector": report.get("sector"),
+        "kondisi_pasar_ihsg": market_trend_str,
         "syariah": {
             "compliant": report["sharia"]["compliant"],
             "in_des": report["sharia"]["in_des"],
@@ -181,9 +195,6 @@ def _format_report(report: dict[str, Any]) -> str:
             "rasio": report["fundamental"]["raw"],
             "sumber_data": report["fundamental"].get("source"),
         },
-        # Cross-check teknikal independen dari TradingView (None bila sumber data
-        # tidak memakai TradingView). Pakai untuk MENGKALIBRASI keyakinan timing:
-        # bila fundamental kuat tapi teknikal TV SELL kuat, tekankan risiko timing.
         "cross_check_tradingview": report["fundamental"].get("tradingview"),
         "canslim": {
             "skor": f"{report['canslim']['canslim_score']}/7",
@@ -197,7 +208,6 @@ def _format_report(report: dict[str, Any]) -> str:
         "bandarmologi": report.get("bandarmologi"),
         "rekomendasi_mesin": report.get("rekomendasi"),
     }
-    # Konteks DALAM tambahan (price action, dividen) untuk penalaran yang lebih kaya.
     pa = _price_context(report.get("ticker", ""))
     if pa:
         slim["price_action"] = pa
@@ -208,8 +218,6 @@ def _format_report(report: dict[str, Any]) -> str:
             slim["dividen"] = prof
     except Exception:  # noqa: BLE001
         pass
-    # Track-record SIMULASI eksekusi harian (paper trade) → Claude belajar dari
-    # akurasi prediksi aplikasi sebelumnya (lazy import, opsional).
     try:
         from app.core import simulation
         track = simulation.summary_for_ai()
@@ -217,55 +225,46 @@ def _format_report(report: dict[str, Any]) -> str:
             slim["track_record_simulasi"] = track
     except Exception:  # noqa: BLE001
         pass
+
+    try:
+        from app.core import portfolio
+        port_data = portfolio.list_positions()
+        positions = port_data.get("positions", [])
+        holding = next((p for p in positions if p["ticker"] == report.get("ticker")), None)
+        if holding:
+            slim["portofolio_aktif_anda"] = {
+                "lots": holding.get("lots"),
+                "avg_price": holding.get("avg_price"),
+                "net_pl": holding.get("net_pl"),
+                "net_pl_pct": holding.get("net_pl_pct"),
+                "net_value": holding.get("net_value"),
+                "broker": holding.get("broker")
+            }
+        else:
+            slim["portofolio_aktif_anda"] = None
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        from app.core import accounts
+        acc_data = accounts.breakdown()
+        rdns = acc_data.get("rdn", [])
+        slim["data_akun_dan_cash"] = [
+            {
+                "broker": r.get("broker"),
+                "rdn": r.get("rdn"),
+                "cash": r.get("cash"),
+                "cash_at_rdn": r.get("cash_at_rdn"),
+                "target_emiten": r.get("target_emiten"),
+                "advice": r.get("advice")
+            } for r in rdns
+        ]
+    except Exception:  # noqa: BLE001
+        pass
+
     return ("Analisa saham berikut sesuai metodologi & koridor syariah. "
             "Data terstruktur:\n\n" + json.dumps(slim, ensure_ascii=False, indent=2))
 
 
-def advise(report: dict[str, Any]) -> dict[str, Any]:
-    if not is_enabled():
-        return _disabled_payload()
-
-    try:
-        import anthropic
-    except ImportError:
-        return {"enabled": False, "message": "Paket 'anthropic' belum terpasang (pip install anthropic)."}
-
-    api_key = settings.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY")
-    client = anthropic.Anthropic(api_key=api_key)
-
-    kwargs: dict[str, Any] = {
-        "model": settings.ai_model,
-        "max_tokens": 3500,
-        "system": [{"type": "text", "text": SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"}}],
-        "messages": [{"role": "user", "content": _format_report(report)}],
-    }
-    # Adaptive thinking + effort hanya untuk model yang mendukung (opus/sonnet 4.6+).
-    if settings.ai_model.startswith(("claude-opus", "claude-sonnet")):
-        kwargs["thinking"] = {"type": "adaptive"}
-        kwargs["output_config"] = {"effort": "medium"}
-
-    try:
-        resp = client.messages.create(**kwargs)
-    except TypeError:
-        # SDK lama tak kenal thinking/output_config -> coba tanpa itu.
-        kwargs.pop("thinking", None)
-        kwargs.pop("output_config", None)
-        resp = client.messages.create(**kwargs)
-    except Exception as e:  # noqa: BLE001
-        return {"enabled": True, "error": f"Gagal memanggil Claude: {e}"}
-
-    text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
-    analisa, verdict = _split_verdict(text)   # pisahkan narasi & verdict kalibrator
-    usage = getattr(resp, "usage", None)
-    return {
-        "enabled": True,
-        "model": settings.ai_model,
-        "analisa": analisa,
-        "verdict": verdict,                   # {"rekomendasi_claude", "keyakinan", "vs_mesin", ...} | None
-        "usage": {
-            "input_tokens": getattr(usage, "input_tokens", None),
-            "output_tokens": getattr(usage, "output_tokens", None),
-            "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", None),
-        } if usage else None,
-    }
+def advise(report: dict[str, Any], force: bool = False) -> dict[str, Any]:
+    return _disabled_payload()

@@ -18,22 +18,36 @@ from app.core import bandarmologi, canslim, fundamental, jalur7, sharia_screenin
 from app.data import provider
 
 
-def analyze_stock(ticker: str) -> dict[str, Any]:
+def analyze_stock(ticker: str, ttl: Optional[int] = None) -> dict[str, Any]:
     """Laporan lengkap satu saham melewati seluruh funnel."""
     ticker = ticker.upper()
     info = provider.get_info(ticker)
-    hist = provider.get_history(ticker)
+    hist = provider.get_history(ticker, ttl=ttl)
     index_hist = provider.get_index_history()
 
     sharia = sharia_screening.screen_sharia(ticker, info=info)
     fund = fundamental.evaluate_fundamental(ticker, info=info)
-    cslim = canslim.evaluate_canslim(ticker, info=info, hist=hist, index_hist=index_hist)
+    # CAN SLIM wajib terima fund= agar huruf C = EPS QnQ 6 Magic Number (anti-regresi PSAB)
+    cslim = canslim.evaluate_canslim(
+        ticker, info=info, hist=hist, index_hist=index_hist, fund=fund,
+    )
     tech = technical.analyze_technical(ticker, hist=hist)
     osignal = technical.oneill_signal(hist, ticker)
     j7 = jalur7.evaluate_jalur7(ticker, hist=hist)
     bandar = bandarmologi.get_bandar_analysis(ticker, hist=hist)
 
-    recommendation = _recommend(sharia, fund, cslim, tech, j7, osignal, bandar)
+    recommendation = _recommend(sharia, fund, cslim, tech, j7, osignal, bandar, ticker=ticker)
+
+    # Konsistensi data: EPS Magic vs huruf C tidak boleh saling bertentangan
+    data_notes = list(cslim.get("sync_notes") or [])
+    fund_eps = (fund.get("raw") or {}).get("eps_qnq")
+    c_letter = (cslim.get("letters") or {}).get("C") or {}
+    if fund_eps is not None and c_letter.get("lolos") is None:
+        data_notes.append("PERINGATAN: Magic Number punya EPS QnQ tapi CAN SLIM C masih n/a")
+    elif fund_eps is not None:
+        expect = fund_eps >= 25.0
+        if c_letter.get("lolos") is not None and bool(c_letter.get("lolos")) != bool(expect):
+            data_notes.append("PERINGATAN: status huruf C ≠ ambang EPS Magic Number")
 
     return {
         "ticker": ticker,
@@ -47,6 +61,9 @@ def analyze_stock(ticker: str) -> dict[str, Any]:
         "jalur7": j7,
         "bandarmologi": bandar,
         "rekomendasi": recommendation,
+        "in_funnel_universe": bool(sharia.get("in_funnel_universe")),
+        "input_mode": "funnel" if sharia.get("in_funnel_universe") else "manual",
+        "data_notes": data_notes or None,
     }
 
 
@@ -67,21 +84,86 @@ def combine_signals(f_label: str, t_signal: str) -> tuple[str, str]:
     return "HOLD", "hold"
 
 
-def _recommend(sharia, fund, cslim, tech, j7=None, osignal=None, bandar=None) -> dict[str, Any]:
+def _recommend(sharia, fund, cslim, tech, j7=None, osignal=None, bandar=None, ticker: str | None = None) -> dict[str, Any]:
+    from app.core import layered_scoring as ls
+
     if not sharia["compliant"]:
         return {"aksi": "AVOID (non-syariah)", "final_signal": "AVOID", "css": "sell",
-                "alasan": ["Tidak lolos screening syariah (DES/ISSI)"], "skor": 0}
+                "alasan": ["Tidak lolos screening syariah (DES/ISSI)"], "skor": 0,
+                "scoring": {"model": "layered", "gates": {"passed": False, "failed": ["des_issi"]},
+                            "eligible_for_buy": False, "block_new_entry": True, "size_mult": 0.0}}
 
     magic = fund["magic_score"]
     cs = cslim["canslim_score"]
     f_label = fund.get("fundamental_label", "NO DATA")
     t_signal = (osignal or {}).get("signal") or ("BUY" if (tech.get("ok") and "BULLISH" in tech.get("bias", "")) else "HOLD")
     final, css = combine_signals(f_label, t_signal)
-    
-    # Gerbang Penyaring Akhir Bandarmologi: turunkan rekomendasi beli ke HOLD bila terdeteksi distribusi
-    if bandar and not bandar.get("layak_beli", True) and final in ("BUY", "STRONG BUY", "SPECULATIVE BUY"):
+
+    # Scoring dua lapis (atau legacy)
+    if ls.use_layered():
+        scoring = ls.compute_layered_score(
+            sharia=sharia, fund=fund, cslim=cslim, tech=tech or {},
+            bandar=bandar, j7=j7, osignal=osignal, ticker=ticker,
+        )
+        skor = scoring["skor"]
+        regime = scoring["regime"]
+        ihsg_trend = "UPTREND" if regime.get("regime") == "BULLISH" else (
+            "DOWNTREND" if regime.get("regime") == "BEARISH" else "SIDEWAYS"
+        )
+        # Putuskan sinyal dari Final Score (Quality×Mult + Timing Bonus)
+        keputusan = scoring.get("keputusan") or "SKIP"
+        if not (scoring.get("gates") or {}).get("passed", True):
+            failed_ids = (scoring.get("gates") or {}).get("failed") or []
+            if "des_issi" in failed_ids:
+                final, css = "AVOID (non-syariah)", "sell"
+            elif "likuiditas" in failed_ids:
+                final, css = "AVOID (ilikuid)", "sell"
+            elif "regime" in failed_ids:
+                final, css = "SKIP (IHSG ekstrem)", "sell"
+            else:
+                final, css = "SKIP", "sell"
+            scoring["eligible_for_buy"] = False
+        elif keputusan == "STRONG BUY":
+            final, css = "STRONG BUY", "buy"
+            if not scoring.get("timing_layak_entry"):
+                final, css = "WATCHLIST (tunggu timing)", "warning"
+                scoring["eligible_for_buy"] = False
+        elif keputusan == "WATCHLIST":
+            final, css = "WATCHLIST", "warning"
+            scoring["eligible_for_buy"] = False
+        else:
+            final, css = "SKIP", "hold"
+            scoring["eligible_for_buy"] = False
+
+        if scoring.get("block_new_entry") and final in (
+            "BUY", "STRONG BUY", "SPECULATIVE BUY", "ACCUMULATE", "WATCHLIST"
+        ):
+            final = "HOLD (Risk-off IHSG/US)"
+            css = "hold"
+            scoring["eligible_for_buy"] = False
+    else:
+        scoring = {
+            "model": "legacy",
+            "skor": ls.legacy_score(fund, cslim, tech or {}, j7, osignal),
+            "eligible_for_buy": True,
+            "block_new_entry": False,
+            "size_mult": 1.0,
+            "gates": {"passed": True, "gates": [], "failed": []},
+            "regime": ls.market_regime_for(ticker),
+        }
+        skor = scoring["skor"]
+        scoring["regime"] = scoring.get("regime") or {}
+        ihsg_trend = "DOWNTREND" if scoring["regime"].get("regime") == "BEARISH" else "UPTREND"
+
+    # Gerbang Bandarmologi: turunkan rekomendasi beli ke HOLD bila distribusi
+    if bandar and not bandar.get("layak_beli", True) and final in (
+        "BUY", "STRONG BUY", "SPECULATIVE BUY", "WATCHLIST"
+    ):
         final = "HOLD (Dist. Bandar)"
         css = "hold"
+        if ls.use_layered():
+            scoring["eligible_for_buy"] = False
+
 
     j7_score = j7["score"] if (j7 and j7.get("ok")) else None
 
@@ -91,10 +173,33 @@ def _recommend(sharia, fund, cslim, tech, j7=None, osignal=None, bandar=None) ->
         f"Teknikal: sinyal {t_signal}" + (
             f" · MA {osignal['ma_cross']} · RSI {osignal['rsi']}" if osignal and osignal.get("ma_cross") else ""),
     ]
+    if ls.use_layered():
+        reasons.append(
+            f"Final Score: {scoring.get('final_score', skor)}/100 → "
+            f"{scoring.get('keputusan', '—')} "
+            f"(Quality {scoring.get('quality_score', '—')} × "
+            f"{scoring.get('size_mult', 1)} + timing bonus "
+            f"{scoring.get('timing_bonus', 0)}; Timing {scoring.get('timing_score', '—')}"
+            f"{' · layak entry' if scoring.get('timing_layak_entry') else ' · tunggu timing ≥65'})"
+        )
+        reg = scoring.get("regime") or {}
+        reasons.append(
+            f"Regime {reg.get('index', 'pasar')}: {reg.get('regime', '—')} — {reg.get('label', '')} "
+            f"(multiplier ×{scoring.get('size_mult', 1)}"
+            f"{' · defensif' if scoring.get('defensive') else ''})"
+        )
+        failed = (scoring.get("gates") or {}).get("failed_detail") or []
+        for fd in failed:
+            reasons.append(f"⛔ Hard gate gagal: {fd}")
+    elif ihsg_trend == "DOWNTREND":
+        reasons.append("⚠️ [IHSG DOWNTREND] Risiko bursa bearish tinggi. Batasi alokasi modal/trading.")
+
     if j7_score is not None:
         reasons.append(f"Jalur 7%: {j7_score}/4 ({j7['verdict']})")
     if bandar:
         reasons.append(f"Bandarmologi: {bandar['sentiment']} (skor {bandar['score']}/100) — {bandar['note']}")
+    if tech and tech.get("ok") and tech.get("liquidity_risk"):
+        reasons.append(f"Likuiditas: risiko {tech['liquidity_risk']}")
     if tech and "fibonacci" in tech:
         fib = tech["fibonacci"]
         closest_note = fib.get("closest_level_note", "")
@@ -111,8 +216,6 @@ def _recommend(sharia, fund, cslim, tech, j7=None, osignal=None, bandar=None) ->
         reasons.append(fib_reason)
 
     # Cross-check independen: rekomendasi teknikal TradingView live (bila aktif).
-    # Tidak menurunkan sinyal secara otomatis (advisory) — hanya menandai kontradiksi
-    # agar timing beli yang berisiko terlihat jelas (kurangi false positive).
     tv = fund.get("tradingview")
     tv_cross = None
     if tv and tv.get("recommend_label"):
@@ -130,11 +233,10 @@ def _recommend(sharia, fund, cslim, tech, j7=None, osignal=None, bandar=None) ->
         else:
             reasons.append(f"Cross-check TradingView: teknikal {lbl} (Recommend.All {rec_str})")
 
-    tech_pos = 1 if t_signal == "BUY" else 0
-    j7_norm = (j7_score / 4) if j7_score is not None else 0
-    skor = round((magic / 6 * 0.35 + cs / 7 * 0.35 + tech_pos * 0.15 + j7_norm * 0.15) * 100)
-    return {"aksi": final, "final_signal": final, "css": css, "alasan": reasons,
-            "skor": skor, "tv_cross_check": tv_cross}
+    return {
+        "aksi": final, "final_signal": final, "css": css, "alasan": reasons,
+        "skor": skor, "tv_cross_check": tv_cross, "scoring": scoring,
+    }
 
 
 def screen_universe(
@@ -178,11 +280,13 @@ def screen_universe(
             if not sh["compliant"]:
                 return None, None
 
-            hist = provider.get_history(t)
+            hist = provider.get_history(t, ttl=14400)
             index_hist = provider.get_index_history()
 
             fund = fundamental.evaluate_fundamental(t, info=info)
-            cslim = canslim.evaluate_canslim(t, info=info, hist=hist, index_hist=index_hist)
+            cslim = canslim.evaluate_canslim(
+                t, info=info, hist=hist, index_hist=index_hist, fund=fund,
+            )
             tech = technical.analyze_technical(t, hist=hist)
             osignal = technical.oneill_signal(hist, t)
             j7 = jalur7.evaluate_jalur7(t, hist=hist)
@@ -195,13 +299,15 @@ def screen_universe(
             if require_uptrend and tech.get("trend") != "UPTREND":
                 return None, None
 
-            rec = _recommend(sh, fund, cslim, tech, j7, osignal, bandar)
+            rec = _recommend(sh, fund, cslim, tech, j7, osignal, bandar, ticker=t)
 
             # Filter Potensi Naik / Turun
             if potensi == "naik":
                 is_bullish = (
                     tech.get("trend") == "UPTREND" or
-                    rec["final_signal"] in ("STRONG BUY", "BUY", "SPECULATIVE BUY", "ACCUMULATE") or
+                    rec["final_signal"] in (
+                        "STRONG BUY", "BUY", "SPECULATIVE BUY", "ACCUMULATE", "WATCHLIST"
+                    ) or
                     "BULLISH" in tech.get("bias", "")
                 )
                 if not is_bullish:
@@ -267,8 +373,8 @@ def screen_universe(
         except Exception as e:
             return None, {"ticker": t, "error": str(e)}
 
-    # Pemuatan paralel 10 pekerja
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    # Pemuatan paralel 20 pekerja
+    with ThreadPoolExecutor(max_workers=20) as executor:
         items = list(executor.map(process_ticker, tickers))
 
     for res, err in items:

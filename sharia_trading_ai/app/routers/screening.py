@@ -27,7 +27,7 @@ def universe():
 def market():
     """Status arah pasar (IHSG vs SMA200) — komponen M dari CAN SLIM."""
     import math
-    idx = provider.get_index_history(period="2y")
+    idx = provider.get_index_history(period="5y")
     if idx is None or idx.empty or len(idx) < 200:
         return {"ok": False}
     close = float(idx["Close"].iloc[-1])
@@ -61,19 +61,32 @@ def market():
         
     uptrend = close_val > sma200_val
     
-    # Hitung data seri historis untuk grafik trend IHSG (250 bar terakhir)
-    idx_sma200 = idx["Close"].rolling(200).mean()
-    sub_idx = idx.tail(250)
-    sub_sma = idx_sma200.tail(250)
-    
-    close_series = []
-    sma_series = []
-    for d, c, s in zip(sub_idx.index, sub_idx["Close"], sub_sma):
+    # 1. Seri Harian (Daily) — 5 tahun penuh untuk zoom maksimal
+    idx_sma200_daily = idx["Close"].rolling(200).mean()
+    close_series_daily = []
+    sma200_series_daily = []
+    for d, c, s in zip(idx.index, idx["Close"], idx_sma200_daily):
         t_str = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
         if not math.isnan(c):
-            close_series.append({"time": t_str, "value": round(float(c), 2)})
+            close_series_daily.append({"time": t_str, "value": round(float(c), 2)})
         if s is not None and not math.isnan(s):
-            sma_series.append({"time": t_str, "value": round(float(s), 2)})
+            sma200_series_daily.append({"time": t_str, "value": round(float(s), 2)})
+            
+    # 2. Seri Mingguan (Weekly) — resample dari data harian
+    try:
+        idx_weekly = idx.resample('W').last()
+        idx_sma40_weekly = idx_weekly["Close"].rolling(40).mean()
+        close_series_weekly = []
+        sma200_series_weekly = []
+        for d, c, s in zip(idx_weekly.index, idx_weekly["Close"], idx_sma40_weekly):
+            t_str = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+            if not math.isnan(c):
+                close_series_weekly.append({"time": t_str, "value": round(float(c), 2)})
+            if s is not None and not math.isnan(s):
+                sma200_series_weekly.append({"time": t_str, "value": round(float(s), 2)})
+    except Exception:
+        close_series_weekly = close_series_daily
+        sma200_series_weekly = sma200_series_daily
 
     # Dapatkan waktu WIB terkini
     try:
@@ -81,6 +94,85 @@ def market():
     except Exception:
         now = datetime.now()
     now_wib = now.strftime("%a %Y-%m-%d %H:%M WIB")
+
+    # S&P 500 (US Market)
+    us_ok = False
+    us_data = {}
+    try:
+        us_idx = provider.get_index_history("AAPL.US", period="5y")
+        if us_idx is not None and not us_idx.empty and len(us_idx) >= 200:
+            us_close = float(us_idx["Close"].iloc[-1])
+            us_prev = float(us_idx["Close"].iloc[-2])
+            us_sma200 = float(us_idx["Close"].rolling(200).mean().iloc[-1])
+            
+            us_close_val = round(us_close, 2) if not math.isnan(us_close) else 0.0
+            us_prev_val = 0.0
+            try:
+                us_yf_ticker = provider._ticker("^GSPC")
+                us_prev_close = us_yf_ticker.fast_info.get("previousClose")
+                if us_prev_close is not None and not math.isnan(us_prev_close) and us_prev_close > 0:
+                    us_prev_val = round(float(us_prev_close), 2)
+            except Exception:
+                pass
+            if not us_prev_val:
+                us_prev_val = round(us_prev, 2) if not math.isnan(us_prev) else 0.0
+                
+            us_sma200_val = round(us_sma200, 2) if not math.isnan(us_sma200) else 0.0
+            us_change_pct = ((us_close_val - us_prev_val) / us_prev_val * 100) if us_prev_val else 0.0
+            if math.isnan(us_change_pct) or math.isinf(us_change_pct):
+                us_change_pct = 0.0
+            else:
+                us_change_pct = round(us_change_pct, 2)
+                
+            us_uptrend = us_close_val > us_sma200_val
+            
+            us_sma200_daily = us_idx["Close"].rolling(200).mean()
+            us_close_series_daily = []
+            us_sma200_series_daily = []
+            for d, c, s in zip(us_idx.index, us_idx["Close"], us_sma200_daily):
+                t_str = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+                if not math.isnan(c):
+                    us_close_series_daily.append({"time": t_str, "value": round(float(c), 2)})
+                if s is not None and not math.isnan(s):
+                    us_sma200_series_daily.append({"time": t_str, "value": round(float(s), 2)})
+                    
+            try:
+                us_idx_weekly = us_idx.resample('W').last()
+                us_idx_sma40_weekly = us_idx_weekly["Close"].rolling(40).mean()
+                us_close_series_weekly = []
+                us_sma200_series_weekly = []
+                for d, c, s in zip(us_idx_weekly.index, us_idx_weekly["Close"], us_idx_sma40_weekly):
+                    t_str = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+                    if not math.isnan(c):
+                        us_close_series_weekly.append({"time": t_str, "value": round(float(c), 2)})
+                    if s is not None and not math.isnan(s):
+                        us_sma200_series_weekly.append({"time": t_str, "value": round(float(s), 2)})
+            except Exception:
+                us_close_series_weekly = us_close_series_daily
+                us_sma200_series_weekly = us_sma200_series_daily
+                
+            try:
+                from zoneinfo import ZoneInfo
+                now_ny = datetime.now(ZoneInfo("America/New_York"))
+            except Exception:
+                now_ny = datetime.now()
+            now_est = now_ny.strftime("%a %Y-%m-%d %H:%M EST")
+            
+            us_data = {
+                "price": us_close_val,
+                "change_pct": us_change_pct,
+                "sma200": us_sma200_val,
+                "trend": "UPTREND" if us_uptrend else "DOWNTREND",
+                "verdict": "Pasar US uptrend — bullish" if us_uptrend else "Pasar US downtrend — bearish",
+                "now_est": now_est,
+                "close_series_daily": us_close_series_daily,
+                "sma200_series_daily": us_sma200_series_daily,
+                "close_series_weekly": us_close_series_weekly,
+                "sma200_series_weekly": us_sma200_series_weekly,
+            }
+            us_ok = True
+    except Exception as e:
+        print(f"Error computing US index: {e}")
 
     return {
         "ok": True,
@@ -92,8 +184,16 @@ def market():
         "verdict": ("Pasar uptrend — kondisi mendukung entry"
                     if uptrend else "Pasar downtrend — disiplin & selektif"),
         "now_wib": now_wib,
-        "close_series": close_series,
-        "sma200_series": sma_series,
+        "close_series": close_series_daily,  # kompatibilitas lama
+        "sma200_series": sma200_series_daily,  # kompatibilitas lama
+        "close_series_daily": close_series_daily,
+        "sma200_series_daily": sma200_series_daily,
+        "close_series_weekly": close_series_weekly,
+        "sma200_series_weekly": sma200_series_weekly,
+        "us": {
+            "ok": us_ok,
+            **us_data
+        }
     }
 
 

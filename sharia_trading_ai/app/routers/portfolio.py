@@ -34,23 +34,23 @@ def _guess_mime(file: UploadFile) -> str:
 
 @router.get("/import/status")
 def import_status():
-    """Engine ekstraksi yang tersedia: ocr (lokal, default) & gemini (LLM, opsional)."""
+    """Engine ekstraksi yang tersedia: ocr (lokal, default)."""
     return {"available": True, "default": "ocr",
-            "engines": {"ocr": True, "gemini": vision_import.engine_available() == "gemini"}}
+            "engines": {"ocr": True}}
 
 
 @router.post("/import")
 async def import_image(file: UploadFile = File(...), save: bool = Query(False),
                        broker: str | None = Query(None), engine: str = Query("ocr")):
-    """Ekstrak posisi dari screenshot/PDF. engine=ocr (lokal, default) | gemini (LLM). save=true → simpan."""
+    """Ekstrak posisi dari screenshot/PDF. engine=ocr (lokal, default). save=true → simpan."""
     data = await file.read()
     if len(data) > 20_000_000:
         raise HTTPException(status_code=413, detail="File terlalu besar (>20MB)")
     mime = _guess_mime(file)
     if engine == "gemini":
-        result = vision_import.parse_portfolio(data, mime, broker_hint=broker)
-    else:
-        result = ocr_import.parse(data, mime, broker_hint=broker)
+        raise HTTPException(status_code=400, detail="Gemini Vision engine dinonaktifkan.")
+    
+    result = ocr_import.parse(data, mime, broker_hint=broker)
 
     # Riwayat transaksi (Order History) → rekonsiliasi FIFO; save=true → terapkan ke jurnal/posisi/cash
     if result.get("doc_type") == "history" and result.get("ok"):
@@ -128,8 +128,12 @@ def get_investasi_info():
         expected_dividend_idr = 0.0
         if holding and div_prof and div_prof.get("upcoming") and div_prof["upcoming"].get("expected"):
             amt = div_prof["upcoming"].get("amount") or 0
-            shares = holding.get("shares") or (holding.get("lots", 0) * 100)
-            expected_dividend_idr = shares * amt
+            from app.data.provider import is_us_ticker, get_usd_idr_rate
+            is_us = is_us_ticker(tk_upper)
+            shares = holding.get("shares") or (holding.get("lots", 0) * (1 if is_us else 100))
+            expected_dividend_native = shares * amt
+            rate = get_usd_idr_rate() if is_us else 1.0
+            expected_dividend_idr = expected_dividend_native * rate
             total_expected_dividends += expected_dividend_idr
             
         recommendations.append({
@@ -201,7 +205,10 @@ def sell(pos_id: int, exit_price: float = Query(..., gt=0),
     trade = roi.record_trade(pos["ticker"], sell_lots, pos["avg_price"], exit_price,
                              broker=pos.get("broker"), context="manual_sell")
     if pos.get("broker"):
-        accounts.adjust_cash(pos["broker"], trade["proceeds"])      # hasil jual bersih masuk cash
+        acc = next((a for a in accounts.list_accounts() if a["broker"] == pos["broker"]), None)
+        currency = acc.get("currency", "IDR") if acc else "IDR"
+        proceeds_to_add = trade["proceeds_native"] if currency == "USD" else trade["proceeds"]
+        accounts.adjust_cash(pos["broker"], proceeds_to_add)      # hasil jual masuk cash RDN (USD/IDR)
     remaining = portfolio.reduce_position(pos_id, sell_lots)
     return {"ok": True, "sold_lots": sell_lots, "remaining_lots": remaining,
             "proceeds": trade["proceeds"], "roi_pct": trade["roi_pct"],

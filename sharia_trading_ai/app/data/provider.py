@@ -53,12 +53,72 @@ def _yf():
     return yf
 
 
+@lru_cache(maxsize=1)
+def us_tickers() -> set[str]:
+    path = DATA_DIR / "us_sharia_universe.csv"
+    if path.exists():
+        try:
+            with open(path, newline="", encoding="utf-8") as f:
+                return {row["ticker"].upper().strip() for row in csv.DictReader(f) if row.get("ticker")}
+        except Exception:
+            pass
+    return {
+        "AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "GOOG", "META", "CRM", "ADBE",
+        "AMD", "CSCO", "PEP", "AVGO", "QCOM", "INTC", "TXN", "AMAT", "LRCX", "MU",
+        "ADI", "CVX", "XOM", "JNJ", "PFE", "MRK"
+    }
+
+
+def is_us_ticker(ticker: str) -> bool:
+    ticker = ticker.strip().upper()
+    if ticker.endswith(".JK"):
+        return False
+    if ticker.endswith(".US"):
+        return True
+    if ticker in us_tickers():
+        return True
+    return False
+
+
+def get_us_universe() -> list[dict[str, str]]:
+    path = DATA_DIR / "us_sharia_universe.csv"
+    if path.exists():
+        with open(path, newline="", encoding="utf-8") as f:
+            return [
+                {
+                    "ticker": row["ticker"].upper().strip() + ".US",
+                    "name": row.get("name", "").strip(),
+                    "sector": row.get("sector", "").strip()
+                }
+                for row in csv.DictReader(f) if row.get("ticker")
+            ]
+    fallback_tickers = us_tickers()
+    return [
+        {
+            "ticker": t + ".US",
+            "name": t + " Corp",
+            "sector": "Technology"
+        }
+        for t in fallback_tickers
+    ]
+
+
+def us_universe_tickers() -> list[str]:
+    return [row["ticker"] for row in get_us_universe()]
+
+
 def to_yahoo(ticker: str) -> str:
     ticker = ticker.strip().upper()
     # index (^JKSE), futures (GC=F), forex (IDR=X), crypto (BTC-USD) -> tanpa .JK
     if ticker.startswith("^") or "=" in ticker or "-" in ticker:
         return ticker
-    return ticker if ticker.endswith(".JK") else f"{ticker}.JK"
+    if ticker.endswith(".JK"):
+        return ticker
+    if ticker.endswith(".US"):
+        return ticker[:-3]  # strip .US for yfinance
+    if is_us_ticker(ticker):
+        return ticker
+    return f"{ticker}.JK"
 
 
 # --------------------------------------------------------------------------- #
@@ -66,13 +126,19 @@ def to_yahoo(ticker: str) -> str:
 # --------------------------------------------------------------------------- #
 @lru_cache(maxsize=1)
 def get_universe() -> list[dict[str, str]]:
-    """Daftar saham syariah. Utama: master_data_syariah.csv (75 DES terkurasi)."""
+    """Daftar saham syariah. Utama: master_data_syariah.csv (75 DES terkurasi) + US universe."""
     from app.data import master_data
+    idx_list = []
     if master_data.available():
-        return master_data.universe()
-    path = DATA_DIR / "sharia_universe.csv"
-    with open(path, newline="", encoding="utf-8") as f:
-        return [dict(row) for row in csv.DictReader(f)]
+        idx_list = master_data.universe()
+    else:
+        path = DATA_DIR / "sharia_universe.csv"
+        if path.exists():
+            with open(path, newline="", encoding="utf-8") as f:
+                idx_list = [dict(row) for row in csv.DictReader(f)]
+    
+    us_list = get_us_universe()
+    return idx_list + us_list
 
 
 def universe_tickers() -> list[str]:
@@ -80,8 +146,9 @@ def universe_tickers() -> list[str]:
 
 
 def sector_of(ticker: str) -> Optional[str]:
+    ticker = ticker.upper().strip()
     for row in get_universe():
-        if row["ticker"] == ticker.upper():
+        if row["ticker"] == ticker:
             return row["sector"]
     return None
 
@@ -241,7 +308,10 @@ def get_info(ticker: str) -> dict[str, Any]:
     # Info fundamental perusahaan cukup di-cache selama 7 hari
     if _fresh(cache, ttl=86400 * 7):
         try:
-            return json.loads(cache.read_text())
+            res = json.loads(cache.read_text())
+            if isinstance(res, dict) and res.get("error") == "empty":
+                return {}
+            return res
         except Exception:
             pass
 
@@ -255,6 +325,12 @@ def get_info(ticker: str) -> dict[str, Any]:
     if len(clean) > 5:
         try:
             cache.write_text(json.dumps(clean))
+        except Exception:
+            pass
+    else:
+        try:
+            # Cache sentinel kosong untuk mencegah cache stampede selama 1 hari
+            cache.write_text(json.dumps({"error": "empty"}))
         except Exception:
             pass
     return clean
@@ -279,6 +355,8 @@ def get_quarterly_eps(ticker: str) -> Optional[pd.Series]:
     if _fresh(cache, ttl=86400 * 7):
         try:
             d = json.loads(cache.read_text())
+            if isinstance(d, dict) and d.get("error") == "empty":
+                return None
             # Pastikan format index parsed as datetime
             return pd.Series(d, dtype=float).sort_index()
         except Exception:
@@ -290,8 +368,13 @@ def get_quarterly_eps(ticker: str) -> Optional[pd.Series]:
             d = {str(k)[:10]: float(v) for k, v in s.items()}
             cache.write_text(json.dumps(d))
             return s
+        else:
+            cache.write_text(json.dumps({"error": "empty"}))
     except Exception:
-        pass
+        try:
+            cache.write_text(json.dumps({"error": "empty"}))
+        except Exception:
+            pass
     return None
 
 
@@ -301,6 +384,8 @@ def get_annual_eps(ticker: str) -> Optional[pd.Series]:
     if _fresh(cache, ttl=86400 * 7):
         try:
             d = json.loads(cache.read_text())
+            if isinstance(d, dict) and d.get("error") == "empty":
+                return None
             # Pastikan format index parsed as datetime
             return pd.Series(d, dtype=float).sort_index()
         except Exception:
@@ -312,11 +397,37 @@ def get_annual_eps(ticker: str) -> Optional[pd.Series]:
             d = {str(k)[:10]: float(v) for k, v in s.items()}
             cache.write_text(json.dumps(d))
             return s
+        else:
+            cache.write_text(json.dumps({"error": "empty"}))
     except Exception:
-        pass
+        try:
+            cache.write_text(json.dumps({"error": "empty"}))
+        except Exception:
+            pass
     return None
 
 
-def get_index_history(period: str = "2y") -> pd.DataFrame:
-    # Menggunakan TTL 4 jam (14400 detik) untuk IHSG
-    return get_history(INDEX_TICKER, period=period, ttl=14400)
+@lru_cache(maxsize=128)
+def get_usd_idr_rate(ttl_seconds: int = 14400) -> float:
+    try:
+        # Fetch USD/IDR exchange rate
+        df = get_history("IDR=X", period="5d", ttl=ttl_seconds)
+        if df is not None and not df.empty:
+            val = float(df["Close"].iloc[-1])
+            if val > 0:
+                return round(val, 2)
+    except Exception:
+        pass
+    return 16000.0  # fallback
+
+
+def get_index_ticker_for(ticker: Optional[str]) -> str:
+    if ticker and is_us_ticker(ticker):
+        return "^GSPC"  # S&P 500
+    return INDEX_TICKER  # IHSG (^JKSE)
+
+
+def get_index_history(ticker: Optional[str] = None, period: str = "2y") -> pd.DataFrame:
+    idx_ticker = get_index_ticker_for(ticker)
+    # Menggunakan TTL 4 jam (14400 detik) untuk indeks pasar
+    return get_history(idx_ticker, period=period, ttl=14400)

@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.config import SHARIA, TEMPLATES_DIR, settings
-from app.routers import accounts, advisor, analysis, extras, learning, plan, portfolio, screening, simulation, undervalue
+from app.routers import accounts, advisor, analysis, bsjp as bsjp_router, extras, learning, plan, portfolio, screening, simulation, undervalue
 
 app = FastAPI(
     title=settings.app_name,
@@ -36,6 +36,7 @@ app.include_router(undervalue.router)
 app.include_router(accounts.router)
 app.include_router(simulation.router)
 app.include_router(learning.router)
+app.include_router(bsjp_router.router)
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/static", StaticFiles(directory=str(TEMPLATES_DIR.parent / "static")), name="static")
@@ -70,6 +71,32 @@ async def _start_master_scheduler():
 
 
 @app.on_event("startup")
+async def _start_funnel_prefetch():
+    """Prefetch Funnel tiap N menit saat jam bursa IDX → cache untuk web (≤30 mnt)."""
+    import asyncio
+
+    if not settings.funnel_cache_enabled:
+        return
+    every = max(5, int(settings.funnel_cache_minutes)) * 60
+
+    async def _loop():
+        from app.core import funnel_cache
+        await asyncio.sleep(15)  # jeda startup agar server siap
+        try:
+            await asyncio.to_thread(funnel_cache.prefetch_if_due)
+        except Exception:  # noqa: BLE001
+            pass
+        while True:
+            await asyncio.sleep(every)
+            try:
+                await asyncio.to_thread(funnel_cache.prefetch_if_due)
+            except Exception:  # noqa: BLE001
+                pass
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
 async def _start_funnel_watcher():
     """Pemantau Funnel intraday: tiap N menit (jam bursa) → alert Telegram bila ada sinyal baru."""
     import asyncio
@@ -81,7 +108,7 @@ async def _start_funnel_watcher():
 
     async def _loop():
         from app.core import reminders, watcher
-        await asyncio.sleep(30)                          # beri jeda saat startup
+        await asyncio.sleep(45)                          # setelah prefetch warm-up
         while True:
             try:
                 now = datetime.now()
@@ -182,6 +209,49 @@ async def _start_simulation_scheduler():
                             await asyncio.to_thread(sim.evaluate_open)
                     except Exception:  # noqa: BLE001
                         pass
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _start_bsjp_scheduler():
+    """Scheduler BSJP: scan pre-closing (15:50) & pre-opening (08:45) → alert Telegram."""
+    import asyncio
+    from datetime import datetime
+
+    async def _loop():
+        from app.core import bsjp, reminders
+        done: dict[str, str] = {}   # event_key → tanggal terakhir dijalankan
+        await asyncio.sleep(45)     # beri jeda saat startup
+        while True:
+            await asyncio.sleep(60)
+            now = datetime.now()
+            today = now.date()
+            if not reminders.is_trading_day(today):
+                continue
+            t = now.time()
+            # Pre-closing alert: 15:50 WIB
+            key_pc = f"pre_closing:{today.isoformat()}"
+            if t.hour == 15 and t.minute == 50 and done.get(key_pc) != today.isoformat():
+                done[key_pc] = today.isoformat()
+                try:
+                    report = await asyncio.to_thread(bsjp.build_bsjp_report)
+                    strong = [c for c in report.get("kandidat_beli", []) if c.get("buy_signal")]
+                    if strong:  # hanya kirim bila ada sinyal
+                        await asyncio.to_thread(bsjp.send_bsjp_alert, report)
+                except Exception:  # noqa: BLE001
+                    pass
+            # Pre-opening alert: 08:45 WIB
+            key_po = f"pre_opening:{today.isoformat()}"
+            if t.hour == 8 and t.minute == 45 and done.get(key_po) != today.isoformat():
+                done[key_po] = today.isoformat()
+                try:
+                    report = await asyncio.to_thread(bsjp.build_bsjp_report)
+                    sells = [s for s in report.get("sinyal_jual_pagi", []) if s.get("sell_signal")]
+                    if sells:  # hanya kirim bila ada sinyal jual
+                        await asyncio.to_thread(bsjp.send_bsjp_alert, report)
+                except Exception:  # noqa: BLE001
+                    pass
 
     asyncio.create_task(_loop())
 

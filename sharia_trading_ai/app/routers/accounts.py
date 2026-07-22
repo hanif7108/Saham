@@ -23,7 +23,8 @@ def upsert_account(acc: AccountIn):
         return accounts.set_account(acc.broker, acc.cash, acc.rdn, acc.bank,
                                     acc.fee_buy_pct, acc.fee_sell_pct,
                                     gold_balance_grams=acc.gold_balance_grams,
-                                    gold_avg_price=acc.gold_avg_price)
+                                    gold_avg_price=acc.gold_avg_price,
+                                    currency=acc.currency or "IDR")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

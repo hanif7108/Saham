@@ -30,10 +30,16 @@ def sma(series: pd.Series, period: int) -> pd.Series:
 
 
 def rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """RSI Wilder (standar TradingView / Stockbit) — bukan SMA of gains/losses.
+
+    SMA-RSI cenderung lebih ekstrem dan sering mismatch vs platform chart live.
+    """
     delta = series.diff()
-    gain = delta.clip(lower=0).rolling(period).mean()
-    loss = (-delta.clip(upper=0)).rolling(period).mean()
-    rs = gain / loss.replace(0, np.nan)
+    gain = delta.clip(lower=0)
+    loss = (-delta.clip(upper=0))
+    avg_gain = gain.ewm(alpha=1 / period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / period, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
     return 100 - (100 / (1 + rs))
 
 
@@ -653,10 +659,12 @@ def analyze_technical(ticker: str, hist: Optional[pd.DataFrame] = None) -> dict[
     price = float(close.iloc[-1])
     sma20 = sma(close, TECH.SMA_FAST)
     sma50 = sma(close, TECH.SMA_SLOW)
+    sma60 = sma(close, 60)
     sma200 = sma(close, TECH.SMA_TREND_PERIOD)
 
     s20 = _last(sma20)
     s50 = _last(sma50)
+    s60 = _last(sma60)
     s200 = _last(sma200)
 
     # --- Tren ---
@@ -667,6 +675,16 @@ def analyze_technical(ticker: str, hist: Optional[pd.DataFrame] = None) -> dict[
         trend = "DOWNTREND"
     else:
         trend = "SIDEWAYS"
+    # Tren MA20 vs MA60 (untuk Quality Score)
+    if s20 is not None and s60 is not None:
+        if s20 > s60:
+            trend_ma20_60 = "UPTREND"
+        elif s20 < s60:
+            trend_ma20_60 = "DOWNTREND"
+        else:
+            trend_ma20_60 = "SIDEWAYS"
+    else:
+        trend_ma20_60 = trend
 
     # --- Stochastic ---
     k, d = stochastic(df, TECH.STOCH_RSI_PERIOD, TECH.STOCH_K_SMOOTH, TECH.STOCH_D_SMOOTH)
@@ -695,18 +713,23 @@ def analyze_technical(ticker: str, hist: Optional[pd.DataFrame] = None) -> dict[
     vol_avg = float(df["Volume"].tail(TECH.VOLUME_AVG_PERIOD).mean())
     vol_now = float(df["Volume"].iloc[-1])
     vol_spike = vol_now > vol_avg * TECH.VOLUME_SPIKE_MULT if vol_avg else False
+    vol_spike_2x = vol_now > vol_avg * 2.0 if vol_avg else False
 
-    # --- Liquidity Risk ---
-    # yfinance volume is in shares. In BEI, 1 lot = 100 shares.
-    # volume rata-rata < 500.000 lembar (~5.000 lot/hari) -> Sangat Tinggi (Illiquid)
-    # volume rata-rata < 2.000.000 lembar (~20.000 lot/hari) -> Sedang
-    # volume rata-rata >= 2.000.000 lembar -> Rendah
+    # --- Liquidity Risk (legacy lembar) + gate Rp5M / spread proxy ---
     if vol_avg < 500000:
         liquidity_risk = "Sangat Tinggi"
     elif vol_avg < 2000000:
         liquidity_risk = "Sedang"
     else:
         liquidity_risk = "Rendah"
+
+    # Volume IDR median 5 hari (lembar × close)
+    try:
+        tail5 = df.tail(5)
+        vol_idr_series = (tail5["Volume"].astype(float) * tail5["Close"].astype(float))
+        vol_idr_median_5d = float(vol_idr_series.median()) if len(vol_idr_series) else None
+    except Exception:  # noqa: BLE001
+        vol_idr_median_5d = None
 
     # --- Candlestick ---
     patterns = detect_candles(df)
@@ -715,7 +738,35 @@ def analyze_technical(ticker: str, hist: Optional[pd.DataFrame] = None) -> dict[
     atr_series = atr(df, 14)
     atr_val = _last(atr_series)
     atr_pct = (atr_val / price * 100) if atr_val and price else 0
-    
+
+    # Spread / range:
+    # - daily_range_pct = (High-Low)/Close → volatilitas intraday (BUKAN bid-ask)
+    # - spread_pct = ATR% (proksi biaya/volatilitas utk Quality Score)
+    # Hard gate likuiditas TIDAK boleh memakai daily HL sebagai "spread ≤2%" —
+    # saham likuid seperti TINS sering punya range harian >2% tapi volume puluhan miliar.
+    try:
+        hi = float(df["High"].iloc[-1])
+        lo = float(df["Low"].iloc[-1])
+        daily_range_pct = ((hi - lo) / price * 100) if price > 0 else None
+    except Exception:  # noqa: BLE001
+        daily_range_pct = None
+    spread_pct = float(atr_pct) if atr_pct else daily_range_pct
+
+    # --- RSI 14 ---
+    rsi_series = rsi(close, 14)
+    rsi_now = _last(rsi_series)
+
+    # Gap signifikan (>2% open vs prev close)
+    gap_pct = None
+    try:
+        if len(df) >= 2:
+            prev_c = float(df["Close"].iloc[-2])
+            opn = float(df["Open"].iloc[-1])
+            if prev_c > 0:
+                gap_pct = (opn - prev_c) / prev_c * 100
+    except Exception:  # noqa: BLE001
+        gap_pct = None
+
     plus_di, minus_di, adx_series = adx(df, 14)
     adx_val = _last(adx_series)
     
@@ -764,14 +815,32 @@ def analyze_technical(ticker: str, hist: Optional[pd.DataFrame] = None) -> dict[
         "trend": trend,
         "volume_profile": vp_data,
         "volatility_insight_pro": vip_data,
-        "sma": {"sma20": _r(s20), "sma50": _r(s50), "sma200": _r(s200),
-                "price_vs_sma200": "di atas" if above_200 else "di bawah"},
+        "sma": {
+            "sma20": _r(s20), "sma50": _r(s50), "sma60": _r(s60), "sma200": _r(s200),
+            "price_vs_sma200": "di atas" if above_200 else "di bawah",
+        },
+        "trend_ma20_60": trend_ma20_60,
+        "rsi": _r(rsi_now),
+        "rsi_method": "wilder",
+        "gap_pct": round(gap_pct, 2) if gap_pct is not None else None,
+        "daily_range_pct": round(daily_range_pct, 3) if daily_range_pct is not None else None,
+        "spread_pct": round(spread_pct, 3) if spread_pct is not None else None,
+        "vol_idr_median_5d": int(vol_idr_median_5d) if vol_idr_median_5d is not None else None,
+        "data_source": f"yfinance:{provider.to_yahoo(ticker)}",
+        "instrument": {
+            "yahoo": provider.to_yahoo(ticker),
+            "market": "US" if provider.is_us_ticker(ticker) else "IDX",
+            "currency": "USD" if provider.is_us_ticker(ticker) else "IDR",
+        },
         "stochastic": {"k": _r(k_now), "d": _r(d_now), "zona": stoch_zone, "sinyal": stoch_signal},
         "support": support,
         "resistance": resistance,
         "sr_levels": sr_levels,
         "sr_note": sr_note,
-        "volume": {"now": int(vol_now), "avg20": int(vol_avg), "spike": vol_spike, "risk": liquidity_risk},
+        "volume": {
+            "now": int(vol_now), "avg20": int(vol_avg), "spike": vol_spike,
+            "spike_2x": vol_spike_2x, "risk": liquidity_risk,
+        },
         "liquidity_risk": liquidity_risk,
         "candlestick": patterns,
         "entry_signals": signals,

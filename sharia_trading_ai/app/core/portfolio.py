@@ -56,15 +56,22 @@ def _current_price(ticker: str) -> float | None:
     `price_ttl_seconds` menjaga harga ≤ beberapa menit tanpa membebani yfinance.
     """
     from datetime import datetime, time
+    from app.data.provider import is_us_ticker
+    is_us = is_us_ticker(ticker)
+    
     try:
         from zoneinfo import ZoneInfo
-        tz = ZoneInfo("Asia/Jakarta")
+        tz = ZoneInfo("America/New_York" if is_us else "Asia/Jakarta")
     except Exception:
         tz = None
 
     now = datetime.now(tz) if tz else datetime.now()
-    # IDX trading day: Mon-Fri, hours: 09:00 - 16:15 WIB
-    if now.weekday() >= 5 or not (time(9, 0) <= now.time() <= time(16, 15)):
+    
+    # US trading hours: 09:30 - 16:00 EST. IDX trading hours: 09:00 - 16:15 WIB.
+    trading_start = time(9, 30) if is_us else time(9, 0)
+    trading_end = time(16, 0) if is_us else time(16, 15)
+    
+    if now.weekday() >= 5 or not (trading_start <= now.time() <= trading_end):
         ttl = 43200  # 12 jam jika pasar tutup
     else:
         ttl = settings.price_ttl_seconds
@@ -137,6 +144,7 @@ def reduce_position(pos_id: int, lots_sold: int) -> Optional[int]:
 def list_positions() -> dict[str, Any]:
     from app.core import accounts  # lazy → hindari import melingkar (accounts↔portfolio)
     from concurrent.futures import ThreadPoolExecutor
+    from app.data.provider import is_us_ticker, get_usd_idr_rate
 
     rows = _load()
     positions: list[dict[str, Any]] = []
@@ -149,9 +157,16 @@ def list_positions() -> dict[str, Any]:
     with ThreadPoolExecutor(max_workers=min(5, max(1, len(rows)))) as executor:
         prices = list(executor.map(lambda r: _current_price(r["ticker"]), rows))
 
+    usd_rate = get_usd_idr_rate()
+
     for idx, r in enumerate(rows):
         fee_buy, fee_sell = accounts.fees_for(r.get("broker"))
-        shares = r["lots"] * MM.SHARES_PER_LOT
+        ticker = r["ticker"]
+        is_us = is_us_ticker(ticker)
+        rate = usd_rate if is_us else 1.0
+        shares_multiplier = 1 if is_us else MM.SHARES_PER_LOT
+        
+        shares = r["lots"] * shares_multiplier
         gross_cost = shares * r["avg_price"]
         buy_fee = gross_cost * fee_buy / 100
         total_cost = gross_cost + buy_fee                       # modal riil (termasuk biaya beli)
@@ -163,40 +178,58 @@ def list_positions() -> dict[str, Any]:
         pl_pct = round(pl / gross_cost * 100, 2) if (pl is not None and gross_cost) else None
         net_pl = (net_value - total_cost) if net_value is not None else None   # P/L bersih (semua biaya)
         net_pl_pct = round(net_pl / total_cost * 100, 2) if (net_pl is not None and total_cost) else None
-        # harga impas (break-even): harga jual agar hasil bersih = modal riil
-        break_even = round(total_cost / (shares * (1 - fee_sell / 100))) if (shares and fee_sell < 100) else None
-        compliant = sharia_screening.screen_sharia(r["ticker"])["compliant"]
         
-        tot_cost += gross_cost
-        tot_total_cost += total_cost
+        # harga impas (break-even)
+        if shares and fee_sell < 100:
+            be_val = total_cost / (shares * (1 - fee_sell / 100))
+            break_even = round(be_val, 2) if is_us else round(be_val)
+        else:
+            break_even = None
+            
+        compliant = sharia_screening.screen_sharia(ticker)["compliant"]
+        
+        # Sum in IDR (convert if US)
+        tot_cost += gross_cost * rate
+        tot_total_cost += total_cost * rate
         if value is not None:
-            tot_value += value
-            tot_net_value += net_value
+            tot_value += value * rate
+            tot_net_value += net_value * rate
 
         p_type = r.get("type", "trading")
         if p_type == "investasi":
-            investasi_cost += gross_cost
-            investasi_total_cost += total_cost
+            investasi_cost += gross_cost * rate
+            investasi_total_cost += total_cost * rate
             if value is not None:
-                investasi_value += value
-                investasi_net_value += net_value
+                investasi_value += value * rate
+                investasi_net_value += net_value * rate
         else:
-            trading_cost += gross_cost
-            trading_total_cost += total_cost
+            trading_cost += gross_cost * rate
+            trading_total_cost += total_cost * rate
             if value is not None:
-                trading_value += value
-                trading_net_value += net_value
+                trading_value += value * rate
+                trading_net_value += net_value * rate
 
         positions.append({
-            **r, "shares": shares, "cost": round(gross_cost), "total_cost": round(total_cost),
-            "buy_fee": round(buy_fee), "fee_buy_pct": fee_buy, "fee_sell_pct": fee_sell,
-            "current_price": cur, "value": round(value) if value is not None else None,
-            "sell_fee": round(sell_fee) if sell_fee is not None else None,
-            "net_value": round(net_value) if net_value is not None else None,
-            "pl": round(pl) if pl is not None else None, "pl_pct": pl_pct,
-            "net_pl": round(net_pl) if net_pl is not None else None, "net_pl_pct": net_pl_pct,
-            "break_even": break_even, "syariah": compliant,
-            "type": p_type
+            **r, 
+            "shares": shares, 
+            "cost": round(gross_cost, 2) if is_us else round(gross_cost), 
+            "total_cost": round(total_cost, 2) if is_us else round(total_cost),
+            "buy_fee": round(buy_fee, 2) if is_us else round(buy_fee), 
+            "fee_buy_pct": fee_buy, 
+            "fee_sell_pct": fee_sell,
+            "current_price": cur, 
+            "value": round(value, 2) if (value is not None and is_us) else round(value) if value is not None else None,
+            "sell_fee": round(sell_fee, 2) if (sell_fee is not None and is_us) else round(sell_fee) if sell_fee is not None else None,
+            "net_value": round(net_value, 2) if (net_value is not None and is_us) else round(net_value) if net_value is not None else None,
+            "pl": round(pl, 2) if (pl is not None and is_us) else round(pl) if pl is not None else None, 
+            "pl_pct": pl_pct,
+            "net_pl": round(net_pl, 2) if (net_pl is not None and is_us) else round(net_pl) if net_pl is not None else None, 
+            "net_pl_pct": net_pl_pct,
+            "break_even": break_even, 
+            "syariah": compliant,
+            "type": p_type,
+            "currency": "USD" if is_us else "IDR",
+            "rate": rate
         })
         
     tot_pl = tot_value - tot_cost

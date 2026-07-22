@@ -61,6 +61,27 @@ def main():
         message_lines.append(f"   • Akurasi Prediksi: {acc_str} · Keyakinan: {conv:.1f}%")
         message_lines.append(f"   • Fundamental: {item['funnel_skor']}/6 · Undervalue: {item['uv_score']}/3")
         
+        # Tambahkan info Strategy AI jika tersedia
+        v = item.get("ai_verdict")
+        if v and isinstance(v, dict):
+            rec = v.get("rekomendasi_claude") or v.get("rekomendasi")
+            keyak = v.get("keyakinan")
+            entry = v.get("entry_ideal") or v.get("entry_pre_closing")
+            tp = v.get("target_harga") or v.get("target_pre_opening")
+            sl = v.get("stop_loss")
+            risk = v.get("risiko_utama")
+            
+            ai_line = f"   • 🧠 <b>AI Verdict:</b> {rec} ({keyak})"
+            plans = []
+            if entry: plans.append(f"Entry: Rp {int(entry):,}")
+            if tp: plans.append(f"TP: Rp {int(tp):,}")
+            if sl: plans.append(f"SL: Rp {int(sl):,}")
+            if plans:
+                ai_line += " · " + " · ".join(plans)
+            message_lines.append(ai_line.replace(",", "."))
+            if risk:
+                message_lines.append(f"     ⚠️ Risiko: {risk}")
+        
     message_lines.extend([
         "",
         "💡 <i>Status RDN:</i>",

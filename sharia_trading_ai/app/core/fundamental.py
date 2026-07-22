@@ -82,14 +82,19 @@ def _yf_shape(ticker: str, info: Optional[dict[str, Any]]) -> dict[str, Any]:
         pbv = round(price / bvps, 2)
     if pbv is not None and (pbv <= 0 or pbv > 100):
         pbv = None
+    # earningsQuarterlyGrowth / earningsGrowth sering desimal (0.25) atau sudah % (25)
+    eps_q = _normalize_pct(info.get("earningsQuarterlyGrowth"))
     return {
-        "eps_growth": None,  # yfinance tak menyediakan EPS QnQ andal
+        "eps_growth": eps_q,
         "roa": _normalize_pct(info.get("returnOnAssets")),
         "roe": _normalize_pct(info.get("returnOnEquity")),
         "der": round(d2e / 100, 2) if d2e is not None else None,
         "pbv": pbv, "per": info.get("trailingPE"),
         "dy": _normalize_pct(info.get("dividendYield")),
         "bvps": bvps, "mp": price, "source": "yfinance",
+        "tv_extra": {
+            "eps_yoy": _normalize_pct(info.get("earningsGrowth")),
+        },
     }
 
 
@@ -102,14 +107,34 @@ def _fill_gaps(base: dict[str, Any], extra: Optional[dict[str, Any]]) -> dict[st
         if base.get(k) is None and extra.get(k) is not None:
             base[k] = extra[k]
             filled = True
+    # Gabungkan tv_extra (eps_yoy dll): pertahankan nilai non-None yang sudah ada
+    if extra.get("tv_extra"):
+        out_extra = dict(extra["tv_extra"])
+        for k, v in (base.get("tv_extra") or {}).items():
+            if v is not None:
+                out_extra[k] = v
+        for k, v in (extra.get("tv_extra") or {}).items():
+            if out_extra.get(k) is None and v is not None:
+                out_extra[k] = v
+        base["tv_extra"] = out_extra
     if filled:
         base["source"] = f"{base.get('source', '?')}+{extra.get('source', '?')}"
     return base
 
 
+def get_metrics(ticker: str, info: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """API publik — SATU sumber metrik untuk 6 Magic Number, CAN SLIM, dan modul lain.
+
+    Urutan hybrid (default): TradingView → master_data CSV → yfinance.
+    Jangan baca master_data / TV secara terpisah di modul lain; selalu lewat sini
+    agar EPS QnQ (huruf C) tidak bisa n/a sementara Magic Number sudah terisi.
+    """
+    return _metrics(ticker, info)
+
+
 def _metrics(ticker: str, info: Optional[dict[str, Any]]) -> dict[str, Any]:
-    """Pilih sumber metrik sesuai settings.data_source (default: master_data)."""
-    mode = (settings.data_source or "master_data").lower()
+    """Pilih sumber metrik sesuai settings.data_source (default: hybrid)."""
+    mode = (settings.data_source or "hybrid").lower()
 
     if mode == "yfinance":
         return _yf_shape(ticker, info)
@@ -128,7 +153,7 @@ def _metrics(ticker: str, info: Optional[dict[str, Any]]) -> dict[str, Any]:
             base = _fill_gaps(base, _yf_shape(ticker, info))
         return base
 
-    # default "master_data": perilaku lama (master_data -> yfinance)
+    # "master_data": perilaku lama (master_data -> yfinance)
     return _md_shape(ticker) or _yf_shape(ticker, info)
 
 
@@ -209,21 +234,28 @@ def _verdict(score: int, evaluated: int) -> str:
 from functools import lru_cache
 
 
-@lru_cache(maxsize=1)
-def sector_scores() -> dict[str, int]:
+@lru_cache(maxsize=2)
+def sector_scores(is_us: bool = False) -> dict[str, int]:
     """fundamental_score semua saham (dipakai ranking Leader CAN SLIM L)."""
-    tickers = master_data.tickers()
+    tickers = provider.us_universe_tickers() if is_us else master_data.tickers()
     # Pra-muat TradingView SATU batch supaya per-ticker di bawah baca cache, bukan
     # 75 request terpisah (graceful: diabaikan bila gagal / sumber bukan TV).
-    if (settings.data_source or "").lower() in ("tradingview", "hybrid"):
+    if not is_us and (settings.data_source or "").lower() in ("tradingview", "hybrid"):
         try:
             tradingview_provider.scan_fundamentals(tickers)
         except Exception:  # noqa: BLE001
             pass
+            
     out: dict[str, int] = {}
-    for t in tickers:
+    from concurrent.futures import ThreadPoolExecutor
+    def _one(t):
         try:
-            out[t] = evaluate_fundamental(t)["fundamental_score"]
+            return t, evaluate_fundamental(t)["fundamental_score"]
         except Exception:
-            out[t] = 0
+            return t, 0
+            
+    with ThreadPoolExecutor(max_workers=20) as ex:
+        for t, score in ex.map(_one, tickers):
+            out[t] = score
+            
     return out

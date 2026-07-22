@@ -27,6 +27,30 @@ BASE_TARGET_PCT = 7.0    # target profit dasar (Jalur 7%)
 
 INVESTASI_TICKERS = {"ASII", "SIDO"}
 
+# Trading saham US hanya melalui Pluang (bukan RDN BEI).
+PLUANG_BROKER = "Pluang"
+
+
+def is_pluang_broker(broker: Optional[str]) -> bool:
+    return bool(broker) and "pluang" in str(broker).lower()
+
+
+def broker_matches_ticker(broker: Optional[str], ticker: str) -> bool:
+    """IDX → RDN BEI; US → hanya Pluang. Emas/Tring dikecualikan di loop terpisah."""
+    if not broker or broker in ("Tring Pegadaian", "Tanpa RDN"):
+        return False
+    is_us = provider.is_us_ticker(ticker)
+    pluang = is_pluang_broker(broker)
+    if is_us:
+        return pluang
+    return not pluang
+
+
+def venue_for_ticker(ticker: str) -> str:
+    """Venue eksekusi wajib untuk ticker."""
+    return PLUANG_BROKER if provider.is_us_ticker(ticker) else "RDN BEI"
+
+
 def _nudge_investasi(res: Optional[dict], tk: str) -> Optional[dict]:
     if not res:
         return res
@@ -129,9 +153,17 @@ def _fibonacci_suffix(fib: Optional[dict]) -> str:
 
 
 # ---------------- Watchlist (calon BELI) ---------------- #
-def decide_for_watchlist(s: dict, prospects_set: set, top5_lookup: dict[str, int]) -> Optional[dict]:
+def decide_for_watchlist(s: dict, prospects_set: set, top5_lookup: dict[str, int], market_trend: str = "UPTREND") -> Optional[dict]:
     tk = s.get("ticker")
     if s.get("trend") == "DOWNTREND":
+        return None
+
+    # Hard gate layered: blok entry baru saat risk-off / ilikuid / tidak eligible
+    if s.get("block_new_entry") or s.get("eligible_for_buy") is False:
+        return None
+    if s.get("liquidity_risk") == "Sangat Tinggi":
+        return None
+    if (s.get("final_signal") or "").startswith("AVOID"):
         return None
     
     # Gerbang Penyaring Akhir Bandarmologi (Smart Money)
@@ -155,26 +187,51 @@ def decide_for_watchlist(s: dict, prospects_set: set, top5_lookup: dict[str, int
     fib = s.get("fibonacci")
     fibo_suffix = _fibonacci_suffix(fib)
 
+    size_mult = float(s.get("size_mult") if s.get("size_mult") is not None else 1.0)
+    is_bearish = market_trend == "DOWNTREND"
+
     def make(action, urg, conf, reason, alloc_pct, ret_mult, ctx="WATCHLIST"):
+        # Regime multiplier: BEARISH/size 0 → tolak entry; NEUTRAL → potong size
+        if size_mult <= 0:
+            return None
+        adj_pct = max(5, int(round(alloc_pct * size_mult)))
+        if size_mult < 1.0:
+            urg = "LOW"
+            from app.data.provider import is_us_ticker
+            idx_name = "S&P 500" if is_us_ticker(tk) else "IHSG"
+            reason = f"⚠️ [{idx_name} regime size ×{size_mult}] " + reason
+        elif is_bearish:
+            adj_pct = max(5, alloc_pct // 2)
+            urg = "LOW"
+            from app.data.provider import is_us_ticker
+            idx_name = "S&P 500" if is_us_ticker(tk) else "IHSG"
+            reason = f"⚠️ [{idx_name} DOWNTREND] " + reason
         return {"action": action, "ticker": tk, "urgency": urg, "confidence": conf,
                 "context": ctx, "reason": reason + fibo_suffix,
-                "details": {"sector": sector, "rsi": rsi, "score": fs, "css": s.get("css")},
+                "details": {"sector": sector, "rsi": rsi, "score": fs, "css": s.get("css"),
+                            "size_mult": size_mult, "quality_score": s.get("quality_score"),
+                            "timing_score": s.get("timing_score")},
                 "expected_return_pct": round(BASE_TARGET_PCT * ret_mult, 2),
-                "next_step": f"{_alloc(alloc_pct)} {tgt}."}
+                "size_mult": size_mult,
+                "next_step": f"{_alloc(adj_pct)} {tgt}."}
+
+    from app.data import provider
+    is_us = provider.is_us_ticker(tk)
+    min_fs = 2 if is_us else 4
 
     if rank_num is not None:
         if t_signal == "BUY":
             return make("BUY", "HIGH", "HIGH", f"Top 5 Pilihan (Ke-{rank_num}) + Momentum — Fund {fs}/{fmax} + Sinyal BUY{suffix}", 20, 1.5)
-    if fs >= 4 and (breaker or kandang):
+    if fs >= min_fs and (breaker or kandang):
         pat = " & ".join([p for p in ["Breaker", "Kandang Kuda"] if (p == "Breaker" and breaker) or (p == "Kandang Kuda" and kandang)])
         return make("BUY", "HIGH", "HIGH", f"Jalur 7% Setup ({pat}) — Fund {fs}/{fmax} + pola aktif!{suffix}", 15, 1.5)
-    if fs >= 4 and t_signal == "BUY" and in_radar and rsi < 60 and ma_cross == "GOLDEN":
+    if fs >= min_fs and t_signal == "BUY" and in_radar and rsi < 60 and ma_cross == "GOLDEN":
         return make("BUY", "HIGH", "HIGH", f"Strong Setup — Fund {fs}/{fmax} + Tech BUY + Volume spike + Golden cross{suffix}", 15, 1.3)
-    if fs >= 4 and rsi < 30 and ma_cross == "GOLDEN":
+    if fs >= min_fs and rsi < 30 and ma_cross == "GOLDEN":
         return make("BUY", "MEDIUM", "HIGH", f"Oversold Gem — Fund {fs}/{fmax} + RSI {rsi:.1f} (bottom?) + Golden{suffix}", 15, 1.4)
-    if fs >= 4 and t_signal == "BUY":
+    if fs >= min_fs and t_signal == "BUY":
         return make("BUY", "MEDIUM", "MEDIUM", f"Quality + Momentum — Fund {fs}/{fmax} + Tech BUY{suffix}", 10, 1.0)
-    if fs >= 3 and rsi < 30:
+    if fs >= max(1, min_fs - 1) and rsi < 30:
         return make("BUY", "LOW", "LOW", f"Speculative bottom — Fund {fs}/{fmax} + RSI {rsi:.1f}{suffix}", 5, 0.7)
     return None
 
@@ -265,11 +322,11 @@ def build_ranking(limit: Optional[int] = None) -> list[dict]:
     
     def analyze(t):
         try:
-            return funnel.analyze_stock(t)
+            return funnel.analyze_stock(t, ttl=14400)
         except Exception:
             return None
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=20) as executor:
         results = list(executor.map(analyze, tickers))
 
     for rep in results:
@@ -277,11 +334,12 @@ def build_ranking(limit: Optional[int] = None) -> list[dict]:
             continue
         sig = rep.get("signal", {}) or {}
         ranking.append({
-            "ticker": rep["ticker"], "sector": rep.get("sector"),
+            "ticker": rep["ticker"], "name": rep.get("name"), "sector": rep.get("sector"),
             "current_price": rep.get("technical", {}).get("price") or sig.get("last_close") or 0,
             "fundamental_score": rep["canslim"]["canslim_score"],
             "fundamental_max": 7,
             "magic_score": rep["fundamental"].get("magic_score"),
+            "canslim_score": rep["canslim"]["canslim_score"],
             "fundamental_label": rep["fundamental"].get("fundamental_label"),
             "technical_score": sig.get("score", 0),
             "technical_signal": sig.get("signal", "HOLD"),
@@ -294,6 +352,15 @@ def build_ranking(limit: Optional[int] = None) -> list[dict]:
             "skor": rep["rekomendasi"].get("skor"),
             "trend": rep.get("technical", {}).get("trend", "SIDEWAYS"),
             "fibonacci": rep.get("technical", {}).get("fibonacci"),
+            "liquidity_risk": rep.get("technical", {}).get("liquidity_risk"),
+            "scoring": rep["rekomendasi"].get("scoring"),
+            "eligible_for_buy": (rep["rekomendasi"].get("scoring") or {}).get("eligible_for_buy", True),
+            "size_mult": (rep["rekomendasi"].get("scoring") or {}).get("size_mult", 1.0),
+            "block_new_entry": (rep["rekomendasi"].get("scoring") or {}).get("block_new_entry", False),
+            "quality_score": (rep["rekomendasi"].get("scoring") or {}).get("quality_score"),
+            "timing_score": (rep["rekomendasi"].get("scoring") or {}).get("timing_score"),
+            "final_score": (rep["rekomendasi"].get("scoring") or {}).get("final_score"),
+            "keputusan": (rep["rekomendasi"].get("scoring") or {}).get("keputusan"),
         })
     return ranking
 
@@ -304,60 +371,137 @@ _CONF = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
 
 # ---------------- Pengayaan: akurasi prediksi + alokasi Money Management ---------------- #
 def _alloc_buy(tk: str, price: Optional[float], pos_by_tk: dict[str, dict],
-               rdn_list: list[dict], assigned_broker: Optional[str] = None) -> dict[str, Any]:
-    """Saran alokasi BELI: pakai RDN yang ditetapkan (per-RDN); jika tak ada, pilih
-    RDN dgn cash + slot kosong. Hitung lot/Rp/%cash, risk/target."""
+               rdn_list: list[dict], assigned_broker: Optional[str] = None,
+               size_mult: float = 1.0) -> dict[str, Any]:
+    """Saran alokasi BELI: nilai lot/cash mengikuti RDN/portofolio aktual.
+
+    - Saham US → wajib Pluang (USD, 1 lembar = 1 unit).
+    - Saham IDX → RDN BEI (1 lot = 100 lembar).
+    - Jika ticker sudah di portofolio → pakai broker posisi yang sama.
+    """
+    from app.core.vision_import import _norm_broker
+
+    is_us = provider.is_us_ticker(tk)
+    shares_per = 1 if is_us else MM.SHARES_PER_LOT
+    cur = "USD" if is_us else "IDR"
     pos = pos_by_tk.get(tk)
+
+    # Tentukan venue wajib
+    if is_us:
+        assigned_broker = PLUANG_BROKER
+    elif pos and pos.get("broker") and not is_pluang_broker(pos.get("broker")):
+        # Tambah posisi: ikut broker portofolio
+        assigned_broker = assigned_broker or pos.get("broker")
+
     target_rdn = None
     if assigned_broker:
-        target_rdn = next((r for r in rdn_list if r["broker"] == assigned_broker), None)
+        ab = _norm_broker(assigned_broker) or assigned_broker
+        target_rdn = next((r for r in rdn_list if r["broker"] == ab), None)
+
     if target_rdn is None and pos and pos.get("broker"):
-        target_rdn = next((r for r in rdn_list if r["broker"] == pos["broker"]), None)
+        if broker_matches_ticker(pos.get("broker"), tk):
+            target_rdn = next((r for r in rdn_list if r["broker"] == pos["broker"]), None)
+
     if target_rdn is None:
-        cand = [r for r in rdn_list if r["advice"]["open_slots"] > 0 and r["cash"] > 0]
+        cand = [
+            r for r in rdn_list
+            if r.get("advice") and r["advice"].get("open_slots", 0) > 0
+            and (r.get("cash") or 0) > 0
+            and broker_matches_ticker(r.get("broker"), tk)
+            and r.get("broker") != "Tring Pegadaian"
+        ]
         cand.sort(key=lambda r: r["cash"], reverse=True)
         target_rdn = cand[0] if cand else None
+
+    if is_us and (target_rdn is None or not is_pluang_broker(target_rdn.get("broker"))):
+        return {
+            "tipe": "beli", "rdn": PLUANG_BROKER, "lots": 0, "currency": "USD",
+            "venue": PLUANG_BROKER, "sesuai_portofolio": False,
+            "catatan": (
+                f"Saham US ({tk}) hanya bisa ditransaksikan di {PLUANG_BROKER}. "
+                f"Buat/isi cash USD akun {PLUANG_BROKER} di tab Portofolio RDN."
+            ),
+        }
+
     if not target_rdn:
-        return {"tipe": "beli", "catatan": "Belum ada RDN dengan cash & slot kosong — isi saldo cash RDN dulu."}
-    adv = target_rdn["advice"]
-    bid = adv.get("per_emiten") or 0
-    cash = target_rdn["cash"] or 0
+        return {
+            "tipe": "beli", "lots": 0, "currency": cur, "venue": venue_for_ticker(tk),
+            "catatan": "Belum ada RDN dengan cash & slot kosong — isi saldo cash RDN dulu.",
+        }
+
+    if size_mult <= 0:
+        return {
+            "tipe": "beli", "rdn": target_rdn["broker"], "lots": 0, "size_mult": 0,
+            "currency": cur, "venue": target_rdn["broker"],
+            "catatan": "Regime risk-off — entry baru diblok (size ×0).",
+        }
+
+    adv = target_rdn.get("advice") or {}
+    bid = (adv.get("per_emiten") or 0) * float(size_mult)
+    cash = float(target_rdn.get("cash") or 0)
+    # Bid tidak boleh melebihi cash tersedia di akun
+    if cash > 0:
+        bid = min(bid, cash) if bid > 0 else cash
     fb = target_rdn.get("fee_buy_pct") or 0
     fs = target_rdn.get("fee_sell_pct") or 0
-    # lot dihitung agar (harga×lembar + biaya beli) muat dalam bid
-    lots = int(bid // (price * 100 * (1 + fb / 100))) if (price and price > 0) else 0
-    shares_val = round(lots * price * 100) if (price and lots > 0) else 0
-    buy_fee = round(shares_val * fb / 100)
-    outlay = shares_val + buy_fee                          # total kas keluar (termasuk biaya beli)
+
+    unit_cost = (price * shares_per * (1 + fb / 100)) if (price and price > 0) else 0
+    lots = int(bid // unit_cost) if unit_cost > 0 else 0
+    # Pastikan muat di cash (bukan hanya bid)
+    if unit_cost > 0 and cash > 0:
+        lots = min(lots, int(cash // unit_cost))
+
+    shares_val = round(lots * price * shares_per, 2 if is_us else 0) if (price and lots > 0) else 0
+    buy_fee = round(shares_val * fb / 100, 2 if is_us else 0)
+    outlay = round(shares_val + buy_fee, 2 if is_us else 0)
     rp = adv.get("risk_pct") or 0
     pp = adv.get("profit_pct") or 0
     roundtrip = round(fb + fs, 3)
+    note_mult = f" · regime size ×{size_mult}" if size_mult != 1.0 else ""
+    unit_label = "lembar" if is_us else "lot"
+    pos_note = ""
+    if pos:
+        pos_note = f" · posisi ada {pos.get('lots')} {unit_label} @ {pos.get('broker')}"
+
     return {
-        "tipe": "beli", "rdn": target_rdn["broker"], "bid_idr": bid,
+        "tipe": "beli", "rdn": target_rdn["broker"], "bid_idr": round(bid, 2 if is_us else 0),
         "lots": lots, "nilai_idr": shares_val, "buy_fee_idr": buy_fee, "outlay_idr": outlay,
         "pct_cash": round(outlay / cash * 100, 1) if cash else None,
-        "risk_pct": rp, "risk_idr": round(shares_val * rp / 100),
-        "profit_pct": pp, "target_idr": round(shares_val * pp / 100),
+        "risk_pct": rp, "risk_idr": round(shares_val * rp / 100, 2 if is_us else 0),
+        "profit_pct": pp, "target_idr": round(shares_val * pp / 100, 2 if is_us else 0),
         "fee_buy_pct": fb, "fee_sell_pct": fs, "roundtrip_pct": roundtrip,
-        "net_target_pct": round(pp + roundtrip, 2),       # kenaikan harga minimal utk profit BERSIH
-        "catatan": (f"Beli ~{lots} lot @ {target_rdn['broker']} ≈ Rp {outlay:,} (incl. biaya {buy_fee:,}) · "
-                    f"jual +{round(pp + roundtrip, 2)}% utk profit {pp}% bersih".replace(",", ".")
-                    if lots > 0 else f"Cash {target_rdn['broker']} kurang untuk 1 lot (bid Rp {bid:,})".replace(",", ".")),
+        "net_target_pct": round(pp + roundtrip, 2),
+        "size_mult": size_mult,
+        "currency": cur,
+        "venue": target_rdn["broker"],
+        "shares_per_lot": shares_per,
+        "sesuai_portofolio": True,
+        "posisi_lots": pos.get("lots") if pos else None,
+        "catatan": (
+            (f"Beli ~{lots} {unit_label} @ {target_rdn['broker']} ≈ {cur} {outlay:,} "
+             f"(incl. biaya {buy_fee:,}) · jual +{round(pp + roundtrip, 2)}% utk profit {pp}% bersih"
+             f"{note_mult}{pos_note}".replace(",", ".")
+             if lots > 0 else
+             f"Cash {target_rdn['broker']} kurang untuk 1 {unit_label} "
+             f"(bid {cur} {round(bid):,}){note_mult}{pos_note}".replace(",", "."))
+        ),
     }
 
 
 def _exit_plan(pos: dict, reason: str, context: str) -> dict[str, Any]:
-    """Rencana JUAL bertahap: berapa lot per tahap + patokan harga, sesuai jenis exit."""
+    """Rencana JUAL bertahap — lot & nilai dari posisi portofolio aktual."""
     lots = int(pos.get("lots") or 0)
     avg = pos.get("avg_price") or 0
     cur = pos.get("current_price")
     be = pos.get("break_even") or round(avg) if avg else None
     pnl = pos.get("net_pl_pct")
-    cut = round(avg * (1 + CUT_LOSS_PCT / 100)) if avg else None     # harga cut-loss -7%
+    cut = round(avg * (1 + CUT_LOSS_PCT / 100), 2) if avg else None
     r = reason or ""
     hard_cut = "CUT LOSS" in r or (pnl is not None and pnl <= CUT_LOSS_PCT)
     take_profit = "TAKE PROFIT" in r or (pnl is not None and pnl >= TAKE_PROFIT_PCT)
     decisive = context in ("ROTATION_OUT", "PORTFOLIO_TRIM")
+    is_us = provider.is_us_ticker(pos.get("ticker") or "")
+    shares_per = 1 if is_us else MM.SHARES_PER_LOT
 
     if hard_cut:
         frac, style = 1.0, "JUAL SEMUA sekarang (cut-loss — batasi rugi)"
@@ -365,20 +509,20 @@ def _exit_plan(pos: dict, reason: str, context: str) -> dict[str, Any]:
         frac, style = 1.0, "JUAL SEMUA (rotasi/pangkas — bebaskan slot utk emiten lebih kuat)"
     elif take_profit:
         frac, style = 0.5, "Realisasi sebagian, sisanya biarkan berjalan (trailing)"
-    else:                                                            # AVOID / sinyal teknikal → perlahan
+    else:
         frac, style = 0.5, "Eksit BERTAHAP (front-loaded) — fundamental/teknikal melemah"
 
     lots_now = min(lots, max(1, math.ceil(lots * frac))) if lots else 0
     lots_rest = lots - lots_now
 
-    _, fee_sell = accounts.fees_for(pos.get("broker"))    # nilai jual = bersih setelah biaya jual
+    _, fee_sell = accounts.fees_for(pos.get("broker"))
 
     def _v(n_lots: int, price: Optional[float]) -> dict:
         if not price or not n_lots:
             return {"harga": None, "nilai": None, "nilai_net": None}
-        gross = round(n_lots * MM.SHARES_PER_LOT * price)
-        return {"harga": round(price), "nilai": gross,
-                "nilai_net": round(gross * (1 - fee_sell / 100))}
+        gross = round(n_lots * shares_per * price, 2 if is_us else 0)
+        return {"harga": round(price, 2 if is_us else 0), "nilai": gross,
+                "nilai_net": round(gross * (1 - fee_sell / 100), 2 if is_us else 0)}
 
     stages = [{"tahap": 1, "lots": lots_now, "kapan": "sekarang",
                "patokan": "harga pasar (eksekusi saat jam bursa)", **_v(lots_now, cur)}]
@@ -391,16 +535,21 @@ def _exit_plan(pos: dict, reason: str, context: str) -> dict[str, Any]:
             stages.append({"tahap": 2, "lots": lots_rest, "kapan": "bertahap",
                            "patokan": f"jual bila pantul ≥ {be} (impas), ATAU cut bila ≤ {cut} (−7%)",
                            "skenario_impas": _v(lots_rest, be), "skenario_cut": _v(lots_rest, cut)})
-    total_now = _v(lots, cur)                              # bila dijual semua di harga sekarang
-    return {"lots_total": lots, "lots_now": lots_now, "lots_rest": lots_rest,
-            "cut_loss_price": cut, "breakeven_price": be, "fee_sell_pct": fee_sell,
-            "total_nilai_now": total_now["nilai"],         # kotor (sebelum fee)
-            "total_nilai_net_now": total_now["nilai_net"], "style": style, "stages": stages}
+    total_now = _v(lots, cur)
+    return {
+        "lots_total": lots, "lots_now": lots_now, "lots_rest": lots_rest,
+        "cut_loss_price": cut, "breakeven_price": be, "fee_sell_pct": fee_sell,
+        "total_nilai_now": total_now["nilai"],
+        "total_nilai_net_now": total_now["nilai_net"], "style": style, "stages": stages,
+        "sesuai_portofolio": True,
+        "broker": pos.get("broker"),
+        "currency": "USD" if is_us else "IDR",
+    }
 
 
 def _enrich(recs: list[dict], pos_by_tk: dict[str, dict], rdn_list: list[dict],
             cache: Optional[dict] = None) -> None:
-    """Tambahkan akurasi prediksi (win-rate backtest), skor undervalue, & alokasi MM."""
+    """Tambahkan akurasi prediksi, skor undervalue, & alokasi MM sesuai portofolio."""
     cache = cache if cache is not None else {}
     for d in recs:
         tk = d.get("ticker")
@@ -415,19 +564,65 @@ def _enrich(recs: list[dict], pos_by_tk: dict[str, dict], rdn_list: list[dict],
             d["uv_score"] = uv.get("score")
             d["expected_return_pct"] = d.get("expected_return_pct") or uv.get("expected_return_pct")
             price = uv.get("price")
+        pos = pos_by_tk.get(tk)
+        if pos and pos.get("current_price"):
+            price = pos.get("current_price")
+
         if d.get("action") == "BUY":
-            d["alokasi"] = _alloc_buy(tk, price, pos_by_tk, rdn_list, d.get("alokasi_rdn"))
+            sm = float(d.get("size_mult") or (d.get("details") or {}).get("size_mult") or 1.0)
+            # US wajib Pluang; posisi existing → broker portofolio
+            assigned = d.get("alokasi_rdn")
+            if provider.is_us_ticker(tk):
+                assigned = PLUANG_BROKER
+                d["alokasi_rdn"] = PLUANG_BROKER
+                d.setdefault("details", {})["broker"] = PLUANG_BROKER
+                d.setdefault("details", {})["venue"] = PLUANG_BROKER
+            elif pos and pos.get("broker"):
+                assigned = pos.get("broker")
+                d["alokasi_rdn"] = assigned
+            d["alokasi"] = _alloc_buy(tk, price, pos_by_tk, rdn_list, assigned, size_mult=sm)
+            # Samakan nilai rekomendasi dengan hasil alokasi (lot/outlay aktual)
+            if d["alokasi"].get("lots") is not None:
+                d.setdefault("details", {})["alloc_lots"] = d["alokasi"]["lots"]
+                d.setdefault("details", {})["alloc_outlay"] = d["alokasi"].get("outlay_idr")
+
         elif d.get("action") == "SELL":
-            pos = pos_by_tk.get(tk)
-            if pos:
-                d["alokasi"] = {"tipe": "realisasi", "rdn": pos.get("broker"),
-                                "nilai": pos.get("value"), "nilai_net": pos.get("net_value"),
-                                "lots": pos.get("lots")}
-                d["exit_plan"] = _exit_plan(pos, d.get("reason", ""), d.get("context", ""))
+            if not pos:
+                # Tidak boleh SELL ticker yang tidak ada di portofolio
+                d["action"] = "HOLD"
+                d["context"] = "SKIP_NO_POSITION"
+                d["reason"] = (d.get("reason") or "") + " — dibatalkan: tidak ada posisi di portofolio."
+                d["alokasi"] = None
+                continue
+            # Nilai SELL = posisi portofolio aktual (lot, broker, nilai)
+            broker = pos.get("broker")
+            if provider.is_us_ticker(tk) and not is_pluang_broker(broker):
+                d.setdefault("details", {})["venue_warning"] = (
+                    f"Posisi US ada di {broker}; trading US selanjutnya hanya via {PLUANG_BROKER}."
+                )
+            d["alokasi"] = {
+                "tipe": "realisasi",
+                "rdn": broker,
+                "venue": PLUANG_BROKER if provider.is_us_ticker(tk) else broker,
+                "nilai": pos.get("value"),
+                "nilai_net": pos.get("net_value"),
+                "lots": pos.get("lots"),
+                "avg_price": pos.get("avg_price"),
+                "current_price": pos.get("current_price"),
+                "currency": pos.get("currency") or ("USD" if provider.is_us_ticker(tk) else "IDR"),
+                "sesuai_portofolio": True,
+                "catatan": (
+                    f"Jual sesuai portofolio: {pos.get('lots')} "
+                    f"{'lembar' if provider.is_us_ticker(tk) else 'lot'} @ {broker} "
+                    f"≈ {pos.get('currency') or 'IDR'} {pos.get('net_value') or pos.get('value') or 0}"
+                ),
+            }
+            d.setdefault("details", {})["broker"] = broker
+            d["exit_plan"] = _exit_plan(pos, d.get("reason", ""), d.get("context", ""))
 
 
 def market_status() -> dict[str, Any]:
-    """Status bursa REALTIME (waktu WIB) berdasar kalender libur BEI + jam sesi.
+    """Status bursa IDX/BEI REALTIME (waktu WIB) berdasar kalender libur BEI + jam sesi.
 
     open=True hanya saat jam perdagangan berjalan. `closed` (utk pelunakan sinyal)
     = BUKAN hari bursa (akhir pekan/libur) — bukan sekadar 'data basi', agar pagi
@@ -472,12 +667,76 @@ def market_status() -> dict[str, Any]:
         session, is_open, reason = "pasca-penutupan", False, "Sesudah penutupan — bursa tutup hari ini."
 
     return {
+        "market": "IDX",
+        "label": "Bursa IDX (BEI)",
+        "timezone": "Asia/Jakarta",
+        "tz_label": "WIB",
+        "open_time": "09:00",
+        "close_time": "16:00",
         "trading_day": trading_day, "open": is_open, "session": session,
         "closed": not trading_day,                          # pelunakan sinyal: hanya libur/akhir pekan
         "weekend": weekend, "holiday": holiday_name, "reason": reason,
         "last_trading_date": str(last_date) if last_date else None,
         "next_holiday": bei_calendar.next_holiday(today),
         "now_wib": now.strftime("%a %Y-%m-%d %H:%M WIB"),
+        "now_local": now.strftime("%a %Y-%m-%d %H:%M WIB"),
+    }
+
+
+def market_status_us() -> dict[str, Any]:
+    """Status bursa US (NYSE/Nasdaq) berdasarkan waktu America/New_York (ET).
+
+    Jam reguler: 09:30–16:00 ET, Senin–Jumat. Libur US resmi tidak dilacak penuh
+    (hanya weekday); data harga terakhir dipakai sebagai penanda sesi terakhir.
+    """
+    from datetime import time as _time
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("America/New_York"))
+        now_wib = now.astimezone(ZoneInfo("Asia/Jakarta"))
+    except Exception:  # noqa: BLE001
+        now = datetime.now()
+        now_wib = now
+    today = now.date()
+    wd = now.weekday()
+    weekend = wd >= 5
+    trading_day = not weekend
+    nt = now.time()
+    open_t, close_t = _time(9, 30), _time(16, 0)
+
+    last_date = None
+    try:
+        df = provider.get_history("^GSPC", period="10d")
+        if df is not None and not df.empty:
+            last_date = df.index[-1].date()
+    except Exception:  # noqa: BLE001
+        pass
+
+    if not trading_day:
+        session, is_open = ("libur", False)
+        reason = "Akhir pekan — bursa US tutup."
+    elif nt < open_t:
+        session, is_open, reason = "pra-pembukaan", False, "Pra-pembukaan — bursa US buka 09:30 ET."
+    elif nt <= close_t:
+        session, is_open, reason = "regular", True, "Bursa US BUKA — sesi reguler (09:30–16:00 ET)."
+    else:
+        session, is_open, reason = "pasca-penutupan", False, "Sesudah penutupan — bursa US tutup hari ini."
+
+    return {
+        "market": "US",
+        "label": "Bursa US (NYSE/Nasdaq)",
+        "timezone": "America/New_York",
+        "tz_label": "ET",
+        "open_time": "09:30",
+        "close_time": "16:00",
+        "trading_day": trading_day, "open": is_open, "session": session,
+        "closed": not trading_day,
+        "weekend": weekend, "holiday": None, "reason": reason,
+        "last_trading_date": str(last_date) if last_date else None,
+        "next_holiday": None,
+        "now_et": now.strftime("%a %Y-%m-%d %H:%M ET"),
+        "now_local": now.strftime("%a %Y-%m-%d %H:%M ET"),
+        "now_wib": now_wib.strftime("%a %Y-%m-%d %H:%M WIB") if now_wib else None,
     }
 
 
@@ -491,13 +750,26 @@ def _accuracy(tk: str, cache: dict) -> Optional[dict]:
 
 
 def _prime_pool(ranking: list[dict]) -> list[tuple[float, dict]]:
-    """Pra-saring berdasar SKOR FUNNEL (6 Magic+CAN SLIM+teknikal+Jalur7) — IDENTIK
-    dengan verdict di tab Analisa & Screening. Sumber Top-5 & kandidat."""
+    """Pra-saring berdasar SKOR FUNNEL — IDENTIK dengan verdict Analisa & Screening.
+
+    Hard gate layered: ilikuid / non-eligible tidak masuk pool BELI.
+    """
     pool = []
     for s in ranking:
-        if (s.get("current_price") or 0) <= 0 or s.get("fundamental_label") == "AVOID":
+        # Terapkan filter Mass Screener (Zeta AI): harga minimal Rp 100
+        if (s.get("current_price") or 0) < 100 or s.get("fundamental_label") == "AVOID":
             continue
         if s.get("trend") == "DOWNTREND":
+            continue
+        # Hard gate likuiditas: ilikuid tidak masuk pool BELI
+        if s.get("liquidity_risk") == "Sangat Tinggi":
+            continue
+        if s.get("eligible_for_buy") is False and not s.get("block_new_entry"):
+            # Gagal gate non-regime / WATCHLIST / SKIP — jangan calon BELI penuh
+            continue
+        # Risk-off (block_new_entry): tetap di pool ranking; BELI difilter di decide_for_watchlist
+        fs = (s.get("final_signal") or "")
+        if fs.startswith("AVOID") or fs.startswith("SKIP"):
             continue
         pool.append((float(s.get("skor") or 0), s))         # skor funnel 0-100
     pool.sort(key=lambda x: x[0], reverse=True)
@@ -550,6 +822,35 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
     ranking_lookup = {s["ticker"]: s for s in ranking}
     bursa = market_status()
     bursa["test_mode"] = test_mode      # Mode Uji: anggap bursa buka utk pengujian
+    bursa_us = market_status_us()
+
+    # Hitung tren pasar (IHSG untuk BEI dan S&P 500 untuk US) secara global (UPTREND/DOWNTREND)
+    idx_market_trend = "UPTREND"
+    try:
+        idx_df = provider.get_index_history(period="5y")
+        if idx_df is not None and not idx_df.empty and len(idx_df) >= 200:
+            close_val = float(idx_df["Close"].iloc[-1])
+            sma200_val = float(idx_df["Close"].rolling(200).mean().iloc[-1])
+            idx_market_trend = "UPTREND" if close_val > sma200_val else "DOWNTREND"
+    except Exception:
+        pass
+
+    us_market_trend = "UPTREND"
+    try:
+        us_df = provider.get_index_history("AAPL.US", period="5y")  # maps → ^GSPC
+        if us_df is not None and not us_df.empty and len(us_df) >= 200:
+            close_val = float(us_df["Close"].iloc[-1])
+            sma200_val = float(us_df["Close"].rolling(200).mean().iloc[-1])
+            us_market_trend = "UPTREND" if close_val > sma200_val else "DOWNTREND"
+    except Exception:
+        pass
+
+    bursa["trend"] = idx_market_trend
+    bursa_us["trend"] = us_market_trend
+    bursa["us"] = bursa_us
+
+    # default market_trend untuk kecocokan ke bawah (legacy)
+    market_trend = idx_market_trend
 
     positions = portfolio.list_positions()["positions"]
     portfolio_set = {p["ticker"] for p in positions}
@@ -571,11 +872,24 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
     conv_map: dict[str, dict] = {}
     for _, s in pool:
         conv_map[s["ticker"]] = _conviction(s, acc_cache.get(s["ticker"]))
-    # Urutkan berdasarkan prioritas tingkat akurasi trading (akurasi_pct), lalu conviction
-    prime = sorted(pool, key=lambda kv: (
-        conv_map[kv[1]["ticker"]]["akurasi_pct"] if conv_map[kv[1]["ticker"]]["akurasi_pct"] is not None else 0.0,
-        conv_map[kv[1]["ticker"]]["conviction"]
-    ), reverse=True)
+    def sorting_key(kv):
+        tk = kv[1]["ticker"]
+        is_us = provider.is_us_ticker(tk)
+        acc = conv_map[tk]["akurasi_pct"] if conv_map[tk]["akurasi_pct"] is not None else 0.0
+        conv = conv_map[tk]["conviction"]
+        # IDX stocks get a conviction premium (+5) if IDX is bullish or US is bearish.
+        # But if US is bullish and IDX is bearish, US stocks get the premium (+5) instead.
+        premium = 0.0
+        if not is_us:
+            if idx_market_trend == "UPTREND" or us_market_trend == "DOWNTREND":
+                premium = 5.0
+        else:
+            if us_market_trend == "UPTREND" and idx_market_trend == "DOWNTREND":
+                premium = 5.0
+        conv_adjusted = conv + premium
+        return (acc, conv_adjusted)
+
+    prime = sorted(pool, key=sorting_key, reverse=True)
     top5 = [s["ticker"] for _, s in prime[:5]]
     top5_lookup = {t: i + 1 for i, t in enumerate(top5)}
 
@@ -599,6 +913,8 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
               "technical_signal": ri.get("technical_signal", "HOLD"),
               "rsi": ri.get("rsi", 50), "ma_cross": ri.get("ma_cross", "DEATH")}
         broker = p.get("broker") or "Tanpa RDN"
+        
+        # Hitung keputusan konvensional (funnel + aturan)
         d = decide_for_portfolio(
             pp,
             ranking_lookup,
@@ -607,6 +923,10 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
             min_buy_accuracy=min_acc,
             akurasi_pct=_acc_pct(p["ticker"])
         )
+        if d is None:
+            d = {"ticker": p["ticker"], "action": "HOLD", "urgency": "LOW", "confidence": "MEDIUM",
+                 "context": "PORTFOLIO_HOLD", "reason": f"P/L {pp.get('pnl', 0):+.1f}% — pertahankan."}
+
         d = _nudge_investasi(d, p["ticker"])
         if d and d["action"] == "SELL":
             # Tunda SELL demi DIVIDEN bila ex-date dekat & aman (bukan cut-loss/TP/AVOID dalam)
@@ -648,16 +968,23 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
         if tk in portfolio_set:
             continue
         cv = conv_map[tk]
-        base = decide_for_watchlist(s, prospects_set, top5_lookup)
+        
+        is_us_tk = provider.is_us_ticker(tk)
+        mkt_trend = us_market_trend if is_us_tk else idx_market_trend
+        base = decide_for_watchlist(s, prospects_set, top5_lookup, market_trend=mkt_trend)
+
         base = _nudge_investasi(base, tk)
         if not base:
             continue
         rank = top5_lookup.get(tk)
         fs = s.get("fundamental_score") or 0
-        reason = (base["reason"] if base else
-                  f"Pilihan kuat — Fund {fs}/7 · {s.get('final_signal', '')}")
+        reason = base["reason"]
         acc = cv["akurasi_pct"]
-        d = {"ticker": tk, "action": "BUY", "urgency": "HIGH",
+        
+        # Atur tingkat urgensi berdasarkan kondisi tren pasar
+        final_urgency = "LOW" if mkt_trend == "DOWNTREND" else "HIGH"
+        
+        d = {"ticker": tk, "action": "BUY", "urgency": final_urgency,
              "confidence": "HIGH" if cv["conviction"] >= 55 else "MEDIUM",
              "context": "FILL_SLOT",
              "reason": (f"Top-{rank} pilihan · " if rank else "") + reason,
@@ -674,12 +1001,18 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
     ), reverse=True)
 
     # ---- Saring kandidat berdasarkan ambang akurasi adaptif yang telah dihitung ---- #
-    cands = [c for c in cands if (c[2].get("akurasi_pct") or 0) >= min_acc]      # saring per akurasi
+    # Perbaikan: Saham tanpa akurasi historis (None) jangan difilter keluar (supaya US/baru bisa dibeli)
+    cands = [c for c in cands if c[2].get("akurasi_pct") is None or c[2].get("akurasi_pct") >= min_acc]
 
     # ---- 3-7. Logika slot N-emiten DIJALANKAN PER RDN ---- #
     used_cand = set()
     strategi_rdn: list[dict] = []
     tot_kept = tot_fill = tot_trim = tot_rot = tot_open = 0
+    
+    # Fallback jika user belum membuat RDN akun sama sekali, berikan virtual RDN agar rekomendasi umum muncul
+    if not keepers_by_rdn and not rdn_cash:
+        rdn_cash["Virtual RDN"] = 10000000.0
+
     for broker in sorted(set(keepers_by_rdn) | set(rdn_cash)):
         if broker == "Tring Pegadaian":
             continue
@@ -703,10 +1036,15 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
         open_slots = max(0, target - len(kept))
 
         # 3b. Rotasi di RDN ini (slot penuh, ada cash, kandidat jauh lebih kuat)
+        #    — venue harus cocok (US↔Pluang, IDX↔RDN BEI)
         rotation = None
         if open_slots == 0 and kept and has_cash:
-            best = next(((st, s, d) for st, s, d in cands if s["ticker"] not in used_cand), None)
-            if best and best[0] - kept[-1][0][1] >= margin:       # bandingkan conviction vs conviction
+            best = next(
+                ((st, s, d) for st, s, d in cands
+                 if s["ticker"] not in used_cand and broker_matches_ticker(broker, s["ticker"])),
+                None,
+            )
+            if best and best[0] - kept[-1][0][1] >= margin:
                 rotation = (kept[-1], best)
                 kept = kept[:-1]
                 used_cand.add(best[1]["ticker"])
@@ -718,21 +1056,30 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
                 d = {"ticker": p["ticker"], "action": "HOLD", "urgency": "LOW", "confidence": "MEDIUM",
                      "context": "PORTFOLIO_HOLD", "reason": f"P/L {p.get('pnl', 0):+.1f}% — pertahankan."}
             d.setdefault("details", {}).update({"strength": strength, "broker": broker})
+            if provider.is_us_ticker(p["ticker"]):
+                d["details"]["venue"] = PLUANG_BROKER
             d["reason"] = f"[{broker} · jaga {target}] " + d["reason"]
             d["next_step"] = d.get("next_step") or f"Simpan (HOLD) {p['ticker']}."
             {"BUY": buy, "HOLD": hold, "SELL": sell}.get(d["action"], hold).append(d)
 
-        # 3d. Isi slot kosong dgn BELI (HANYA bila RDN punya cash)
+        # 3d. Isi slot kosong dgn BELI (HANYA bila RDN punya cash + venue cocok)
         fills = 0
         if open_slots > 0 and has_cash:
             for st, s, d in cands:
                 if s["ticker"] in used_cand:
-                     continue
+                    continue
+                if not broker_matches_ticker(broker, s["ticker"]):
+                    continue
                 used_cand.add(s["ticker"])
                 d["urgency"], d["context"] = "HIGH", "FILL_SLOT"
-                d["reason"] = f"[{broker}] Isi slot ke-{len(kept) + fills + 1}/{target} — " + d["reason"]
+                venue_note = f" via {PLUANG_BROKER}" if provider.is_us_ticker(s["ticker"]) else ""
+                d["reason"] = f"[{broker}] Isi slot ke-{len(kept) + fills + 1}/{target}{venue_note} — " + d["reason"]
                 d["details"] = {**d.get("details", {}), "strength": st, "broker": broker}
-                d["alokasi_rdn"] = broker
+                if provider.is_us_ticker(s["ticker"]):
+                    d["alokasi_rdn"] = PLUANG_BROKER
+                    d["details"]["venue"] = PLUANG_BROKER
+                else:
+                    d["alokasi_rdn"] = broker
                 buy.append(d)
                 fills += 1
                 if fills >= open_slots:
@@ -742,18 +1089,22 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
         if rotation:
             (ws_key, wp, _), (c_key, cc, cd) = rotation
             ws = ws_key[1]
-            cs = round(c_key, 1)                                # conviction kandidat
+            cs = round(c_key, 1)
             sell.append({
                 "ticker": wp["ticker"], "action": "SELL", "urgency": "HIGH", "confidence": "HIGH",
                 "context": "ROTATION_OUT",
                 "reason": f"[{broker}] Rotasi keluar — {cc['ticker']} (skor {cs}) jauh lebih kuat "
                           f"dari {wp['ticker']} (skor {ws}).",
                 "details": {"strength": ws, "pnl": wp.get("pnl", 0), "broker": broker},
-                "next_step": f"Jual {wp['ticker']} di {broker}, alihkan ke {cc['ticker']}."})
+                "next_step": f"Jual {wp['ticker']} di {broker} (sesuai lot portofolio), alihkan ke {cc['ticker']}."})
             cd["urgency"], cd["confidence"], cd["context"] = "HIGH", "HIGH", "ROTATION_IN"
             cd["reason"] = f"[{broker}] Rotasi masuk — lebih kuat dari {wp['ticker']} (skor {cs} vs {ws}). " + cd["reason"]
             cd["details"] = {**cd.get("details", {}), "strength": cs, "broker": broker}
-            cd["alokasi_rdn"] = broker
+            if provider.is_us_ticker(cc["ticker"]):
+                cd["alokasi_rdn"] = PLUANG_BROKER
+                cd["details"]["venue"] = PLUANG_BROKER
+            else:
+                cd["alokasi_rdn"] = broker
             buy.append(cd)
 
         strategi_rdn.append({
@@ -774,45 +1125,52 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
               "reason": d["reason"], "context": d.get("context")}
              for st, s, d in cands if s["ticker"] not in used_cand][:5]
 
-    # ---- 8b. Bursa tutup → sinyal teknikal & average-down ditahan jadi HOLD ---- #
-    # (dilewati bila Mode Uji aktif: sistem berlaku seperti bursa buka)
-    if bursa["closed"] and not test_mode:
+    # ---- 8b. Bursa tutup (akhir pekan/libur) → sinyal lunak ditahan jadi HOLD ---- #
+    # IDX → kalender BEI/WIB; US → weekend ET. Mode Uji = anggap buka.
+    if not test_mode:
         soft_sell, soft_buy = [], []
         for d in sell:
+            tk = d.get("ticker") or ""
+            mkt_closed = (
+                bursa_us.get("closed") if provider.is_us_ticker(tk) else bursa.get("closed")
+            )
+            if not mkt_closed:
+                soft_sell.append(d)
+                continue
+            mkt_name = "US" if provider.is_us_ticker(tk) else "IDX"
             r = d.get("reason", "")
             hard = ("CUT LOSS" in r or "TAKE PROFIT" in r or "AVOID" in r
                     or d.get("context") in ("PORTFOLIO_TRIM", "ROTATION_OUT"))
-            if not hard and d["ticker"] in portfolio_set:      # sinyal teknikal → tahan
+            if not hard and tk in portfolio_set:
                 hold.append({**d, "action": "HOLD", "urgency": "LOW", "confidence": "MEDIUM",
                              "context": "HOLD_BURSA_TUTUP",
-                             "reason": "⏸ Bursa tutup — " + r + " (tahan, tinjau saat buka).",
-                             "next_step": "Tahan; evaluasi ulang saat bursa buka."})
+                             "reason": f"⏸ Bursa {mkt_name} tutup — " + r + " (tahan, tinjau saat buka).",
+                             "next_step": f"Tahan; evaluasi ulang saat bursa {mkt_name} buka."})
             else:
-                d["next_step"] = "⏸ Rencanakan; eksekusi saat bursa buka. " + d.get("next_step", "")
+                d["next_step"] = f"⏸ Rencanakan; eksekusi saat bursa {mkt_name} buka. " + d.get("next_step", "")
                 soft_sell.append(d)
         sell = soft_sell
         for d in buy:
+            tk = d.get("ticker") or ""
+            mkt_closed = (
+                bursa_us.get("closed") if provider.is_us_ticker(tk) else bursa.get("closed")
+            )
+            if not mkt_closed:
+                soft_buy.append(d)
+                continue
+            mkt_name = "US" if provider.is_us_ticker(tk) else "IDX"
             if d.get("context") in ("PORTFOLIO_AVG_DOWN", "PORTFOLIO_ADD"):
                 hold.append({**d, "action": "HOLD", "urgency": "LOW", "confidence": "MEDIUM",
                              "context": "HOLD_BURSA_TUTUP",
-                             "reason": "⏸ Bursa tutup — " + d.get("reason", "") + " (tahan).",
-                             "next_step": "Tahan; tambah saat buka bila sinyal bertahan."})
+                             "reason": f"⏸ Bursa {mkt_name} tutup — " + d.get("reason", "") + " (tahan).",
+                             "next_step": f"Tahan; tambah saat bursa {mkt_name} buka bila sinyal bertahan."})
             else:
                 soft_buy.append(d)
         buy = soft_buy
 
     # ---- Rekomendasi Emas (Tring Pegadaian) ---- #
     try:
-        # Tentukan tren pasar IHSG (UPTREND/DOWNTREND)
-        market_trend = "UPTREND"
-        try:
-            idx_df = provider.get_index_history(period="2y")
-            if idx_df is not None and not idx_df.empty and len(idx_df) >= 200:
-                close_val = float(idx_df["Close"].iloc[-1])
-                sma200_val = float(idx_df["Close"].rolling(200).mean().iloc[-1])
-                market_trend = "UPTREND" if close_val > sma200_val else "DOWNTREND"
-        except Exception:
-            pass
+        # Menggunakan tren pasar IHSG yang dihitung secara global (market_trend)
 
         # Ambil data emas dari RDN breakdown
         gold_acc = None
@@ -938,6 +1296,29 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
     for lst in (buy, hold, sell):
         _enrich(lst, pos_by_tk, brk["rdn"], acc_cache)
 
+    # SELL hanya untuk ticker yang benar-benar ada di portofolio (nilai = posisi aktual)
+    # BUY yang dialihkan jadi HOLD (no position) dipindah ke hold
+    sell_ok, hold_extra = [], []
+    for d in sell:
+        tk = d.get("ticker")
+        if tk in ("🪙 EMAS", "EMAS"):
+            sell_ok.append(d)
+        elif tk in portfolio_set and d.get("action") == "SELL":
+            sell_ok.append(d)
+        elif d.get("action") == "HOLD":
+            hold_extra.append(d)
+    sell = sell_ok
+    hold.extend(hold_extra)
+
+    # BUY: pastikan US selalu bertanda Pluang di reason/next_step
+    for d in buy:
+        tk = d.get("ticker")
+        if tk and provider.is_us_ticker(tk):
+            d.setdefault("details", {})["venue"] = PLUANG_BROKER
+            ns = d.get("next_step") or ""
+            if PLUANG_BROKER not in ns:
+                d["next_step"] = f"Eksekusi HANYA di {PLUANG_BROKER} (US). " + ns
+
     # BELI diurutkan berdasarkan prioritas tingkat akurasi trading (akurasi_pct), lalu conviction
     buy.sort(key=lambda d: (
         d.get("akurasi_pct") if d.get("akurasi_pct") is not None else 0.0,
@@ -963,28 +1344,64 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
         return "TERTAHAN"          # kandidat kuat tapi belum dibeli (cash/slot/ambang akurasi)
 
     top5_detail = []
-    for _strv, s in prime[:5]:
+    top10_detail = []
+    for i, (_strv, s) in enumerate(prime[:10]):
         tk = s["ticker"]
         cv = conv_map[tk]
-        top5_detail.append({
-            "ticker": tk, "akurasi_pct": cv["akurasi_pct"], "uv_score": cv["uv_score"],
-            "funnel_skor": cv["funnel_skor"], "funnel_signal": cv["final_signal"],
-            "conviction": cv["conviction"], "dividend_bonus": cv.get("dividend_bonus"),
-            "owned": tk in portfolio_set, "status": _status(tk)})
-    prioritized_tickers = [
-        {"ticker": s["ticker"], "akurasi_pct": conv_map[s["ticker"]]["akurasi_pct"]}
-        for _, s in prime
-    ]
-    
-    # Hitung timing eksekusi harian/jam bursa untuk rekomendasi
-    timing_str = _calculate_timing(bursa, test_mode)
+        row = {
+            "rank": i + 1,
+            "ticker": tk,
+            "akurasi_pct": cv["akurasi_pct"],
+            "uv_score": cv["uv_score"],
+            "funnel_skor": cv["funnel_skor"],
+            "funnel_signal": cv["final_signal"],
+            "conviction": cv["conviction"],
+            "dividend_bonus": cv.get("dividend_bonus"),
+            "owned": tk in portfolio_set,
+            "status": _status(tk),
+            "ai_verdict": None,
+            "sector": s.get("sector"),
+            "name": s.get("name"),
+            "magic_score": s.get("magic_score"),
+            "canslim_score": s.get("canslim_score"),
+            "trend": s.get("trend"),
+            "current_price": s.get("current_price") or s.get("price"),
+        }
+        top10_detail.append(row)
+        if i < 5:
+            top5_detail.append(row)
+
+    # Timing eksekusi: IDX → WIB; US → ET (zona masing-masing, bukan jam IDX utk saham US)
+    timing_idx = _calculate_timing(bursa, test_mode, market="IDX")
+    timing_us = _calculate_timing(bursa_us, test_mode, market="US")
     for lst in (buy, hold, sell, watch):
         for item in lst:
-            item["execution_timing"] = timing_str
+            tk = item.get("ticker") or ""
+            if tk in ("🪙 EMAS", "EMAS"):
+                item["execution_timing"] = timing_idx
+                item["execution_market"] = "IDX"
+            elif provider.is_us_ticker(tk):
+                item["execution_timing"] = timing_us
+                item["execution_market"] = "US"
+            else:
+                item["execution_timing"] = timing_idx
+                item["execution_market"] = "IDX"
             
+    prioritized_tickers = [
+        {
+            "ticker": s["ticker"],
+            "akurasi_pct": conv_map[s["ticker"]]["akurasi_pct"],
+            "conviction": conv_map[s["ticker"]]["conviction"],
+            "funnel_skor": conv_map[s["ticker"]]["funnel_skor"],
+            "funnel_signal": conv_map[s["ticker"]]["final_signal"],
+            "status": _status(s["ticker"]),
+        }
+        for _, s in prime
+    ]
     return {
         "buy": buy, "hold": hold, "sell": sell, "watch": watch,
-        "top5": top5, "top5_detail": top5_detail, "prospects": sorted(prospects_set), "bursa": bursa,
+        "top5": top5, "top5_detail": top5_detail, "top10": [r["ticker"] for r in top10_detail],
+        "top10_detail": top10_detail, "prospects": sorted(prospects_set), "bursa": bursa,
         "jumlah_ranking": len(ranking),
         "money_management": brk["total"], "rdn": brk["rdn"],
         "roi": roi.portfolio_roi(float(MM.PROFIT_FUND_PCT)), "adaptive": adaptive,
@@ -1005,69 +1422,114 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
     }
 
 
-def _calculate_timing(bursa: dict, test_mode: bool = False) -> str:
-    """Hitung timing eksekusi dalam satuan jam & hari."""
+def _fmt_countdown(seconds: float) -> str:
+    """Format sisa waktu: 'X hari Y jam Z menit' (hilangkan bagian nol)."""
+    if seconds < 0:
+        seconds = 0
+    days = int(seconds // 86400)
+    rem = seconds % 86400
+    hours = int(rem // 3600)
+    minutes = int((rem % 3600) // 60)
+    parts = []
+    if days > 0:
+        parts.append(f"{days} hari")
+    if hours > 0:
+        parts.append(f"{hours} jam")
+    if minutes > 0 or not parts:
+        parts.append(f"{minutes} menit")
+    return " ".join(parts)
+
+
+def _calculate_timing(bursa: dict, test_mode: bool = False, *, market: str = "IDX") -> str:
+    """Hitung timing eksekusi sesuai zona bursa target.
+
+    IDX → Asia/Jakarta (WIB), buka 09:00 / tutup 16:00.
+    US  → America/New_York (ET), buka 09:30 / tutup 16:00.
+    """
     from datetime import datetime, time as _time, timedelta
     try:
         from zoneinfo import ZoneInfo
-        now = datetime.now(ZoneInfo("Asia/Jakarta"))
-    except Exception:
-        now = datetime.now()
-        
-    if test_mode or bursa.get("open"):
-        # Bursa sedang buka -> hitung jam tersisa hingga penutupan sesi-2 (16:00 WIB)
-        try:
-            tutup = datetime.combine(now.date(), _time(16, 0))
-            if now.tzinfo is not None:
-                tutup = tutup.replace(tzinfo=now.tzinfo)
-            if now < tutup:
-                diff = tutup - now
-                seconds = diff.total_seconds()
-                hours = int(seconds // 3600)
-                minutes = int((seconds % 3600) // 60)
-                if hours > 0:
-                    return f"{hours} jam {minutes} menit (sebelum bursa tutup hari ini)"
-                else:
-                    return f"{minutes} menit (sebelum bursa tutup hari ini)"
-        except Exception:
-            pass
-        return "5 jam (selama jam perdagangan harian)"
+    except Exception:  # noqa: BLE001
+        ZoneInfo = None  # type: ignore
+
+    is_us = (market or "IDX").upper() == "US"
+    if is_us:
+        tz_name, tz_label = "America/New_York", "ET"
+        open_t, close_t = _time(9, 30), _time(16, 0)
+        mkt_name = "bursa US"
     else:
-        # Bursa tutup -> hitung waktu menuju pembukaan bursa berikutnya (Senin-Jumat, 09:00 WIB)
+        tz_name, tz_label = "Asia/Jakarta", "WIB"
+        open_t, close_t = _time(9, 0), _time(16, 0)
+        mkt_name = "bursa IDX"
+
+    try:
+        tz = ZoneInfo(tz_name) if ZoneInfo else None
+        now = datetime.now(tz) if tz else datetime.now()
+    except Exception:  # noqa: BLE001
+        now = datetime.now()
+        tz = now.tzinfo
+
+    def _aware(dt_naive: datetime) -> datetime:
+        if tz is not None and dt_naive.tzinfo is None:
+            return dt_naive.replace(tzinfo=tz)
+        return dt_naive
+
+    def _wib_hint(dt: datetime) -> str:
+        if not is_us or ZoneInfo is None:
+            return ""
         try:
-            next_trading_day = now.date()
+            wib = dt.astimezone(ZoneInfo("Asia/Jakarta"))
+            return f" · ≈ {wib.strftime('%H:%M')} WIB"
+        except Exception:  # noqa: BLE001
+            return ""
+
+    if test_mode or bursa.get("open"):
+        tutup = _aware(datetime.combine(now.date(), close_t))
+        if now < tutup:
+            left = _fmt_countdown((tutup - now).total_seconds())
+            return (
+                f"{left} (sebelum {mkt_name} tutup {close_t.strftime('%H:%M')} {tz_label}"
+                f"{_wib_hint(tutup)})"
+            )
+        return (
+            f"Sesi {mkt_name} hampir/sudah tutup ({close_t.strftime('%H:%M')} {tz_label}"
+            f"{_wib_hint(tutup)}) — tinjau sesi berikutnya"
+        )
+
+    # Istirahat sesi IDX → tunggu sesi II (bukan keesokan hari)
+    if not is_us and bursa.get("session") == "istirahat":
+        wd = now.weekday()
+        s2 = _time(14, 0) if wd == 4 else _time(13, 30)
+        target = _aware(datetime.combine(now.date(), s2))
+        if now < target:
+            left = _fmt_countdown((target - now).total_seconds())
+            return f"{left} (menunggu sesi II IDX {s2.strftime('%H:%M')} WIB)"
+
+    try:
+        next_day = now.date()
+        if (
+            bursa.get("trading_day")
+            and now.time() < open_t
+            and not bursa.get("weekend")
+            and not bursa.get("holiday")
+        ):
+            pass  # buka hari ini
+        else:
             while True:
-                # Jika hari ini bursa tutup dan sekarang sebelum jam 9, target hari ini pukul 09:00 WIB
-                if next_trading_day == now.date() and now.time() < _time(9, 0) and not bursa.get("weekend") and not bursa.get("holiday"):
-                    break
-                next_trading_day += timedelta(days=1)
-                if next_trading_day.weekday() >= 5:
+                next_day += timedelta(days=1)
+                if next_day.weekday() >= 5:
                     continue
-                if bei_calendar.is_holiday(next_trading_day):
+                if not is_us and bei_calendar.is_holiday(next_day):
                     continue
                 break
-                
-            buka_target = datetime.combine(next_trading_day, _time(9, 0))
-            if now.tzinfo is not None:
-                buka_target = buka_target.replace(tzinfo=now.tzinfo)
-                
-            diff = buka_target - now
-            days = diff.days
-            seconds = diff.seconds
-            hours = seconds // 3600
-            minutes = (seconds % 3600) // 60
-            
-            parts = []
-            if days > 0:
-                parts.append(f"{days} hari")
-            if hours > 0:
-                parts.append(f"{hours} jam")
-            if minutes > 0 and days == 0:
-                parts.append(f"{minutes} menit")
-                
-            if not parts:
-                return "Segera saat bursa buka"
-            return " ".join(parts) + " (menunggu bursa buka)"
-        except Exception:
-            pass
-        return "1 hari (saat pembukaan bursa berikutnya)"
+
+        buka = _aware(datetime.combine(next_day, open_t))
+        left = _fmt_countdown((buka - now).total_seconds())
+        if (buka - now).total_seconds() < 60:
+            return f"Segera saat {mkt_name} buka ({open_t.strftime('%H:%M')} {tz_label})"
+        return (
+            f"{left} (menunggu {mkt_name} buka {open_t.strftime('%H:%M')} {tz_label}"
+            f" · {buka.strftime('%a %d/%m')}{_wib_hint(buka)})"
+        )
+    except Exception:  # noqa: BLE001
+        return f"Menunggu {mkt_name} buka ({open_t.strftime('%H:%M')} {tz_label})"

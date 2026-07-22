@@ -128,6 +128,55 @@ class ShariaScreening:
     ]
 
 
+# --------------------------------------------------------------------------- #
+#  SCORING DUA LAPIS — Hard Gate → Quality → Timing → Regime → Final           #
+# --------------------------------------------------------------------------- #
+class LayeredScoring:
+    """Framework rekomendasi: Hard Gate → Quality → Timing → Multiplier → Final.
+
+    Bobot Quality (persis formula spreadsheet, jumlah 105%):
+      =(Fund*0.3)+(Tek*0.2)+(Bandar*0.15)+(Liq*0.15)+(IHSG*0.15)+(Risk*0.1)
+    """
+    # Hard gate likuiditas (fallback legacy)
+    LIQUIDITY_FAIL = "Sangat Tinggi"
+    # Volume IDR median 5d ≥ Rp5 juta (wajib). Bid-ask murni jarang ada di yfinance IDX —
+    # jangan gagalkan dari daily HL range (itu volatilitas, bukan spread RTI/Stockbit).
+    SPREAD_MAX_PCT = 2.0          # hanya utk Quality Score / catatan, bukan hard-fail
+    VOL_IDR_MEDIAN_5D_MIN = 5_000_000
+    # Range harian ekstrem + volume tipis → indikasi gorengan/ilikuid
+    DAILY_RANGE_EXTREME_PCT = 12.0
+    # IHSG ekstrem: MA20 < MA60 by >5% → gate FAIL
+    IHSG_EXTREME_DOWNTREND_PCT = 5.0
+
+    # Bobot Quality — formula spreadsheet (jumlah = 1.05)
+    W_FUNDAMENTAL = 0.30
+    W_TECHNICAL = 0.20
+    W_BANDAR = 0.15
+    W_LIQUIDITY = 0.15
+    W_IHSG = 0.15
+    W_RISK = 0.10
+    # alias kompatibilitas (UI lama menyebut regime)
+    W_REGIME = W_IHSG
+
+    # Regime multiplier (sizing + Final Score)
+    # BULLISH 1.0 · NEUTRAL 0.8 · BEARISH 0.0 (0.5 bila defensif)
+    REGIME_SIZE = {"BULLISH": 1.0, "NEUTRAL": 0.8, "BEARISH": 0.0}
+    REGIME_BEARISH_DEFENSIVE = 0.5
+    # Band netral |MA20-MA60|/MA60 (%)
+    REGIME_NEUTRAL_BAND_PCT = 1.0
+    # Legacy SMA200 band (fallback bila MA60 tidak tersedia)
+    REGIME_SMA200_BAND_PCT = 3.0
+
+    # Timing
+    TIMING_ENTRY_MIN = 65          # layak entry
+    TIMING_GAP_SIGNIFICANT_PCT = 2.0
+    TIMING_SUPPORT_NEAR_PCT = 2.0  # dekat MA20/MA60
+
+    # Final Score → keputusan
+    FINAL_STRONG_BUY = 75
+    FINAL_WATCHLIST = 55
+
+
 class Settings(BaseSettings):
     # baca .env app ini (absolut, bebas-cwd), lalu .env workspace lama (Telegram)
     model_config = SettingsConfigDict(
@@ -152,14 +201,6 @@ class Settings(BaseSettings):
     tradingview_exchange: str = "IDX"
     tradingview_ttl_seconds: int = 60 * 10    # cache scan fundamental (detik)
 
-    # opsional — AI advisor (Claude). Kosong = fitur AI dinonaktifkan.
-    anthropic_api_key: str = ""
-    ai_model: str = "claude-opus-4-8"
-
-    # opsional — Gemini (Google AI Studio, ada free tier). Kosong = nonaktif.
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
-
     # opsional — Telegram notifikasi
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
@@ -170,9 +211,13 @@ class Settings(BaseSettings):
     bandarmologi_api_url: str = ""
     bandarmologi_api_key: str = ""
 
-    # Ollama (LLM lokal gratis) — auto-detect bila server jalan
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "gemma4:latest"
+    # opsional — Gemini (Google AI Studio, free tier). Kosong = nonaktif.
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+
+    # opsional — DeepSeek (platform.deepseek.com). Kosong = nonaktif.
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-chat"
 
     # Rebuild master_data terjadwal (jam). 0 = nonaktif (rebuild manual saja).
     master_rebuild_hours: int = 24
@@ -183,10 +228,15 @@ class Settings(BaseSettings):
     reminder_morning: str = "08:00"      # sebelum bursa buka (09:00)
     reminder_evening: str = "17:00"      # sesudah bursa tutup (16:00)
 
+    # Prefetch Funnel / Pusat Keputusan: tiap N menit saat jam bursa IDX,
+    # simpan cache agar web selalu menampilkan data ≤ N menit.
+    funnel_cache_enabled: bool = True
+    funnel_cache_minutes: int = 30
+
     # Pemantau Funnel intraday: tiap N menit (jam bursa) jalankan funnel & kirim
     # Telegram HANYA bila ada sinyal BARU & signifikan (eksit mendesak / BELI kuat).
     funnel_watch_enabled: bool = True
-    funnel_watch_minutes: int = 15
+    funnel_watch_minutes: int = 30
     funnel_watch_min_conviction: float = 58.0   # ambang skor keyakinan utk alert BELI
     trailing_stop_pct: float = 3.0              # toleransi penurunan trailing stop (%)
 
@@ -205,6 +255,9 @@ class Settings(BaseSettings):
     # Selisih skor kekuatan minimal agar ROTASI (swap) disarankan saat slot penuh.
     rotation_margin: float = 4.0
 
+    # Model skor Funnel: "layered" (hard gate + bobot baru) | "legacy" (Magic+CANSLIM+tech+J7)
+    scoring_model: str = "layered"
+
 
 settings = Settings()
 
@@ -214,3 +267,4 @@ CANSLIM = CanslimThresholds()
 TECH = TechnicalParams()
 MM = MoneyManagement()
 SHARIA = ShariaScreening()
+SCORE = LayeredScoring()

@@ -75,9 +75,32 @@ def _line(kind: str, x: dict) -> str:
             st1 = (ep.get("stages") or [{}])[0]
             plan = f" → jual {ep['lots_now']}/{ep['lots_total']} lot" + (f" ≈ {_rp(st1.get('nilai_net'))}" if st1.get("nilai_net") else "")
         return f"🔴 <b>{tk}</b> — {x.get('reason', '')[:70]}{plan}"
+    
     a = x.get("alokasi") or {}
     alloc = f" → ~{a.get('lots')} lot @ {a.get('rdn')} ≈ {_rp(a.get('outlay_idr'))}" if a.get("lots") else ""
-    return f"🟢 <b>{tk}</b> (skor {x.get('conviction')}, akurasi {x.get('akurasi_pct')}%){alloc}"
+    base_line = f"🟢 <b>{tk}</b> (skor {x.get('conviction')}, akurasi {x.get('akurasi_pct')}%){alloc}"
+    
+    v = x.get("ai_verdict")
+    if v and isinstance(v, dict):
+        rec = v.get("rekomendasi_claude") or v.get("rekomendasi")
+        keyak = v.get("keyakinan")
+        entry = v.get("entry_ideal") or v.get("entry_pre_closing")
+        tp = v.get("target_harga") or v.get("target_pre_opening")
+        sl = v.get("stop_loss")
+        risk = v.get("risiko_utama")
+        
+        ai_details = f"\n   🧠 <b>Strategy AI:</b> {rec} (Keyakinan: {keyak})"
+        plans = []
+        if entry: plans.append(f"Entry: {_rp(entry)}")
+        if tp: plans.append(f"TP: {_rp(tp)}")
+        if sl: plans.append(f"SL: {_rp(sl)}")
+        if plans:
+            ai_details += f" · " + " · ".join(plans)
+        if risk:
+            ai_details += f"\n   ⚠️ Risiko: {risk}"
+        return f"{base_line}{ai_details}"
+        
+    return base_line
 
 
 def check_trailing_stops(d: dict) -> list[str]:
@@ -194,8 +217,11 @@ def check_trailing_stops(d: dict) -> list[str]:
 
 
 def run_and_alert(force: bool = False) -> dict[str, Any]:
-    """Jalankan funnel, kirim Telegram bila ada sinyal signifikan BARU. force=abaikan anti-dobel."""
-    d = decisions.build_decisions()
+    """Jalankan funnel (via cache/prefetch), kirim Telegram bila sinyal BARU. force=abaikan anti-dobel."""
+    from app.core import funnel_cache
+
+    # Pakai/isi cache Pusat Keputusan agar web & Telegram sejalan
+    d = funnel_cache.build_fresh() if force else funnel_cache.get_decisions(refresh=False)
     bursa = d.get("bursa") or {}
     items = _significant(d)
 

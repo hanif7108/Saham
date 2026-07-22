@@ -1,0 +1,27 @@
+ticker,name,sector
+AAPL,Apple Inc.,Technology
+MSFT,Microsoft Corporation,Technology
+NVDA,NVIDIA Corporation,Technology
+TSLA,Tesla Inc.,Consumer Cyclical
+AMZN,Amazon.com Inc.,Consumer Cyclical
+GOOGL,Alphabet Inc.,Technology
+GOOG,Alphabet Inc.,Technology
+META,Meta Platforms Inc.,Communication Services
+CRM,Salesforce Inc.,Technology
+ADBE,Adobe Inc.,Technology
+AMD,Advanced Micro Devices,Technology
+CSCO,Cisco Systems Inc.,Technology
+PEP,PepsiCo Inc.,Consumer Defensive
+AVGO,Broadcom Inc.,Technology
+QCOM,Qualcomm Inc.,Technology
+INTC,Intel Corporation,Technology
+TXN,Texas Instruments,Technology
+AMAT,Applied Materials,Technology
+LRCX,Lam Research,Technology
+MU,Micron Technology,Technology
+ADI,Analog Devices,Technology
+CVX,Chevron Corporation,Energy
+XOM,Exxon Mobil Corporation,Energy
+JNJ,Johnson & Johnson,Healthcare
+PFE,Pfizer Inc.,Healthcare
+MRK,Merck & Co. Inc.,Healthcare

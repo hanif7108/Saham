@@ -21,7 +21,9 @@ from app.config import MM
 # --------------------------------------------------------------------------- #
 #  Fraksi harga BEI                                                           #
 # --------------------------------------------------------------------------- #
-def bei_tick(price: float) -> int:
+def bei_tick(price: float, is_us: bool = False) -> float:
+    if is_us:
+        return 0.01
     if price < 200:
         return 1
     if price < 500:
@@ -33,9 +35,12 @@ def bei_tick(price: float) -> int:
     return 25
 
 
-def round_to_tick(price: float) -> int:
-    tick = bei_tick(price)
-    return int(round(price / tick) * tick)
+def round_to_tick(price: float, ticker: Optional[str] = None) -> float:
+    from app.data.provider import is_us_ticker
+    is_us = is_us_ticker(ticker) if ticker else False
+    tick = bei_tick(price, is_us)
+    res = round(price / tick) * tick
+    return round(res, 2) if is_us else int(res)
 
 
 # --------------------------------------------------------------------------- #
@@ -134,6 +139,7 @@ def taichi_plan(
     mode: str = "konservatif",
     cl_price: Optional[float] = None,
     risk_pct: float = MM.LOSS_FUND_PCT,
+    ticker: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Bagi entry jadi 3 titik (OB1/OB2/OB3).
@@ -142,12 +148,16 @@ def taichi_plan(
     Selaras Money Management: OB3 default diturunkan dari Risk% (maks 5%).
     Hanya dipakai di area AKUMULASI / UPTREND.
     """
+    from app.data.provider import is_us_ticker
+    is_us = is_us_ticker(ticker) if ticker else False
+    shares_per_lot = 1 if is_us else MM.SHARES_PER_LOT
+    
     mode = mode.lower()
     risk_pct = min(risk_pct, MM.RISK_MAX_PCT)
-    total_lot = math.floor(modal / market_price / MM.SHARES_PER_LOT)
+    total_lot = math.floor(modal / market_price / shares_per_lot)
     if total_lot < 1:
-        return {"error": "modal tidak cukup untuk 1 lot pada harga ini",
-                "market_price": round(market_price), "modal": round(modal)}
+        return {"error": f"modal tidak cukup untuk 1 {'lembar' if is_us else 'lot'} pada harga ini",
+                "market_price": round(market_price, 2) if is_us else round(market_price), "modal": round(modal)}
 
     # alokasi lot per OB
     if mode == "moderat":
@@ -163,21 +173,21 @@ def taichi_plan(
     lot3 = total_lot - lot1 - lot2  # sisa ke OB3 (terbesar)
 
     # harga tiap OB
-    ob1 = round_to_tick(market_price)
-    ob3 = round_to_tick(cl_price) if cl_price else round_to_tick(market_price * (1 - risk_pct / 100))
-    ob2 = round_to_tick((ob1 + ob3) / 2)
-    cash_cl = ob3 - 3 * bei_tick(ob3)  # 3 fraksi di bawah OB3
+    ob1 = round_to_tick(market_price, ticker)
+    ob3 = round_to_tick(cl_price, ticker) if cl_price else round_to_tick(market_price * (1 - risk_pct / 100), ticker)
+    ob2 = round_to_tick((ob1 + ob3) / 2, ticker)
+    cash_cl = ob3 - 3 * bei_tick(ob3, is_us)  # 3 fraksi di bawah OB3
 
     obs = [
-        _ob("OB1", ob1, lot1),
-        _ob("OB2", ob2, lot2),
-        _ob("OB3", ob3, lot3),
+        {"titik": "OB1", "harga": ob1, "lot": lot1, "nilai": round(ob1 * lot1 * shares_per_lot, 2)},
+        {"titik": "OB2", "harga": ob2, "lot": lot2, "nilai": round(ob2 * lot2 * shares_per_lot, 2)},
+        {"titik": "OB3", "harga": ob3, "lot": lot3, "nilai": round(ob3 * lot3 * shares_per_lot, 2)},
     ]
 
     # average bila semua OB terisi
     tot_lot = sum(o["lot"] for o in obs)
-    tot_val = sum(o["harga"] * o["lot"] * MM.SHARES_PER_LOT for o in obs)
-    avg = round(tot_val / (tot_lot * MM.SHARES_PER_LOT), 2) if tot_lot else None
+    tot_val = sum(o["nilai"] for o in obs)
+    avg = round(tot_val / (tot_lot * shares_per_lot), 2) if tot_lot else None
 
     return {
         "mode": mode,
@@ -185,16 +195,11 @@ def taichi_plan(
         "risk_pct": risk_pct,
         "total_lot": total_lot,
         "open_buy": obs,
-        "cash_cl_area": cash_cl,
+        "cash_cl_area": round(cash_cl, 2) if is_us else int(cash_cl),
         "average_jika_full": avg,
-        "estimasi_modal_terpakai": round(tot_val),
+        "estimasi_modal_terpakai": round(tot_val, 2) if is_us else round(tot_val),
         "catatan": f"OB3 (cut loss) = harga − {risk_pct}%. Taichi hanya valid di area Akumulasi & Uptrend.",
     }
-
-
-def _ob(name: str, harga: int, lot: int) -> dict[str, Any]:
-    return {"titik": name, "harga": harga, "lot": lot,
-            "nilai": harga * lot * MM.SHARES_PER_LOT}
 
 
 # --------------------------------------------------------------------------- #
@@ -203,7 +208,7 @@ def _ob(name: str, harga: int, lot: int) -> dict[str, Any]:
 def risk_reward(buy: float, cut_loss: Optional[float] = None,
                 take_profit: Optional[float] = None,
                 risk_pct: Optional[float] = None, profit_pct: Optional[float] = None,
-                target_reward_mult: int = 2) -> dict[str, Any]:
+                target_reward_mult: int = 2, ticker: Optional[str] = None) -> dict[str, Any]:
     """
     Selaras Money Management: cut loss & take profit boleh diturunkan dari
     Risk% & Target Profit% (Risk maks 5%, Profit min 2x risk), atau diisi manual.
@@ -241,7 +246,7 @@ def risk_reward(buy: float, cut_loss: Optional[float] = None,
         else:
             take_profit = buy + risk * target_reward_mult
 
-    buy_r, cl_r, tp_r = round_to_tick(buy), round_to_tick(cut_loss), round_to_tick(take_profit)
+    buy_r, cl_r, tp_r = round_to_tick(buy, ticker), round_to_tick(cut_loss, ticker), round_to_tick(take_profit, ticker)
     risk_r, reward_r = buy_r - cl_r, tp_r - buy_r
     # RRR: pakai persentase (bersih dari pembulatan tick) bila mode persentase
     if cl_from_pct and tp_from_pct and risk_pct:

@@ -6,7 +6,7 @@ BIONS, dll). LLM multimodal mengekstrak posisi (ticker, lot, avg, harga, nilai,
 P/L) jadi JSON terstruktur, lalu bisa diimpor ke portofolio (P/L live + Decisions).
 
 Engine: Gemini (gemini-2.5-flash, vision) bila GEMINI_API_KEY ada; jika tidak,
-Claude bila ANTHROPIC_API_KEY ada. Ollama gemma4 = teks-only (tidak dipakai).
+Claude bila ANTHROPIC_API_KEY ada.
 """
 
 from __future__ import annotations
@@ -72,6 +72,7 @@ _BROKER_NORM = {
     "stockbit": "Stockbit/Bibit", "bibit": "Stockbit/Bibit",
     "profit anywhere": "Profits Anywhere", "profits anywhere": "Profits Anywhere",
     "phintraco": "Profits Anywhere", "profindo": "Profits Anywhere",
+    "pluang": "Pluang",
 }
 
 
@@ -82,14 +83,10 @@ def _norm_broker(b: Optional[str]) -> Optional[str]:
     for k, v in _BROKER_NORM.items():
         if k in key:
             return v
-    return str(b).strip()
+    return str(b)
 
 
 def engine_available() -> Optional[str]:
-    if settings.gemini_api_key or os.getenv("GEMINI_API_KEY"):
-        return "gemini"
-    if settings.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY"):
-        return "claude"
     return None
 
 
@@ -103,30 +100,30 @@ def _clean_json(text: str) -> Any:
 
 def _normalize(data: dict[str, Any], broker: Optional[str]) -> dict[str, Any]:
     out = []
-    for p in (data.get("positions") or []):
-        tk = str(p.get("ticker") or "").strip().upper()
-        if not tk or not re.match(r"^[A-Z]{3,5}$", tk):
+    for p in data.get("positions") or []:
+        tk = str(p.get("ticker", "")).strip().upper()
+        if not tk:
             continue
-        lots = p.get("lots")
-        if lots is None and p.get("shares"):
-            try:
-                lots = round(float(p["shares"]) / 100)
-            except Exception:
-                lots = None
-        shares = (lots or 0) * 100
-        avg = _f(p.get("avg_price"))
-        last, pl, val = _f(p.get("last_price")), _f(p.get("pl")), _f(p.get("value"))
-        # Derivasi avg bila tak terbaca: dari (value-pl) atau (last - pl/shares)
-        derived = False
-        if avg is None and shares:
-            if val is not None and pl is not None:
-                avg, derived = round((val - pl) / shares), True
-            elif last is not None and pl is not None:
-                avg, derived = round(last - pl / shares), True
+        lots = _f(p.get("lots"))
+        shares = _f(p.get("shares"))
+        if lots is None and shares is not None:
+            lots = round(shares / 100, 2)
+        elif lots is not None and shares is None:
+            shares = round(lots * 100)
+
+        avg = _f(p.get("avg_price")) or _f(p.get("harga_rata_rata"))
+        val = _f(p.get("value")) or _f(p.get("nilai_pasar"))
+        pl = _f(p.get("pl")) or _f(p.get("floating_pl"))
+        pl_pct = _f(p.get("pl_pct")) or _f(p.get("floating_pl_pct"))
+
+        # fallback hitung
+        if avg and shares and not val:
+            val = round(shares * avg)
+
         out.append({
-            "ticker": tk, "lots": lots, "shares": p.get("shares") or shares or None,
-            "avg_price": avg, "avg_derived": derived, "last_price": last,
-            "value": val, "pl": pl, "pl_pct": p.get("pl_pct"),
+            "ticker": tk, "lots": lots, "shares": shares, "avg_price": avg,
+            "current_price": _f(p.get("last_price")) or avg,
+            "value": val, "pl": pl, "pl_pct": pl_pct,
             "broker": broker, "importable": bool(lots and avg),
         })
     return {
@@ -141,68 +138,4 @@ def _normalize(data: dict[str, Any], broker: Optional[str]) -> dict[str, Any]:
 
 def parse_portfolio(file_bytes: bytes, mime_type: str,
                     broker_hint: Optional[str] = None) -> dict[str, Any]:
-    eng = engine_available()
-    if eng is None:
-        return {"ok": False, "error": "Butuh GEMINI_API_KEY (atau ANTHROPIC_API_KEY) untuk membaca gambar/PDF."}
-    if mime_type == "application/pdf" and len(file_bytes) > 18_000_000:
-        return {"ok": False, "error": "PDF terlalu besar (>18MB)."}
-
-    prompt = PROMPT
-    if broker_hint:
-        prompt += f"\nPetunjuk: screenshot ini dari broker {broker_hint}."
-
-    try:
-        if eng == "gemini":
-            data = _gemini(file_bytes, mime_type, prompt)
-        else:
-            data = _claude(file_bytes, mime_type, prompt)
-    except httpx.HTTPError as e:
-        return {"ok": False, "error": f"Gagal memanggil {eng}: {e}"}
-    except (json.JSONDecodeError, ValueError):
-        return {"ok": False, "error": f"{eng} tidak mengembalikan data terstruktur — coba gambar lebih jelas."}
-    except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": str(e)}
-
-    broker = _norm_broker(data.get("broker")) or _norm_broker(broker_hint)
-    result = _normalize(data, broker)
-    result["ok"] = True
-    result["engine"] = eng
-    return result
-
-
-def _gemini(file_bytes: bytes, mime_type: str, prompt: str) -> dict[str, Any]:
-    key = settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
-    b64 = base64.b64encode(file_bytes).decode()
-    payload = {
-        "contents": [{"parts": [
-            {"inline_data": {"mime_type": mime_type, "data": b64}},
-            {"text": prompt},
-        ]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048,
-                             "responseMimeType": "application/json",
-                             "thinkingConfig": {"thinkingBudget": 0}},
-    }
-    url = f"{GEMINI_BASE}/{settings.gemini_model}:generateContent"
-    r = httpx.post(url, params={"key": key}, json=payload, timeout=90)
-    d = r.json()
-    if r.status_code != 200:
-        raise httpx.HTTPError((d.get("error") or {}).get("message", f"HTTP {r.status_code}"))
-    parts = (d.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
-    text = "".join(p.get("text", "") for p in parts)
-    return _clean_json(text)
-
-
-def _claude(file_bytes: bytes, mime_type: str, prompt: str) -> dict[str, Any]:
-    import anthropic
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY"))
-    b64 = base64.b64encode(file_bytes).decode()
-    if mime_type == "application/pdf":
-        block = {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64}}
-    else:
-        block = {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": b64}}
-    resp = client.messages.create(
-        model=settings.ai_model, max_tokens=2048,
-        messages=[{"role": "user", "content": [block, {"type": "text", "text": prompt}]}],
-    )
-    text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
-    return _clean_json(text)
+    return {"ok": False, "error": "LLM Vision (Gemini/Claude) dinonaktifkan. Gunakan impor berbasis teks/OCR lokal."}

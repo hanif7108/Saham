@@ -25,6 +25,7 @@ class TaichiRequest(BaseModel):
     mode: str = Field("konservatif", pattern="^(konservatif|moderat)$")
     cl_price: Optional[float] = Field(None, gt=0, description="Harga cut loss (OB3); kosong = dari risk%")
     risk_pct: float = Field(3.0, gt=0, le=100, description="Risk % untuk OB3 (maks 5%)")
+    ticker: Optional[str] = Field(None, description="Kode saham (opsional untuk fraksi tick/lot)")
 
 
 class RRRRequest(BaseModel):
@@ -34,11 +35,12 @@ class RRRRequest(BaseModel):
     risk_pct: float = Field(3.0, gt=0, le=100, description="Risk % (maks 5%)")
     profit_pct: float = Field(6.0, gt=0, le=100, description="Target profit % (min 2x risk)")
     target_reward_mult: int = Field(2, ge=1, le=10)
+    ticker: Optional[str] = Field(None, description="Kode saham (opsional untuk fraksi tick)")
 
 
 class PositionIn(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=12)
-    lots: int = Field(..., gt=0, description="Jumlah lot (1 lot = 100 lembar)")
+    lots: int = Field(..., gt=0, description="Jumlah lot (1 lot = 100 lembar, atau 1 lembar untuk US)")
     avg_price: float = Field(..., gt=0, description="Harga rata-rata beli")
     broker: Optional[str] = Field(None, description="Broker (Profits Anywhere)")
     type: Optional[str] = Field("trading", pattern="^(trading|investasi)$", description="Tipe portfolio: trading atau investasi")
@@ -46,13 +48,14 @@ class PositionIn(BaseModel):
 
 class AccountIn(BaseModel):
     broker: str = Field(..., min_length=1, description="Broker / nama RDN (Profits Anywhere)")
-    cash: float = Field(..., ge=0, description="Saldo cash tersedia di RDN (IDR)")
+    cash: float = Field(..., ge=0, description="Saldo cash tersedia di RDN (IDR / USD)")
     rdn: Optional[str] = Field(None, description="Nomor RDN")
     bank: Optional[str] = Field(None, description="Bank RDN")
     fee_buy_pct: Optional[float] = Field(None, ge=0, le=5, description="Biaya beli (%) RDN ini")
     fee_sell_pct: Optional[float] = Field(None, ge=0, le=5, description="Biaya jual (%) RDN ini")
     gold_balance_grams: Optional[float] = Field(None, ge=0, description="Saldo emas digital (gram)")
     gold_avg_price: Optional[float] = Field(None, ge=0, description="Harga beli rata-rata emas (Rp/g)")
+    currency: Optional[str] = Field("IDR", pattern="^(IDR|USD)$", description="Mata uang cash: IDR atau USD")
 
 
 class HolidayIn(BaseModel):

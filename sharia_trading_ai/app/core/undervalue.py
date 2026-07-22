@@ -17,7 +17,7 @@ Pendekatan "AI berbasis data historis" (transparan & dapat diaudit):
 
 SKOR AKHIR = gabungan berbobot ketiganya → ranking + rencana trading (entry,
 stop Jalur 7%, target, RRR, ekspektasi return). Narasi AI naratif disediakan
-on-demand lewat advisor (Gemini/Ollama/lokal) yang sudah ada.
+on-demand lewat advisor (Gemini/lokal) yang sudah ada.
 
 Hanya saham syariah-compliant (DES/ISSI + DSN-MUI) yang diloloskan.
 """

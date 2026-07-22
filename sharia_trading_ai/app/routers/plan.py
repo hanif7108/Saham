@@ -30,11 +30,11 @@ def position_size(req: PositionSizeRequest):
 @router.post("/taichi")
 def taichi(req: TaichiRequest):
     """Taichi Trading Plan — OB1/OB2/OB3; OB3 dari risk% (selaras MM)."""
-    return trading_plan.taichi_plan(req.modal, req.market_price, req.mode, req.cl_price, req.risk_pct)
+    return trading_plan.taichi_plan(req.modal, req.market_price, req.mode, req.cl_price, req.risk_pct, req.ticker)
 
 
 @router.post("/rrr")
 def rrr(req: RRRRequest):
     """Risk Reward Ratio — CL/TP dari Risk%/Target Profit% (selaras MM)."""
     return trading_plan.risk_reward(req.buy, req.cut_loss, req.take_profit,
-                                    req.risk_pct, req.profit_pct, req.target_reward_mult)
+                                    req.risk_pct, req.profit_pct, req.target_reward_mult, req.ticker)
