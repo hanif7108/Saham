@@ -17,3 +17,6 @@ exports/
 
 # OS
 .DS_Store
+
+# melebihi batas GitHub 100MB
+backup_old_flask_app/AI Scanner/StockHunter.zip
