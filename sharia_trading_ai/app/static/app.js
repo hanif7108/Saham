@@ -88,7 +88,9 @@ function populateTickers(list, selectedTicker) {
   refreshTickerDatalist();
   renderManualChips();
   const tickerVal = selectedTicker && (typeof selectedTicker === 'string' ? selectedTicker : selectedTicker.ticker);
-  if (tickerVal) {
+  if (window.__pinnedTicker) {
+    setTicker(window.__pinnedTicker);   // deep-link ?analyze=TK menang atas default universe
+  } else if (tickerVal) {
     setTicker(tickerVal);
   } else if (!getTicker() && CURRENT_TICKERS.length > 0) {
     setTicker(CURRENT_TICKERS[0]);
@@ -1414,6 +1416,32 @@ async function analyze(){
       <div class="flex" style="gap:.35rem;flex-wrap:wrap;margin-bottom:.7rem">${gateHtml||'<span class="mut">—</span>'}</div>
       ${compRows}
       <div class="mut" style="font-size:.7rem;margin-top:.7rem;line-height:1.5">Hard gate: DES/ISSI → spread≤2% &amp; vol median 5d ≥Rp5jt → IHSG bukan ekstrem (MA20&lt;MA60 by &gt;5%). Quality = Fund×0.3 + Tech×0.2 + Bandar×0.15 + Liq×0.15 + IHSG×0.15 + Risk×0.1. Final = Quality×Multiplier (+ Timing Bonus 0). ≥75 STRONG BUY · 55–74 WATCHLIST · &lt;55 SKIP. Timing layak entry ≥65.</div>
+    </section>`;
+  }
+
+  // Sinyal ML (LightGBM) — shadow/active; tampil hanya bila artifact tersedia
+  const mlA = d.ml_signal;
+  if(mlA && mlA.available){
+    const sigCls = mlA.signal==='BUY'?'buy':mlA.signal==='SELL'?'sell':'warning';
+    const pb=Math.round((mlA.p_buy||0)*100), ph=Math.round((mlA.p_hold||0)*100), ps=Math.round((mlA.p_sell||0)*100);
+    const bar=(label,pct,color)=>`<div style="display:flex;align-items:center;gap:.5rem;margin-top:.35rem;font-size:.78rem">
+      <span style="width:3.4rem">${label}</span>
+      <div style="flex:1;height:7px;background:var(--line);border-radius:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color}"></div></div>
+      <span class="mut" style="width:2.8rem;text-align:right">${pct}%</span></div>`;
+    const feats=(mlA.top_features||[]).slice(0,6).map(f=>`<span class="badge na" style="font-size:.66rem;padding:2px 6px" title="importance ${f.importance}">${esc(f.feature)}: ${f.value==null?'—':f.value}</span>`).join(' ');
+    h+=`<section class="glass-panel" style="margin-top:1rem">
+      <div class="between" style="align-items:flex-start;flex-wrap:wrap;gap:.5rem">
+        <h3 class="sec" style="margin:0">🤖 Sinyal ML (LightGBM · horizon ${mlA.horizon} hari)</h3>
+        <div class="flex" style="gap:.35rem;flex-wrap:wrap">
+          <span class="badge ${sigCls}" style="font-size:.78rem;font-weight:700">${esc(mlA.signal)} ${Math.round((mlA.confidence||0)*100)}%</span>
+          <span class="badge ${mlA.confident?'buy':'na'}" style="font-size:.7rem" title="ambang ${mlA.conf_threshold}">${mlA.confident?'✓ Confident':'Belum confident'}</span>
+          <span class="badge na" style="font-size:.7rem">${esc(mlA.mode||'shadow')}</span>
+        </div>
+      </div>
+      ${bar('BUY',pb,'var(--buy)')}${bar('HOLD',ph,'#ca8a04')}${bar('SELL',ps,'var(--sell)')}
+      <div class="mut" style="font-size:.74rem;margin-top:.6rem">Fitur paling berpengaruh (global) + nilai saat ini:</div>
+      <div class="flex" style="gap:.3rem;flex-wrap:wrap;margin-top:.35rem">${feats||'<span class="mut">—</span>'}</div>
+      <div class="mut" style="font-size:.7rem;margin-top:.6rem;line-height:1.5">Model gradient boosting dilatih walk-forward (data ${esc(String(mlA.trained_at||'').slice(0,10))}, per ${esc(mlA.as_of||'—')}). Mode <b>shadow</b>: informasi pembanding, tidak mengubah rekomendasi rule-based. Target label: return ${mlA.horizon} hari &gt; ${Math.round((mlA.label_threshold||0)*100)}% (BUY) / &lt; −${Math.round((mlA.label_threshold||0)*100)}% (SELL).</div>
     </section>`;
   }
 
@@ -4445,6 +4473,11 @@ function refreshAll(){ loadMarket(); loadUniverse(); _loaded.cmd=false; toast('D
     $('#disc').innerHTML=`<b>Disclaimer:</b> ${esc(dc.disclaimer)}<br><br><b>Acuan:</b> ${dc.acuan.map(esc).join(' · ')}`;
   }catch(e){}
   runDecision(false, {fromInit: true, refresh: false});
+  // Deep-link: ?analyze=TICKER -> langsung buka tab Analisa Saham & jalankan funnel
+  try{
+    const qTk=new URLSearchParams(location.search).get('analyze');
+    if(qTk){ window.__pinnedTicker=qTk.toUpperCase(); gotoAnalyze(window.__pinnedTicker); }
+  }catch(e){}
   // Auto-load Radar Kontradiksi saat Dashboard dibuka (ditunda agar Pusat Keputusan
   // & kartu dashboard ter-render dulu; guard _loaded.cc cegah pemuatan ganda).
   setTimeout(()=>{ if(!_loaded.cc) loadCrossCheck(); }, 2500);
