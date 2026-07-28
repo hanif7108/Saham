@@ -111,6 +111,34 @@ bukan angka fantastis bagian historis di bawah.
 Bagian-bagian di bawah dipertahankan sebagai jejak riset (angka PRA-biaya
 — jangan dikutip sebagai ekspektasi).
 
+## v4 — Eksperimen multi-seed di rig RTX 4090 (2026-07-28 malam): edge h10 TIDAK terbedakan dari nol
+
+10 model identik-statistik (beda seed saja), walk-forward sadar-biaya h10+p500:
+
+| | ret | Sharpe | IC | IC_IR |
+|---|---:|---:|---:|---:|
+| Seed terburuk | −48.9% | −0.43 | 0.013 | 0.07 |
+| **Median 10 seed** | **−1.5%** | **0.23** | 0.017 | 0.09 |
+| Seed terbaik | +92.3% | +0.76 | 0.023 | 0.12 |
+| Ensemble rata-rata 10 seed | −17.2% | 0.03 | 0.018 | 0.09 |
+
+Kesimpulan jujur:
+1. **Ensemble multi-seed GAGAL uji stabilitas** (di bawah median; IC tidak
+   naik) — TIDAK diadopsi ke produksi.
+2. **Sinyal h10 terlalu lemah** (IC ~0.017, IR ~0.09; layak-trade umumnya
+   butuh IR ≥ 0.3). Dengan sinyal selemah ini, urutan top-5 ≈ undian —
+   itulah sumber sebaran −49%..+92% antar model kembar.
+3. Angka "+39% / Sharpe 0.53" produksi = **satu undian yang menguntungkan**,
+   bukan ekspektasi. Ekspektasi jujur strategi ML saat ini: **≈ 0 ± lebar**
+   setelah biaya. (Bandingkan: rank-model h5 ber-IC 0.046/IR 0.31 — 3× lebih
+   kuat — arah riset yang lebih menjanjikan daripada tuning seleksi.)
+4. Implikasi operasional: mode **shadow dipertahankan tanpa batas waktu**
+   sampai track record live ATAU model baru menunjukkan IC_IR ≥ 0.3
+   walk-forward. Keputusan shadow→active kini punya ambang kuantitatif.
+5. Arah perbaikan bermakna (bukan tuning): fitur fundamental point-in-time
+   (datalake sedang menabung), fitur cross-sectional dari universe 844,
+   model ranking sebagai mesin utama, horizon/holding lebih panjang.
+
 ## Algoritma v2: ensemble ranking lintas-saham + classifier (2026-07-28)
 
 Classifier menjawab "apakah saham X naik >2%?", padahal keputusan trading

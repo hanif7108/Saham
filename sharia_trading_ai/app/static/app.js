@@ -2080,7 +2080,7 @@ function loadEksekusi(){
     <tr><td style="padding:.25rem 0">ML horizon 5 hari (turnover tinggi → biaya makan edge)</td><td style="text-align:right">−0.28</td><td style="text-align:right">−41%</td><td style="text-align:right">−50%</td></tr>
     <tr><td style="padding:.25rem 0"><b>ML horizon 10 hari + gerbang classifier + harga ≥ Rp500</b></td><td style="text-align:right"><b>+0.53</b></td><td style="text-align:right"><b>+39%</b></td><td style="text-align:right"><b>−39%</b></td></tr>
   </table></div>
-  <p class="dim" style="font-size:.78rem">Pelajaran keras yang jujur: tanpa biaya, backtest memamerkan +224%; dengan slippage tick BEI, strategi mingguan justru RUGI. Edge nyata baru muncul di horizon 2 minggu, saham ≥ Rp500. Angka indah tanpa model biaya = ilusi. Sentuhan manusia tetap gerbang risiko, bukan sumber kandidat.</p>
+  <p class="dim" style="font-size:.78rem">Pelajaran keras #1: tanpa biaya, backtest memamerkan +224%; dengan slippage tick BEI, strategi mingguan justru RUGI. Pelajaran keras #2 (uji multi-seed di RTX 4090): 10 model kembar-statistik menghasilkan −49% s/d +92% — angka +39% di atas adalah <b>satu undian yang menguntungkan</b>, median sebarannya ≈ 0. Karena itu ML tetap <b>shadow</b> sampai track record live atau IC_IR walk-forward ≥ 0.3. Angka indah tanpa uji ketahanan = ilusi. Sentuhan manusia tetap gerbang risiko, bukan sumber kandidat.</p>
 
   <h4>1. Ritme harian (WIB, hari bursa)</h4>
   <ul>
