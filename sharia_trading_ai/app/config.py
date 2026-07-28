@@ -222,6 +222,9 @@ class Settings(BaseSettings):
     # Rebuild master_data terjadwal (jam). 0 = nonaktif (rebuild manual saja).
     master_rebuild_hours: int = 24
 
+    # Alert BSJP terjadwal (pre-closing 15:50 & pre-opening 08:45) via Telegram.
+    bsjp_alert_enabled: bool = True
+
     # Pengingat harian via Telegram (waktu server-lokal, set mesin ke WIB).
     # Pagi: siapkan order sebelum buka · Sore: jalankan funnel & review.
     reminder_enabled: bool = True

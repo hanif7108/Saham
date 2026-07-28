@@ -258,6 +258,9 @@ async def _start_bsjp_scheduler():
     import asyncio
     from datetime import datetime
 
+    if not settings.bsjp_alert_enabled:
+        return
+
     async def _loop():
         from app.core import bsjp, reminders
         done: dict[str, str] = {}   # event_key → tanggal terakhir dijalankan
