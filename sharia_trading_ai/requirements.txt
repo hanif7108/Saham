@@ -20,6 +20,14 @@ anthropic>=0.73.0
 #       pip install "git+https://github.com/rongardF/tvdatafeed.git"
 tradingview-ta>=3.3.0
 
+# Sinyal ML (app/ml + app/core/ml_signal.py).
+# CATATAN macOS: lightgbm butuh `brew install libomp`. Tanpa lightgbm,
+# trainer otomatis fallback ke sklearn HistGradientBoosting (tetap jalan).
+lightgbm>=4.5
+scikit-learn>=1.5
+pyarrow>=17.0
+joblib>=1.4
+
 # dev/test
 pytest==8.3.4
 python-multipart>=0.0.9

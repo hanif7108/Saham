@@ -258,6 +258,14 @@ class Settings(BaseSettings):
     # Model skor Funnel: "layered" (hard gate + bobot baru) | "legacy" (Magic+CANSLIM+tech+J7)
     scoring_model: str = "layered"
 
+    # Sinyal ML (LightGBM, app/core/ml_signal.py — artifact dari app/ml/train.py):
+    #   "off"    = tidak dipanggil
+    #   "shadow" = tampil di ranking/dashboard, tidak mengubah keputusan (DEFAULT)
+    #   "active" = ML confident ikut menggerakkan keputusan watchlist
+    ml_signal_mode: str = "shadow"
+    ml_horizon: int = 5                 # horizon label hari bursa (5/10/20)
+    ml_conf_threshold: float = 0.0      # 0 = pakai nilai dari meta artifact
+
 
 settings = Settings()
 

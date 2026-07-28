@@ -18,7 +18,7 @@ import math
 from datetime import datetime
 
 from app.config import MM, settings
-from app.core import accounts, bei_calendar, dividend, funnel, portfolio, roi, undervalue
+from app.core import accounts, bei_calendar, dividend, funnel, ml_signal, portfolio, roi, undervalue
 from app.data import provider
 
 CUT_LOSS_PCT = -7.0      # SELL bila P/L <= -7%
@@ -210,7 +210,8 @@ def decide_for_watchlist(s: dict, prospects_set: set, top5_lookup: dict[str, int
                 "context": ctx, "reason": reason + fibo_suffix,
                 "details": {"sector": sector, "rsi": rsi, "score": fs, "css": s.get("css"),
                             "size_mult": size_mult, "quality_score": s.get("quality_score"),
-                            "timing_score": s.get("timing_score")},
+                            "timing_score": s.get("timing_score"),
+                            "ml_signal": s.get("ml_signal")},
                 "expected_return_pct": round(BASE_TARGET_PCT * ret_mult, 2),
                 "size_mult": size_mult,
                 "next_step": f"{_alloc(adj_pct)} {tgt}."}
@@ -218,6 +219,18 @@ def decide_for_watchlist(s: dict, prospects_set: set, top5_lookup: dict[str, int
     from app.data import provider
     is_us = provider.is_us_ticker(tk)
     min_fs = 2 if is_us else 4
+
+    # Sinyal ML — hanya menggerakkan keputusan pada mode "active";
+    # mode "shadow" cukup tampil di details (track record dulu).
+    ml = s.get("ml_signal") or {}
+    ml_active = ml_signal.mode() == "active" and ml.get("available")
+    if ml_active and ml.get("confident"):
+        if ml.get("signal") == "SELL":
+            return None  # veto entry baru: model yakin turun > threshold
+        if ml.get("signal") == "BUY" and fs >= max(1, min_fs - 1):
+            return make("BUY", "HIGH", "HIGH",
+                        f"Sinyal ML h{ml.get('horizon')}d — P(BUY) {ml.get('p_buy', 0):.0%} "
+                        f"+ Fund {fs}/{fmax}{suffix}", 15, 1.0, ctx="ML_SIGNAL")
 
     if rank_num is not None:
         if t_signal == "BUY":
@@ -361,6 +374,7 @@ def build_ranking(limit: Optional[int] = None) -> list[dict]:
             "timing_score": (rep["rekomendasi"].get("scoring") or {}).get("timing_score"),
             "final_score": (rep["rekomendasi"].get("scoring") or {}).get("final_score"),
             "keputusan": (rep["rekomendasi"].get("scoring") or {}).get("keputusan"),
+            "ml_signal": ml_signal.summary_for_ranking(rep.get("ml_signal") or {}),
         })
     return ranking
 
@@ -1366,6 +1380,7 @@ def build_decisions(limit: Optional[int] = None, target: Optional[int] = None,
             "canslim_score": s.get("canslim_score"),
             "trend": s.get("trend"),
             "current_price": s.get("current_price") or s.get("price"),
+            "ml_signal": s.get("ml_signal"),
         }
         top10_detail.append(row)
         if i < 5:

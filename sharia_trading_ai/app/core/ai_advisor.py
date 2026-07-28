@@ -68,6 +68,11 @@ Manfaatkan SELURUH konteks untuk penalaran yang lebih dalam (bukan hanya skor):
 - 'jalur7': kelayakan target profit Jalur 7%.
 - 'dividen': profil & jadwal dividen (relevan utk strategi tahan-dividen).
 - 'cross_check_tradingview': rekomendasi teknikal independen TradingView.
+- 'sinyal_ml': prediksi model LightGBM (horizon N hari bursa, tervalidasi
+  walk-forward). p_buy/p_hold/p_sell = probabilitas; 'confident' true berarti
+  melewati ambang keyakinan. Jelaskan sinyal ini lewat 'top_features'
+  (fitur paling berpengaruh + nilai saat ini) — JANGAN mengarang angka
+  atau menyebut prediksi harga spesifik yang tidak ada di data.
 Bila ada sinyal SALING BERTENTANGAN (mis. fundamental kuat tapi teknikal SELL,
 atau harga uptrend tapi bandar distribusi), TUNJUKKAN dan jelaskan cara Anda
 menimbangnya.
@@ -207,6 +212,9 @@ def _format_report(report: dict[str, Any]) -> str:
         "jalur7": report.get("jalur7"),
         "bandarmologi": report.get("bandarmologi"),
         "rekomendasi_mesin": report.get("rekomendasi"),
+        # Sinyal ML LightGBM (walk-forward validated). Jelaskan dari
+        # top_features (fitur paling berpengaruh) — jangan mengarang angka.
+        "sinyal_ml": report.get("ml_signal"),
     }
     pa = _price_context(report.get("ticker", ""))
     if pa:

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.shariata.ml_retrain</string>
+
+  <!-- Retrain bulanan: tanggal 1 jam 05:00 WIB (sebelum pipeline 08:30) -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Day</key><integer>1</integer>
+    <key>Hour</key><integer>5</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/hanif/Saham/sharia_trading_ai/scripts/retrain_ml.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/hanif/Saham/sharia_trading_ai</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/hanif/Saham/sharia_trading_ai/logs/ml_retrain_launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/hanif/Saham/sharia_trading_ai/logs/ml_retrain_launchd.err</string>
+
+  <!-- Kalau Mac Mini kebetulan mati/tidur pada jadwal, jalankan saat bangun -->
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

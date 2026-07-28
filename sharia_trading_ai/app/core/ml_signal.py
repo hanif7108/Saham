@@ -1,0 +1,178 @@
+"""
+Sinyal ML (LightGBM) di atas pipeline rule-based — lapisan prediksi terukur.
+
+Model dilatih offline (app/ml/train.py, walk-forward validated) dan dimuat
+dari artifact app/ml/artifacts/. Modul ini HANYA membaca artifact; kalau
+artifact tidak ada, library tidak terpasang, atau data historis kurang,
+semua fungsi mengembalikan hasil "tidak tersedia" dan pipeline rule-based
+jalan seperti biasa (fallback aman untuk production).
+
+Mode (settings.ml_signal_mode):
+- "off"    : modul tidak dipanggil sama sekali.
+- "shadow" : prediksi ML ditampilkan di ranking/dashboard sebagai informasi,
+             tidak mengubah keputusan (default — untuk membangun track record).
+- "active" : ML confident ikut menggerakkan keputusan watchlist
+             (veto entry saat SELL confident, kandidat BUY saat BUY confident);
+             selain itu tetap rule-based.
+"""
+
+from __future__ import annotations
+
+import json
+import threading
+from pathlib import Path
+from typing import Any, Optional
+
+import pandas as pd
+
+from app.config import BASE_DIR, settings
+
+ARTIFACT_DIR = BASE_DIR / "ml" / "artifacts"
+
+MIN_BARS = 280   # butuh SMA200 + rolling 252 hari yang terisi
+
+_LOCK = threading.Lock()
+_CACHE: dict[int, Optional[dict]] = {}   # horizon -> {engine, model, meta} | None
+
+
+def _horizon() -> int:
+    return int(getattr(settings, "ml_horizon", 5) or 5)
+
+
+def mode() -> str:
+    m = (getattr(settings, "ml_signal_mode", "shadow") or "shadow").lower()
+    return m if m in ("off", "shadow", "active") else "shadow"
+
+
+def _load(horizon: int) -> Optional[dict]:
+    """Muat artifact sekali per proses (aman dipanggil dari thread pool)."""
+    if horizon in _CACHE:
+        return _CACHE[horizon]
+    with _LOCK:
+        if horizon in _CACHE:
+            return _CACHE[horizon]
+        loaded = None
+        meta_path = ARTIFACT_DIR / f"ml_signal_h{horizon}.meta.json"
+        try:
+            meta = json.loads(meta_path.read_text())
+            model_path = ARTIFACT_DIR / meta["model_file"]
+            if meta.get("engine") == "lightgbm":
+                import lightgbm as lgb
+                model = lgb.Booster(model_file=str(model_path))
+            else:
+                import joblib
+                model = joblib.load(model_path)
+            loaded = {"engine": meta["engine"], "model": model, "meta": meta}
+        except Exception:
+            loaded = None
+        _CACHE[horizon] = loaded
+        return loaded
+
+
+def available(horizon: Optional[int] = None) -> bool:
+    return _load(horizon or _horizon()) is not None
+
+
+def reset_cache() -> None:
+    """Untuk test / setelah retrain in-place."""
+    with _LOCK:
+        _CACHE.clear()
+
+
+def predict(ticker: str, hist: Optional[pd.DataFrame] = None,
+            index_hist: Optional[pd.DataFrame] = None) -> dict[str, Any]:
+    """Prediksi sinyal ML untuk satu ticker dari OHLCV runtime.
+
+    Return selalu dict; kunci "available" False bila model/data tak siap.
+    """
+    horizon = _horizon()
+    base: dict[str, Any] = {"available": False, "horizon": horizon, "mode": mode()}
+    if mode() == "off":
+        return {**base, "reason": "ml_signal_mode=off"}
+
+    bundle = _load(horizon)
+    if bundle is None:
+        return {**base, "reason": "artifact tidak tersedia"}
+
+    from app.data import provider
+    if provider.is_us_ticker(ticker):
+        return {**base, "reason": "model dilatih untuk saham IDX saja"}
+
+    try:
+        if hist is None:
+            hist = provider.get_history(ticker)
+        if index_hist is None:
+            index_hist = provider.get_index_history()
+    except Exception:
+        return {**base, "reason": "gagal memuat data harga"}
+
+    if hist is None or len(hist) < MIN_BARS or index_hist is None or index_hist.empty:
+        return {**base, "reason": f"data historis kurang (butuh >= {MIN_BARS} bar)"}
+
+    from app.ml.features import FEATURE_COLUMNS, build_features
+    try:
+        hist = hist.copy()
+        hist.index = pd.to_datetime(hist.index)
+        if getattr(hist.index, "tz", None) is not None:
+            hist.index = hist.index.tz_localize(None)
+        hist.index = hist.index.normalize()
+        mkt = index_hist.copy()
+        mkt.index = pd.to_datetime(mkt.index)
+        if getattr(mkt.index, "tz", None) is not None:
+            mkt.index = mkt.index.tz_localize(None)
+        mkt.index = mkt.index.normalize()
+
+        feats = build_features(hist, mkt)
+        row = feats.iloc[[-1]]
+        if row[["rsi14", "close_sma200", "dist_high52w"]].isna().any(axis=None):
+            return {**base, "reason": "fitur belum lengkap (rolling window)"}
+
+        meta = bundle["meta"]
+        if bundle["engine"] == "lightgbm":
+            proba = bundle["model"].predict(row[FEATURE_COLUMNS])[0]
+        else:
+            proba = bundle["model"].predict_proba(row[FEATURE_COLUMNS])[0]
+    except Exception as e:
+        return {**base, "reason": f"gagal menghitung fitur/prediksi: {e}"}
+
+    p_sell, p_hold, p_buy = (float(p) for p in proba)
+    classes = ["SELL", "HOLD", "BUY"]
+    idx = int(max(range(3), key=lambda i: proba[i]))
+    signal = classes[idx]
+    conf_thr = float(getattr(settings, "ml_conf_threshold", 0) or
+                     meta.get("conf_threshold", 0.45))
+    confident = signal != "HOLD" and float(proba[idx]) >= conf_thr
+
+    # Fitur paling berpengaruh (global, dari training) + nilai saat ini,
+    # bahan lapisan LLM untuk menjelaskan sinyal tanpa mengarang angka.
+    top_feats = []
+    for name, imp in list(meta.get("feature_importance", {}).items())[:6]:
+        val = row.iloc[0].get(name)
+        top_feats.append({"feature": name, "importance": imp,
+                          "value": None if pd.isna(val) else round(float(val), 4)})
+
+    return {
+        "available": True,
+        "mode": mode(),
+        "signal": signal,
+        "confident": confident,
+        "p_buy": round(p_buy, 3),
+        "p_hold": round(p_hold, 3),
+        "p_sell": round(p_sell, 3),
+        "confidence": round(float(proba[idx]), 3),
+        "conf_threshold": conf_thr,
+        "horizon": horizon,
+        "label_threshold": meta.get("label_threshold"),
+        "trained_at": meta.get("trained_at"),
+        "as_of": str(feats.index[-1].date()),
+        "top_features": top_feats,
+    }
+
+
+def summary_for_ranking(ml: dict[str, Any]) -> dict[str, Any]:
+    """Subset ringkas untuk item ranking / API dashboard."""
+    if not ml.get("available"):
+        return {"available": False, "reason": ml.get("reason")}
+    return {k: ml[k] for k in (
+        "available", "signal", "confident", "p_buy", "p_hold", "p_sell",
+        "confidence", "horizon", "as_of") if k in ml}
