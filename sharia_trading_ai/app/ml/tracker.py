@@ -355,6 +355,54 @@ def _fmt_rp(v: Any) -> str:
         return "—"
 
 
+def _positions_lines() -> list[str]:
+    """Bagian '📁 Posisi Anda' utk pesan Telegram: P/L + saran exit per aset.
+
+    Kosong bila portofolio belum diisi. ML hanya utk saham IDX; saham US
+    (Pluang) dinilai aturan harga saja (SL/TP/trailing/time-stop).
+    """
+    try:
+        from app.core import exit_rules, portfolio
+        from app.data import provider
+        data = portfolio.list_positions()
+        rows = data.get("positions") or []
+        if not rows:
+            return []
+        try:
+            from app.core import ml_signal as _mls
+            scan_by_tk = {x["ticker"]: x for x in
+                          (_mls.scan_universe().get("signals") or [])}
+        except Exception:
+            scan_by_tk = {}
+        lines = ["", "📁 <b>Posisi Anda</b>:"]
+        for r in rows[:12]:
+            tk = r.get("ticker") or ""
+            try:
+                hist = provider.get_history(tk, period="6mo", ttl=14400)
+                closes = hist["Close"] if hist is not None and not hist.empty else None
+            except Exception:
+                closes = None
+            peak = exit_rules.peak_since(closes, r.get("added_at"))
+            days = exit_rules.days_held_bursa(r.get("added_at"))
+            ml = scan_by_tk.get(tk)
+            v = exit_rules.evaluate_exit(
+                pnl_pct=r.get("pl_pct"), price=r.get("current_price"),
+                peak_price=peak, avg_price=r.get("avg_price"),
+                days_held=days, ml=ml)
+            icon = {"SELL": "🔴", "TRAIL": "🟠", "WASPADA": "🟡", "HOLD": "🟢"}.get(v["action"], "⚪")
+            pl = r.get("pl_pct")
+            pl_txt = f"{pl:+.1f}%" if pl is not None else "—"
+            broker = f" [{r['broker']}]" if r.get("broker") else ""
+            hari = f" · {days}h" if days is not None else ""
+            mltxt = f" · P(SELL) {float(ml['p_sell']):.0%}" if ml else ""
+            lines.append(f"{icon} <b>{tk}</b>{broker} {pl_txt}{hari} → "
+                         f"<b>{v['action']}</b>: {v['alasan']}{mltxt}")
+        lines.append("<i>Saran advisory — eksekusi & risiko di tangan Anda.</i>")
+        return lines
+    except Exception:
+        return []
+
+
 def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any],
                         label: Optional[str] = None) -> str:
     """Susun pesan HTML ringkasan sinyal ML harian (murni dari data)."""
@@ -390,6 +438,8 @@ def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any],
 
     if "price" in rows.columns and rows["price"].notna().any():
         lines.extend(_closing_comparison_lines(rows))
+
+    lines.extend(_positions_lines())
 
     if s.get("evaluated"):
         mb = s.get("ml_buy_all") or {}

@@ -82,5 +82,165 @@
   "breakout20": 0.0001,
   "ma_cross_up": 0.0
  },
- "walkforward_metrics": {}
+ "walkforward_metrics": {
+  "horizon": 10,
+  "threshold_buy_sell": 0.03,
+  "test_range": [
+   "2024-01-02",
+   "2026-07-13"
+  ],
+  "n_test_rows": 38800,
+  "accuracy": 0.397,
+  "baseline_majority": 0.361,
+  "buy_precision": 0.351,
+  "backtest_ml": {
+   "periods": 60,
+   "periods_invested": 50,
+   "total_return": 0.1069,
+   "cagr": 0.0436,
+   "sharpe": 0.33,
+   "max_drawdown": -0.5056,
+   "avg_period_ret": 0.0082,
+   "hit_rate_trades": 0.498,
+   "avg_trade_ret": 0.0108,
+   "n_signals": 6066,
+   "picks_sample": [
+    {
+     "date": "2026-04-20",
+     "tickers": [
+      "AMMN",
+      "TPIA",
+      "EMTK",
+      "DOID",
+      "SCMA"
+     ],
+     "ret": -0.096
+    },
+    {
+     "date": "2026-05-05",
+     "tickers": [
+      "ESSA",
+      "MDKA",
+      "LSIP",
+      "TPIA",
+      "TKIM"
+     ],
+     "ret": -0.2428
+    },
+    {
+     "date": "2026-05-19",
+     "tickers": [
+      "AMMN",
+      "TPIA",
+      "FILM",
+      "ENRG",
+      "LSIP"
+     ],
+     "ret": -0.1582
+    },
+    {
+     "date": "2026-06-03",
+     "tickers": [
+      "TPIA",
+      "EMTK",
+      "AKRA",
+      "ENRG",
+      "DEWA"
+     ],
+     "ret": 0.1217
+    },
+    {
+     "date": "2026-06-18",
+     "tickers": [
+      "SMGR",
+      "KLBF",
+      "CTRA",
+      "ASII",
+      "MIKA"
+     ],
+     "ret": -0.0057
+    },
+    {
+     "date": "2026-07-02",
+     "tickers": [
+      "AMMN",
+      "BRMS",
+      "MEDC",
+      "KLBF",
+      "MDKA"
+     ],
+     "ret": 0.1018
+    }
+   ]
+  },
+  "backtest_rule_proxy": {
+   "periods": 60,
+   "periods_invested": 26,
+   "total_return": -0.2337,
+   "cagr": -0.1058,
+   "sharpe": -0.2,
+   "max_drawdown": -0.3119,
+   "avg_period_ret": -0.0056,
+   "hit_rate_trades": 0.45,
+   "avg_trade_ret": 0.0066,
+   "n_signals": 422,
+   "picks_sample": [
+    {
+     "date": "2025-11-26",
+     "tickers": [
+      "EXCL",
+      "SMGR",
+      "TKIM"
+     ],
+     "ret": 0.0886
+    },
+    {
+     "date": "2025-12-10",
+     "tickers": [
+      "EMTK"
+     ],
+     "ret": -0.247
+    },
+    {
+     "date": "2025-12-24",
+     "tickers": [
+      "ANTM"
+     ],
+     "ret": 0.1948
+    },
+    {
+     "date": "2026-01-13",
+     "tickers": [
+      "HRUM",
+      "ESSA",
+      "BSDE"
+     ],
+     "ret": -0.0758
+    },
+    {
+     "date": "2026-02-27",
+     "tickers": [
+      "INCO",
+      "UNVR",
+      "AUTO",
+      "TAPG"
+     ],
+     "ret": -0.1552
+    },
+    {
+     "date": "2026-06-18",
+     "tickers": [
+      "MAPI"
+     ],
+     "ret": -0.004
+    }
+   ]
+  },
+  "benchmark_ihsg": {
+   "total_return": -0.1756,
+   "sharpe": -0.29,
+   "max_drawdown": -0.4152
+  }
+ },
+ "published_by": "rigtest-e2e-20260728_1812"
 }

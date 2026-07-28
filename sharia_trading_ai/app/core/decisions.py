@@ -251,6 +251,38 @@ def decide_for_watchlist(s: dict, prospects_set: set, top5_lookup: dict[str, int
     return None
 
 
+def _exit_hint(p: dict, ri: dict) -> Optional[dict[str, Any]]:
+    """Aturan exit lanjutan (trailing / time-stop) — None bila tidak terpicu.
+
+    Hanya menghasilkan kartu SELL bila aturan benar-benar terpicu; kondisi
+    TRAIL_ARMED/WASPADA tidak mengubah keputusan (tampil via Telegram posisi).
+    """
+    try:
+        from app.core import exit_rules
+        tk = p.get("ticker")
+        hist = provider.get_history(tk, period="6mo", ttl=14400)
+        peak = exit_rules.peak_since(
+            hist["Close"] if hist is not None and not hist.empty else None,
+            p.get("added_at"))
+        days = exit_rules.days_held_bursa(p.get("added_at"))
+        verdict = exit_rules.evaluate_exit(
+            pnl_pct=p.get("pnl"), price=p.get("current_price"),
+            peak_price=peak, avg_price=p.get("avg_price"), days_held=days,
+            ml=ri.get("ml_signal"))
+        if verdict["action"] == "SELL" and verdict["kode"] in ("TRAILING", "TIME_STOP"):
+            urg = "HIGH" if verdict["kode"] == "TRAILING" else "MEDIUM"
+            nxt = ("Jual untuk mengunci profit yang tersisa."
+                   if verdict["kode"] == "TRAILING"
+                   else "Jual & rotasikan modal ke kandidat teratas Pusat Keputusan.")
+            return {"action": "SELL", "urgency": urg, "confidence": "MEDIUM",
+                    "context": f"PORTFOLIO_{verdict['kode']}",
+                    "reason": f"{verdict['kode'].replace('_', ' ')} — {verdict['alasan']}",
+                    "next_step": nxt}
+    except Exception:
+        pass
+    return None
+
+
 # ---------------- Portfolio (posisi dimiliki) ---------------- #
 def decide_for_portfolio(
     p: dict,
@@ -282,6 +314,8 @@ def decide_for_portfolio(
     elif pnl >= tp_target:
         res = {**base, "action": "SELL", "urgency": "URGENT", "confidence": "HIGH", "context": "PORTFOLIO",
                 "reason": f"TAKE PROFIT — P/L +{pnl:.1f}% ≥ {tp_target}% (Target ROI)", "next_step": f"Realisasikan profit untuk mengamankan target ROI >{tp_target}%."}
+    elif (exit_hint := _exit_hint(p, ri)) is not None:
+        res = {**base, **exit_hint}
     elif f_label_real == "AVOID":
         res = {**base, "action": "SELL", "urgency": "HIGH", "confidence": "MEDIUM", "context": "PORTFOLIO",
                 "reason": f"Fundamental memburuk → AVOID (skor {fs}/{fmax})", "next_step": "Eksit perlahan walau belum kena cut-loss."}

@@ -120,8 +120,11 @@ def add_position(ticker: str, lots: int, avg_price: float,
             return r
 
     new_id = (max((r["id"] for r in rows), default=0) + 1)
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
     new_row = {"id": new_id, "ticker": ticker, "lots": int(lots),
-               "avg_price": float(avg_price), "broker": broker, "type": type}
+               "avg_price": float(avg_price), "broker": broker, "type": type,
+               "added_at": datetime.now(ZoneInfo("Asia/Jakarta")).date().isoformat()}
     rows.append(new_row)
     _save(rows)
     return new_row

@@ -315,3 +315,57 @@ def test_model_ingest_no_promote_marker_means_no_install(tmp_path, monkeypatch):
     r = out["results"][0]
     assert r["ok"] and not r["promoted"] and not r["has_promote"]
     assert not (tmp_path / "artifacts" / "ml_signal_h10.txt").exists()
+
+
+def test_exit_rules_matrix():
+    from app.core.exit_rules import evaluate_exit
+    ml_weak = {"available": True, "p_buy": 0.2, "p_hold": 0.5, "p_sell": 0.3, "signal": "HOLD"}
+    # SL menang atas segalanya
+    assert evaluate_exit(pnl_pct=-8, price=92, peak_price=100, avg_price=100,
+                         days_held=5)["kode"] == "CUT_LOSS"
+    # TP (default 10%)
+    assert evaluate_exit(pnl_pct=11, price=111, peak_price=111, avg_price=100,
+                         days_held=5)["kode"] == "TAKE_PROFIT"
+    # Trailing trigger: pernah +8%, kini turun 4% dari puncak
+    v = evaluate_exit(pnl_pct=3.7, price=103.7, peak_price=108, avg_price=100,
+                      days_held=5)
+    assert v["kode"] == "TRAILING" and v["action"] == "SELL"
+    # Trailing armed (belum trigger): puncak +8%, turun cuma 1%
+    v = evaluate_exit(pnl_pct=6.9, price=106.9, peak_price=108, avg_price=100,
+                      days_held=5)
+    assert v["kode"] == "TRAIL_ARMED" and v["action"] == "TRAIL"
+    # Time-stop: 25 hari, belum target, ML lemah
+    v = evaluate_exit(pnl_pct=1.0, price=101, peak_price=103, avg_price=100,
+                      days_held=25, ml=ml_weak)
+    assert v["kode"] == "TIME_STOP" and v["action"] == "SELL"
+    # Time-stop TIDAK terpicu bila ML masih mendukung
+    ml_kuat = {**ml_weak, "p_buy": 0.55, "signal": "BUY"}
+    assert evaluate_exit(pnl_pct=1.0, price=101, peak_price=103, avg_price=100,
+                         days_held=25, ml=ml_kuat)["kode"] == "HOLD"
+    # Peringatan ML SELL
+    ml_sell = {"available": True, "p_buy": 0.1, "p_hold": 0.4, "p_sell": 0.5, "signal": "SELL"}
+    assert evaluate_exit(pnl_pct=2.0, price=102, peak_price=103, avg_price=100,
+                         days_held=3, ml=ml_sell)["kode"] == "ML_SELL_WARN"
+
+
+def test_telegram_positions_section(isolated_store, monkeypatch):
+    import pandas as _pd
+    from app.core import portfolio as pf
+    monkeypatch.setattr(pf, "list_positions", lambda: {"positions": [
+        {"ticker": "KLBF", "broker": "Profits Anywhere", "pl_pct": 3.7,
+         "current_price": 1560.0, "avg_price": 1505.0, "added_at": "2026-07-01"},
+        {"ticker": "AAPL", "broker": "Pluang", "pl_pct": -8.2,
+         "current_price": 210.0, "avg_price": 229.0, "added_at": "2026-06-01"},
+    ]})
+    from app.data import provider
+    idx = _pd.bdate_range("2026-05-01", periods=60)
+    fake_hist = _pd.DataFrame({"Close": [1500.0]*40 + [1625.0] + [1560.0]*19}, index=idx)
+    monkeypatch.setattr(provider, "get_history", lambda tk, **kw: fake_hist)
+    from app.core import ml_signal as mls
+    monkeypatch.setattr(mls, "scan_universe", lambda **kw: {"signals": []})
+    lines = tracker._positions_lines()
+    txt = "\n".join(lines)
+    assert "Posisi Anda" in txt
+    assert "KLBF" in txt and "Profits Anywhere" in txt
+    assert "AAPL" in txt and "CUT_LOSS" not in txt  # alasan pakai kalimat, bukan kode
+    assert "🔴" in txt   # AAPL -8.2% -> SELL cut loss
