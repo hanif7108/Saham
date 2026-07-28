@@ -31,7 +31,9 @@ def _fake_ranking():
     ]
 
 
-def test_log_idempotent(isolated_store):
+def test_log_idempotent(isolated_store, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "ml_horizon", 5, raising=False)  # selaras fake
     r1 = tracker.log_today(ranking=_fake_ranking(), force=True)
     assert r1["ok"] and r1["logged"] == 2   # AAPL.US (US/unavailable) dilewati
     r2 = tracker.log_today(ranking=_fake_ranking())
@@ -187,3 +189,32 @@ def test_simulate_applies_price_slippage():
     bt = T.simulate(df, 10, "sig", "rank", top_k=2, cost=0.004)
     # return bersih = 5% - 0.4% - rata2 slippage (2% & 1%) = 3.1%
     assert bt["avg_period_ret"] == pytest.approx(0.05 - 0.004 - (0.02+0.01)/2, abs=1e-4)
+
+
+def test_log_transition_day_two_horizons(isolated_store, monkeypatch):
+    """Hari transisi: batch horizon lama & baru boleh hidup berdampingan."""
+    from app.config import settings
+    r1 = tracker.log_today(ranking=_fake_ranking(), force=True)   # horizon 5 (fake)
+    assert r1["logged"] == 2
+    # ganti horizon aktif -> pencatatan kedua TIDAK dianggap duplikat
+    monkeypatch.setattr(settings, "ml_horizon", 7, raising=False)
+    fake2 = _fake_ranking()
+    for s in fake2:
+        if s["ml_signal"].get("available"):
+            s["ml_signal"]["horizon"] = 7
+    r2 = tracker.log_today(ranking=fake2)
+    assert r2.get("logged") == 2
+    # horizon sama -> duplikat ditolak
+    r3 = tracker.log_today(ranking=fake2)
+    assert r3.get("skipped") == "sudah tercatat"
+    df = pd.read_parquet(tracker.STORE)
+    assert len(df) == 4 and sorted(df["horizon"].unique()) == [5, 7]
+
+
+def test_telegram_top_respects_min_price(isolated_store):
+    ranking = _fake_ranking()
+    ranking[0]["current_price"] = 300.0   # KLBF di bawah Rp500
+    tracker.log_today(ranking=ranking, force=True)
+    df = pd.read_parquet(tracker.STORE)
+    txt = tracker.build_telegram_text(df, {})
+    assert "KLBF" not in txt.split("Peringatan")[0]   # tidak masuk top pilihan

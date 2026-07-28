@@ -84,9 +84,13 @@ def _is_market_data_final(today: date) -> bool:
 def log_today(ranking: Optional[list[dict]] = None, force: bool = False) -> dict[str, Any]:
     """Catat prediksi ML + sinyal rule hari ini (idempoten per tanggal)."""
     today = today_wib()
+    from app.config import settings as _st
+    cur_h = int(getattr(_st, "ml_horizon", 10) or 10)
     df = _load()
-    if not df.empty and (df["date"] == today.isoformat()).any() and not force:
-        return {"ok": True, "skipped": "sudah tercatat", "date": today.isoformat()}
+    if not df.empty and not force and (
+        (df["date"] == today.isoformat()) & (df["horizon"] == cur_h)).any():
+        return {"ok": True, "skipped": "sudah tercatat", "date": today.isoformat(),
+                "horizon": cur_h}
     if not force and not _is_market_data_final(today):
         return {"ok": False, "skipped": "bar penutupan hari ini belum final/bukan hari bursa"}
 
@@ -365,6 +369,10 @@ def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any],
     cand = rows[rows["signal"] == "BUY"]
     if "veto_sell" in rows.columns:
         cand = cand[~cand["veto_sell"].fillna(False).astype(bool)]
+    if "price" in cand.columns:
+        from app.config import settings as _st2
+        min_p = float(getattr(_st2, "ml_min_price", 500) or 0)
+        cand = cand[cand["price"].fillna(0) >= min_p]
     top = cand.nlargest(5, "p_buy")
     if not top.empty:
         lines.append("🏆 <b>Top pilihan ML</b> (urut P(BUY), veto SELL disaring):")
@@ -433,6 +441,12 @@ def telegram_summary(source: str = "store",
     else:
         df = _load()
         rows = df[df["date"] == df["date"].max()] if not df.empty else pd.DataFrame()
+        if not rows.empty and "horizon" in rows.columns:
+            from app.config import settings as _st
+            cur_h = int(getattr(_st, "ml_horizon", 10) or 10)
+            cur = rows[rows["horizon"] == cur_h]
+            if not cur.empty:
+                rows = cur          # hari transisi: pakai batch horizon aktif
     if rows.empty:
         return {"ok": False, "error": "belum ada prediksi tersedia"}
     text = build_telegram_text(rows, stats(last_days=180), label=label)
