@@ -147,8 +147,19 @@ def predict(ticker: str, hist: Optional[pd.DataFrame] = None,
     classes = ["SELL", "HOLD", "BUY"]
     idx = int(max(range(3), key=lambda i: proba[i]))
     signal = classes[idx]
-    conf_thr = float(getattr(settings, "ml_conf_threshold", 0) or
-                     meta.get("conf_threshold", 0.45))
+    # Prioritas ambang: manual (.env) > kalibrasi realisasi (tracker) > meta model
+    conf_thr = float(getattr(settings, "ml_conf_threshold", 0) or 0)
+    conf_source = "manual"
+    if not conf_thr:
+        try:
+            from app.ml import tracker
+            cal = tracker.calibrated_threshold()
+        except Exception:
+            cal = None
+        if cal:
+            conf_thr, conf_source = float(cal), "kalibrasi-realisasi"
+        else:
+            conf_thr, conf_source = float(meta.get("conf_threshold", 0.45)), "meta-model"
     confident = signal != "HOLD" and float(proba[idx]) >= conf_thr
 
     # Fitur paling berpengaruh (global, dari training) + nilai saat ini,
@@ -169,6 +180,7 @@ def predict(ticker: str, hist: Optional[pd.DataFrame] = None,
         "p_sell": round(p_sell, 3),
         "confidence": round(float(proba[idx]), 3),
         "conf_threshold": conf_thr,
+        "conf_source": conf_source,
         "horizon": horizon,
         "label_threshold": meta.get("label_threshold"),
         "trained_at": meta.get("trained_at"),

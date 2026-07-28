@@ -68,6 +68,9 @@ Manfaatkan SELURUH konteks untuk penalaran yang lebih dalam (bukan hanya skor):
 - 'jalur7': kelayakan target profit Jalur 7%.
 - 'dividen': profil & jadwal dividen (relevan utk strategi tahan-dividen).
 - 'cross_check_tradingview': rekomendasi teknikal independen TradingView.
+- 'track_record_ml': realisasi historis sinyal_ml (hit rate, win rate, avg
+  return vs rule-based & baseline) — pakai untuk MENGKALIBRASI seberapa besar
+  bobot yang pantas Anda beri pada sinyal_ml saat ini.
 - 'sinyal_ml': prediksi model LightGBM (horizon N hari bursa, tervalidasi
   walk-forward). p_buy/p_hold/p_sell = probabilitas; 'confident' true berarti
   melewati ambang keyakinan. Jelaskan sinyal ini lewat 'top_features'
@@ -231,6 +234,13 @@ def _format_report(report: dict[str, Any]) -> str:
         track = simulation.summary_for_ai()
         if track:
             slim["track_record_simulasi"] = track
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from app.ml import tracker as ml_tracker
+        mlt = ml_tracker.summary_for_ai()
+        if mlt:
+            slim["track_record_ml"] = mlt
     except Exception:  # noqa: BLE001
         pass
 

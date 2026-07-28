@@ -264,7 +264,11 @@ class Settings(BaseSettings):
     #   "active" = ML confident ikut menggerakkan keputusan watchlist
     ml_signal_mode: str = "shadow"
     ml_horizon: int = 5                 # horizon label hari bursa (5/10/20)
-    ml_conf_threshold: float = 0.0      # 0 = pakai nilai dari meta artifact
+    ml_conf_threshold: float = 0.0      # 0 = kalibrasi realisasi / meta artifact
+    # Track record ML: catat prediksi tiap sore bursa & evaluasi vs realisasi
+    # (lingkaran belajar prediksi-vs-realitas; lihat app/ml/tracker.py)
+    ml_track_enabled: bool = True
+    ml_track_time: str = "16:20"        # setelah bursa tutup & pipeline sore
 
 
 settings = Settings()

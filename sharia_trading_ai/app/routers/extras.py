@@ -29,6 +29,13 @@ def get_decisions(limit: int | None = None, target: int | None = None,
     )
 
 
+@router.get("/ml/track")
+def ml_track_record():
+    """Track record sinyal ML: prediksi vs realisasi + kalibrasi ambang."""
+    from app.ml import tracker
+    return tracker.summary_for_api()
+
+
 @router.get("/decisions/cache")
 def decisions_cache_status():
     """Status cache Funnel periodik (umur, TTL, jam bursa)."""

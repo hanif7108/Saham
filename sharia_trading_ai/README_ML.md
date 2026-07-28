@@ -87,6 +87,37 @@ PYTHONPATH=. .venv/bin/python -m app.ml.train --no-eval      # artifact saja (ce
    `launchctl kickstart -k gui/$(id -u)/com.shariata.app`
    (atau label `com.sharia.trading` sesuai plist yang aktif).
 
+## Lingkaran belajar: prediksi vs realisasi (`app/ml/tracker.py`)
+
+Setiap sore hari bursa (default 16:20, `ML_TRACK_TIME`) sistem otomatis:
+
+1. **Mencatat** prediksi ML (p_buy/p_hold/p_sell, confident) + sinyal rule-based
+   seluruh ticker ke `ml_data/ml_track.parquet` (idempoten per tanggal).
+2. **Mengevaluasi** prediksi yang horizonnya sudah lewat terhadap harga
+   penutupan aktual: outcome (naik/turun/datar per ambang label), benar/salah,
+   return realisasi.
+3. **Melaporkan** track record via `GET /api/ml/track` + panel
+   "🤖 Track Record Sinyal ML" di dashboard: ML BUY confident vs ML BUY semua
+   vs rule-based BUY-ish vs baseline universe, plus kalibrasi P(BUY).
+4. **Mengkalibrasi ambang confidence** dari realisasi (≥30 sampel BUY
+   terevaluasi, grid 0.35–0.60, maksimalkan avg return). Ambang terkalibrasi
+   otomatis dipakai `ml_signal.predict()` bila `ML_CONF_THRESHOLD` tidak
+   di-set manual (`conf_source` di API menunjukkan sumbernya).
+
+Retrain bulanan ikut menjalankan evaluasi + laporan (lihat
+`scripts/retrain_ml.sh`), dan retrain itu sendiri melatih ulang model dengan
+data terbaru — realisasi pasar bulan berjalan otomatis menjadi label training
+berikutnya. LLM advisor menerima `track_record_ml` agar bobot kepercayaannya
+pada sinyal ML ikut realitas, bukan asumsi.
+
+CLI manual:
+
+```bash
+PYTHONPATH=. .venv/bin/python -m app.ml.tracker --log        # catat hari ini
+PYTHONPATH=. .venv/bin/python -m app.ml.tracker --evaluate   # nilai yg jatuh tempo
+PYTHONPATH=. .venv/bin/python -m app.ml.tracker --report     # track record
+```
+
 ## Audit data (2026-07-28)
 
 - 76 ticker (75 syariah + ^JKSE), median histori 20.8 tahun. Dataset training

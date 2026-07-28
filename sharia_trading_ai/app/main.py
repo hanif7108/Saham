@@ -214,6 +214,45 @@ async def _start_simulation_scheduler():
 
 
 @app.on_event("startup")
+async def _start_ml_tracker():
+    """Track record ML: tiap sore hari bursa catat prediksi & evaluasi realisasi."""
+    import asyncio
+    from datetime import datetime
+
+    if not settings.ml_track_enabled:
+        return
+
+    async def _loop():
+        from app.core import reminders
+        from app.ml import tracker
+        done: str = ""
+        try:
+            h, m = (int(x) for x in (settings.ml_track_time or "16:20").split(":"))
+        except Exception:  # noqa: BLE001
+            h, m = 16, 20
+        # Saat startup: evaluasi baris jatuh tempo (murah, tidak menjalankan funnel)
+        try:
+            await asyncio.to_thread(tracker.evaluate_matured)
+        except Exception:  # noqa: BLE001
+            pass
+        while True:
+            await asyncio.sleep(60)
+            now = datetime.now()
+            today = now.date()
+            if not reminders.is_trading_day(today) or done == today.isoformat():
+                continue
+            target = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            if now >= target:
+                done = today.isoformat()
+                try:
+                    await asyncio.to_thread(tracker.run_daily)
+                except Exception:  # noqa: BLE001
+                    pass
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
 async def _start_bsjp_scheduler():
     """Scheduler BSJP: scan pre-closing (15:50) & pre-opening (08:45) → alert Telegram."""
     import asyncio

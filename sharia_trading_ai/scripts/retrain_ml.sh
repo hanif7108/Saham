@@ -20,6 +20,10 @@ cd "$APP_DIR"
   PYTHONPATH="$APP_DIR" "$VENV" -m app.ml.train
   echo "=== Selesai training: $(date) ==="
 
+  # Lingkaran belajar: evaluasi prediksi live yang jatuh tempo + laporan
+  # track record (prediksi vs realisasi) sebagai catatan kualitas bulanan.
+  PYTHONPATH="$APP_DIR" "$VENV" -m app.ml.tracker --evaluate --report || true
+
   # Restart service supaya artifact baru dimuat (uvicorn cache model di memori).
   # Nama label mengikuti plist yang aktif di Mac Mini.
   for LABEL in com.shariata.app com.sharia.trading; do

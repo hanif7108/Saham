@@ -4465,10 +4465,36 @@ async function sendBSJPTelegram() {
   } catch(e) { toast('Error: ' + e); }
 }
 
+/* ===================== TRACK RECORD ML ===================== */
+async function loadMlTrack(){
+  const el=document.getElementById('ml-track-body'); if(!el) return;
+  let d; try{ d=await api('/api/ml/track'); }catch(e){ el.innerHTML='<span class="mut">Track record ML belum tersedia.</span>'; return; }
+  const s=(d&&d.stats)||{};
+  if(!s.evaluated){
+    el.innerHTML=`<div class="mut" style="font-size:.82rem;line-height:1.6">
+      Belum ada prediksi yang jatuh tempo. Sistem mencatat prediksi ML tiap sore hari bursa (${esc(String((d&&d.updated_at)||'menunggu pencatatan pertama'))})
+      dan mengevaluasinya vs harga aktual setelah horizon 5 hari bursa. Track record terisi otomatis mulai ±1 minggu setelah pencatatan pertama.
+      <b>Tercatat:</b> ${s.logged_total||0} prediksi · <b>menunggu evaluasi:</b> ${s.pending||0}.</div>`;
+    return;
+  }
+  const cell=(g)=>g&&g.n?`${(g.hit_rate*100).toFixed(0)}% hit · ${(g.win_rate_pos*100).toFixed(0)}% win · ${g.avg_ret_pct>=0?'+':''}${g.avg_ret_pct}% avg <span class="mut">(n=${g.n})</span>`:'<span class="mut">belum ada</span>';
+  const cal=(d.calibration&&d.calibration.ok)?`<span class="badge buy" style="font-size:.68rem" title="dipakai otomatis bila ML_CONF_THRESHOLD tidak di-set">ambang terkalibrasi: ${d.calibration.suggested_conf_threshold}</span>`:`<span class="badge na" style="font-size:.68rem">ambang: default model (sampel kalibrasi belum cukup)</span>`;
+  el.innerHTML=`
+    <div class="mut" style="font-size:.75rem;margin-bottom:.5rem">Periode ${esc((s.date_range||[]).join(' → '))} · ${s.evaluated} prediksi terevaluasi · ${s.pending||0} menunggu ${cal}</div>
+    <table style="width:100%;font-size:.8rem;border-collapse:collapse">
+      <tr style="text-align:left;color:var(--text-muted)"><th style="padding:.25rem 0">Strategi</th><th>Realisasi</th></tr>
+      <tr><td style="padding:.25rem 0">🤖 ML BUY (confident)</td><td>${cell(s.ml_buy_confident)}</td></tr>
+      <tr><td style="padding:.25rem 0">🤖 ML BUY (semua)</td><td>${cell(s.ml_buy_all)}</td></tr>
+      <tr><td style="padding:.25rem 0">📐 Rule-based BUY-ish</td><td>${cell(s.rule_buyish)}</td></tr>
+      <tr><td style="padding:.25rem 0">🌐 Baseline universe</td><td>${s.universe_baseline?((s.universe_baseline.avg_ret_pct>=0?'+':'')+s.universe_baseline.avg_ret_pct+'% avg (n='+s.universe_baseline.n+')'):'—'}</td></tr>
+    </table>
+    <div class="mut" style="font-size:.7rem;margin-top:.55rem;line-height:1.5">hit = arah prediksi benar per definisi label (±2% utk 5 hari) · win = return realisasi &gt; 0 · avg = rata-rata return realisasi per sinyal. Data: <code>/api/ml/track</code>. Ambang confidence dikalibrasi ulang otomatis dari realisasi (≥30 sampel BUY).</div>`;
+}
+
 /* ===================== INIT ===================== */
 function refreshAll(){ loadMarket(); loadUniverse(); _loaded.cmd=false; toast('Data pasar disegarkan.'); }
 (async()=>{
-  loadMarket(); loadUniverse(); loadPedoman(); loadStrategi(); loadEngines(); loadPortfolio();
+  loadMarket(); loadUniverse(); loadPedoman(); loadStrategi(); loadEngines(); loadPortfolio(); loadMlTrack();
   try{ const dc=await api('/api/disclaimer');
     $('#disc').innerHTML=`<b>Disclaimer:</b> ${esc(dc.disclaimer)}<br><br><b>Acuan:</b> ${dc.acuan.map(esc).join(' · ')}`;
   }catch(e){}
