@@ -194,7 +194,7 @@ _SCAN_TTL = 900          # detik — selaras cache funnel (data harian, tak perl
 _SCAN_LOCK = threading.Lock()
 
 
-def scan_universe(force: bool = False) -> dict[str, Any]:
+def scan_universe(force: bool = False, hist_ttl: int = 14400) -> dict[str, Any]:
     """Prediksi ML seluruh universe IDX, urut P(BUY) tertinggi (untuk dashboard).
 
     Memakai cache history provider (TTL 4 jam, sudah hangat setelah funnel
@@ -225,7 +225,7 @@ def scan_universe(force: bool = False) -> dict[str, Any]:
 
         def one(tk):
             try:
-                hist = provider.get_history(tk, ttl=14400)
+                hist = provider.get_history(tk, ttl=hist_ttl)
                 r = predict(tk, hist=hist, index_hist=index_hist)
                 if not r.get("available"):
                     return None

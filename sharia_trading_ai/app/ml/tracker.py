@@ -320,9 +320,12 @@ def _fmt_rp(v: Any) -> str:
         return "—"
 
 
-def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any]) -> str:
+def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any],
+                        label: Optional[str] = None) -> str:
     """Susun pesan HTML ringkasan sinyal ML harian (murni dari data)."""
     d = rows["date"].iloc[0] if not rows.empty else date.today().isoformat()
+    if label:
+        d = f"{d} · {label}"
     n_conf = int(rows["confident"].sum()) if not rows.empty else 0
     lines = [f"🤖 <b>Sinyal ML Harian</b> — {d}",
              f"Mode <b>shadow</b> · horizon 5 hari bursa · {len(rows)} ticker · {n_conf} confident", ""]
@@ -354,17 +357,47 @@ def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def telegram_summary() -> dict[str, Any]:
-    """Kirim ringkasan sinyal ML hari ini ke Telegram (baris terbaru di store)."""
+def _scan_rows() -> pd.DataFrame:
+    """Snapshot prediksi terkini dari scan universe (untuk kiriman intraday).
+
+    rule_signal diambil dari catatan store HARI INI bila ada (funnel penuh
+    terlalu berat untuk dijalankan tiap jam kirim).
+    """
+    from app.core import ml_signal
+    scan = ml_signal.scan_universe(force=True, hist_ttl=1200)
+    sigs = scan.get("signals") or []
+    if not sigs:
+        return pd.DataFrame()
+    rows = pd.DataFrame(sigs)
+    rows["date"] = date.today().isoformat()
+    rows["rule_signal"] = None
+    st = _load()
+    if not st.empty:
+        today_rows = st[st["date"] == date.today().isoformat()]
+        if not today_rows.empty:
+            m = today_rows.set_index("ticker")["rule_signal"]
+            rows["rule_signal"] = rows["ticker"].map(m)
+    return rows
+
+
+def telegram_summary(source: str = "store",
+                     label: Optional[str] = None) -> dict[str, Any]:
+    """Kirim ringkasan sinyal ML ke Telegram.
+
+    source "store" = baris tercatat terakhir (kiriman resmi setelah tutup);
+    source "scan"  = snapshot prediksi terkini (kiriman intraday).
+    """
     from app.core import telegram_notify
     if not telegram_notify.is_configured():
         return {"ok": False, "error": "Telegram belum dikonfigurasi"}
-    df = _load()
-    if df.empty:
-        return {"ok": False, "error": "belum ada prediksi tercatat"}
-    last_date = df["date"].max()
-    rows = df[df["date"] == last_date]
-    text = build_telegram_text(rows, stats(last_days=180))
+    if source == "scan":
+        rows = _scan_rows()
+    else:
+        df = _load()
+        rows = df[df["date"] == df["date"].max()] if not df.empty else pd.DataFrame()
+    if rows.empty:
+        return {"ok": False, "error": "belum ada prediksi tersedia"}
+    text = build_telegram_text(rows, stats(last_days=180), label=label)
     return telegram_notify.send(text)
 
 
@@ -376,7 +409,7 @@ def run_daily() -> dict[str, Any]:
     try:
         from app.config import settings
         if getattr(settings, "ml_track_telegram", False) and (lg.get("ok") or lg.get("skipped")):
-            tg = telegram_summary()
+            tg = telegram_summary(label="penutupan")
     except Exception as e:  # noqa: BLE001
         tg = {"ok": False, "error": str(e)}
     return {"evaluate": ev, "log": lg, "telegram": tg}
@@ -388,6 +421,7 @@ def main() -> None:
     ap.add_argument("--evaluate", action="store_true")
     ap.add_argument("--report", action="store_true")
     ap.add_argument("--telegram", action="store_true", help="kirim ringkasan hari terakhir ke Telegram")
+    ap.add_argument("--telegram-scan", action="store_true", help="kirim snapshot prediksi terkini ke Telegram")
     ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
     if args.log:
@@ -396,6 +430,11 @@ def main() -> None:
         print(json.dumps(evaluate_matured(), indent=1))
     if args.telegram:
         print(json.dumps(telegram_summary(), ensure_ascii=False, indent=1))
+    if args.telegram_scan:
+        from datetime import datetime as _dt
+        print(json.dumps(telegram_summary(source="scan",
+                                          label=_dt.now().strftime("%H:%M WIB")),
+                         ensure_ascii=False, indent=1))
     if args.report:
         print(json.dumps({"stats": stats(), "calibration": calibrate()},
                          ensure_ascii=False, indent=1))

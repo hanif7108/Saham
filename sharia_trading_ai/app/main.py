@@ -225,11 +225,22 @@ async def _start_ml_tracker():
     async def _loop():
         from app.core import reminders
         from app.ml import tracker
-        done: str = ""
-        try:
-            h, m = (int(x) for x in (settings.ml_track_time or "16:20").split(":"))
-        except Exception:  # noqa: BLE001
-            h, m = 16, 20
+
+        def _hhmm(s):
+            try:
+                h, m = s.strip().split(":")
+                return int(h), int(m)
+            except Exception:  # noqa: BLE001
+                return None
+
+        main_time = (settings.ml_track_time or "16:20").strip()
+        tg_times = [t.strip() for t in
+                    (settings.ml_track_telegram_times or main_time).split(",")
+                    if _hhmm(t)]
+        if main_time not in tg_times:
+            tg_times.append(main_time)   # jam catat+evaluasi selalu jalan
+
+        done: dict[str, str] = {}        # jam -> tanggal terakhir dijalankan
         # Saat startup: evaluasi baris jatuh tempo (murah, tidak menjalankan funnel)
         try:
             await asyncio.to_thread(tracker.evaluate_matured)
@@ -239,13 +250,25 @@ async def _start_ml_tracker():
             await asyncio.sleep(60)
             now = datetime.now()
             today = now.date()
-            if not reminders.is_trading_day(today) or done == today.isoformat():
+            if not reminders.is_trading_day(today):
                 continue
-            target = now.replace(hour=h, minute=m, second=0, microsecond=0)
-            if now >= target:
-                done = today.isoformat()
+            for tstr in tg_times:
+                hm = _hhmm(tstr)
+                if not hm or done.get(tstr) == today.isoformat():
+                    continue
+                target = now.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
+                if now < target:
+                    continue
+                # lewat > 2 jam dari jadwal (mis. baru restart sore) -> jangan rapel
+                # kiriman intraday; jam utama (catat+evaluasi) tetap dirapel.
+                stale = (now - target).total_seconds() > 7200
+                done[tstr] = today.isoformat()
                 try:
-                    await asyncio.to_thread(tracker.run_daily)
+                    if tstr == main_time:
+                        await asyncio.to_thread(tracker.run_daily)
+                    elif settings.ml_track_telegram and not stale:
+                        await asyncio.to_thread(
+                            tracker.telegram_summary, "scan", f"{tstr} WIB")
                 except Exception:  # noqa: BLE001
                     pass
 

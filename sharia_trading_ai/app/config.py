@@ -273,6 +273,9 @@ class Settings(BaseSettings):
     ml_track_enabled: bool = True
     ml_track_time: str = "16:20"        # setelah bursa tutup & pipeline sore
     ml_track_telegram: bool = True      # kirim ringkasan sinyal ML harian ke Telegram
+    # Jam kirim ringkasan ML ke Telegram (hari bursa). Jam == ml_track_time
+    # memakai data tercatat (setelah tutup); lainnya snapshot scan terkini.
+    ml_track_telegram_times: str = "08:30,09:30,11:30,14:30,15:30,16:20"
 
 
 settings = Settings()
