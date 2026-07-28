@@ -139,6 +139,31 @@ Kesimpulan jujur:
    (datalake sedang menabung), fitur cross-sectional dari universe 844,
    model ranking sebagai mesin utama, horizon/holding lebih panjang.
 
+## v5 — Multi-seed RANK model h10/h20 (2026-07-28 malam): GAGAL tipis ambang, tapi peta jadi jelas
+
+Kriteria pre-registered: median IC_IR ≥ 0.3 · ensemble ≥ median · positif
+setelah biaya (p500). Hasil 10 seed:
+
+| | IC_IR (min–med–maks) | Ens IC_IR | Return med | Ens ret | Ens DD | Verdict |
+|---|---|---:|---:|---:|---:|---|
+| Rank h10 | 0.265–**0.278**–0.32 | 0.293 | −24.1% | −22.1% | −43% | GAGAL (biaya h10) |
+| Rank h20 | 0.217–**0.272**–0.338 | 0.284 | +5.8% | **+10.3%** | **−22%** | GAGAL tipis (IC_IR 0.272 < 0.3) |
+
+Bacaan jujur:
+1. **Sinyal rank NYATA dan stabil** — IC_IR rapat antar seed (0.27±0.03),
+   kontras total dengan lotere classifier (−49%..+92%). Ini bukan noise;
+   ini sinyal sungguhan yang *sedikit* di bawah ambang layak-trade.
+2. **h20 = konfigurasi ekonomi terbaik yang pernah diuji**: positif setelah
+   biaya (+10.3% ensemble), drawdown terkecil (−22%), sebaran seed sempit
+   (−14%..+23%). Turnover rendah = biaya tak menggerus.
+3. **Disiplin dipegang**: 0.272 < 0.3 → TIDAK diadopsi. Ambang tidak digeser
+   karena hasil "hampir".
+4. **Peta riset final untuk fitur teknikal-saja**: plafonnya ≈ IC_IR 0.28.
+   Menembus 0.3 butuh amunisi baru — fundamental point-in-time & fitur
+   cross-sectional 844 ticker yang datalake tabung harian. Uji ulang rank-h20
+   multi-seed saat data itu matang (± beberapa bulan) adalah eksperimen
+   berikutnya yang paling bernilai.
+
 ## Algoritma v2: ensemble ranking lintas-saham + classifier (2026-07-28)
 
 Classifier menjawab "apakah saham X naik >2%?", padahal keputusan trading
