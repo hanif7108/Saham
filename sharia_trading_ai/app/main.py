@@ -246,9 +246,11 @@ async def _start_ml_tracker():
             await asyncio.to_thread(tracker.evaluate_matured)
         except Exception:  # noqa: BLE001
             pass
+        from zoneinfo import ZoneInfo
+        wib = ZoneInfo("Asia/Jakarta")
         while True:
             await asyncio.sleep(60)
-            now = datetime.now()
+            now = datetime.now(wib)          # jadwal SELALU jam WIB, apa pun TZ OS
             today = now.date()
             if not reminders.is_trading_day(today):
                 continue

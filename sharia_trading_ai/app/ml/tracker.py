@@ -27,10 +27,22 @@ import json
 import os
 from datetime import date, datetime
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 from app.ml.data_fetch import ML_DATA_DIR
+
+WIB = ZoneInfo("Asia/Jakarta")
+
+
+def now_wib() -> datetime:
+    """Waktu sekarang dalam WIB (Asia/Jakarta) — bebas dari zona waktu OS."""
+    return datetime.now(WIB)
+
+
+def today_wib() -> date:
+    return now_wib().date()
 
 STORE = ML_DATA_DIR / "ml_track.parquet"
 SUMMARY = ML_DATA_DIR / "ml_track_summary.json"
@@ -71,7 +83,7 @@ def _is_market_data_final(today: date) -> bool:
 
 def log_today(ranking: Optional[list[dict]] = None, force: bool = False) -> dict[str, Any]:
     """Catat prediksi ML + sinyal rule hari ini (idempoten per tanggal)."""
-    today = date.today()
+    today = today_wib()
     df = _load()
     if not df.empty and (df["date"] == today.isoformat()).any() and not force:
         return {"ok": True, "skipped": "sudah tercatat", "date": today.isoformat()}
@@ -107,7 +119,7 @@ def log_today(ranking: Optional[list[dict]] = None, force: bool = False) -> dict
             "realized_ret": None,
             "outcome": None,
             "ml_correct": None,
-            "logged_at": datetime.now().isoformat(timespec="seconds"),
+            "logged_at": now_wib().isoformat(timespec="seconds"),
         })
     if not rows:
         return {"ok": False, "skipped": "tidak ada prediksi ML tersedia di ranking"}
@@ -207,7 +219,7 @@ def stats(last_days: Optional[int] = None) -> dict[str, Any]:
         return {**res, "evaluated": 0}
     ev = df[df["evaluated"].astype(bool)].copy()
     if last_days:
-        cutoff = (pd.Timestamp.today() - pd.Timedelta(days=last_days)).date().isoformat()
+        cutoff = (pd.Timestamp(now_wib().date()) - pd.Timedelta(days=last_days)).date().isoformat()
         ev = ev[ev["date"] >= cutoff]
     res["evaluated"] = int(len(ev))
     if ev.empty:
@@ -267,7 +279,7 @@ def calibrate() -> dict[str, Any]:
 def _write_summary(df: Optional[pd.DataFrame] = None) -> dict[str, Any]:
     """Tulis ringkasan + ambang terkalibrasi (dibaca ml_signal & API)."""
     summ = {
-        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "updated_at": now_wib().isoformat(timespec="seconds"),
         "stats": stats(),
         "stats_90d": stats(last_days=90),
         "calibration": calibrate(),
@@ -323,7 +335,7 @@ def _fmt_rp(v: Any) -> str:
 def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any],
                         label: Optional[str] = None) -> str:
     """Susun pesan HTML ringkasan sinyal ML harian (murni dari data)."""
-    d = rows["date"].iloc[0] if not rows.empty else date.today().isoformat()
+    d = rows["date"].iloc[0] if not rows.empty else today_wib().isoformat()
     if label:
         d = f"{d} · {label}"
     n_conf = int(rows["confident"].sum()) if not rows.empty else 0
@@ -369,11 +381,11 @@ def _scan_rows() -> pd.DataFrame:
     if not sigs:
         return pd.DataFrame()
     rows = pd.DataFrame(sigs)
-    rows["date"] = date.today().isoformat()
+    rows["date"] = today_wib().isoformat()
     rows["rule_signal"] = None
     st = _load()
     if not st.empty:
-        today_rows = st[st["date"] == date.today().isoformat()]
+        today_rows = st[st["date"] == today_wib().isoformat()]
         if not today_rows.empty:
             m = today_rows.set_index("ticker")["rule_signal"]
             rows["rule_signal"] = rows["ticker"].map(m)
@@ -409,7 +421,7 @@ def run_daily() -> dict[str, Any]:
     try:
         from app.config import settings
         if getattr(settings, "ml_track_telegram", False) and (lg.get("ok") or lg.get("skipped")):
-            tg = telegram_summary(label="penutupan")
+            tg = telegram_summary(label=f"penutupan · {now_wib().strftime('%H:%M WIB')}")
     except Exception as e:  # noqa: BLE001
         tg = {"ok": False, "error": str(e)}
     return {"evaluate": ev, "log": lg, "telegram": tg}
@@ -431,9 +443,8 @@ def main() -> None:
     if args.telegram:
         print(json.dumps(telegram_summary(), ensure_ascii=False, indent=1))
     if args.telegram_scan:
-        from datetime import datetime as _dt
         print(json.dumps(telegram_summary(source="scan",
-                                          label=_dt.now().strftime("%H:%M WIB")),
+                                          label=now_wib().strftime("%H:%M WIB")),
                          ensure_ascii=False, indent=1))
     if args.report:
         print(json.dumps({"stats": stats(), "calibration": calibrate()},

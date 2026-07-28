@@ -243,10 +243,11 @@ def scan_universe(force: bool = False, hist_ttl: int = 14400) -> dict[str, Any]:
 
         rows.sort(key=lambda r: r["p_buy"], reverse=True)
         from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo as _ZI
         data = {**base, "signals": rows,
                 "n": len(rows),
                 "as_of": rows[0]["as_of"] if rows else None,
-                "generated_at": _dt.now().isoformat(timespec="seconds")}
+                "generated_at": _dt.now(_ZI("Asia/Jakarta")).isoformat(timespec="seconds")}
         _SCAN_CACHE.update(ts=_time.time(), data=data)
         return data
 
