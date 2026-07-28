@@ -514,3 +514,38 @@ label.fld .l{display:block;color:var(--dim);font-size:.78rem;font-weight:600;mar
   .bsjp-verdict-plan{grid-template-columns:1fr 1fr}
 }
 
+/* portfolio monitor redesign */
+.port-hero{padding:1.1rem 1.25rem}
+.port-hero-top{display:flex;flex-wrap:wrap;gap:1.2rem;align-items:flex-start;justify-content:space-between}
+.port-hero-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);font-weight:700}
+.port-hero-equity{font-size:1.85rem;font-weight:800;letter-spacing:-.5px;line-height:1.15;margin-top:.15rem}
+.port-hero-daily{min-width:160px;padding:.55rem .8rem;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.03)}
+.port-hero-daily.up{border-color:color-mix(in srgb, var(--buy) 45%, var(--line));background:color-mix(in srgb, var(--buy) 10%, transparent)}
+.port-hero-daily.down{border-color:color-mix(in srgb, var(--sell) 45%, var(--line));background:color-mix(in srgb, var(--sell) 10%, transparent)}
+.port-daily-val{font-size:1.35rem;font-weight:800;margin-top:.15rem}
+.port-hero-daily.up .port-daily-val{color:var(--buy)}
+.port-hero-daily.down .port-daily-val{color:var(--sell)}
+.port-hero-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.55rem;margin-top:1rem;padding-top:.85rem;border-top:1px solid var(--line)}
+.port-stat{display:flex;flex-direction:column;gap:.15rem}
+.port-stat .lbl{font-size:.65rem;text-transform:uppercase;color:var(--mute);font-weight:650}
+.port-stat b{font-size:.92rem}
+.port-toolbar{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;justify-content:space-between;margin-bottom:.75rem}
+.port-filters{display:flex;gap:.35rem;flex-wrap:wrap}
+.port-chip{border:1px solid var(--line);background:transparent;color:var(--mute);border-radius:999px;padding:.28rem .75rem;font-size:.74rem;font-weight:650;cursor:pointer}
+.port-chip.active{background:color-mix(in srgb, var(--brand) 18%, transparent);border-color:var(--brand);color:var(--text)}
+.port-table{width:100%;border-collapse:collapse;font-size:.84rem}
+.port-empty{text-align:center;padding:1.6rem 1rem}
+.port-roi-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.65rem}
+.port-roi-pill{padding:.65rem .75rem;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.03);display:flex;flex-direction:column;gap:.15rem}
+.port-roi-pill .lbl{font-size:.65rem;text-transform:uppercase;color:var(--mute);font-weight:650}
+.port-roi-pill b{font-size:1.15rem}
+.port-roi-pill.target{grid-column:span 1}
+.port-details,.port-manage{margin-top:.55rem}
+.port-details summary,.port-manage>summary{cursor:pointer;font-size:.82rem;font-weight:700;color:var(--mute);list-style:none}
+.port-details summary::-webkit-details-marker,.port-manage>summary::-webkit-details-marker{display:none}
+.port-manage>summary{padding:.2rem 0 .4rem;font-size:.9rem;color:var(--text)}
+.port-manage-body{margin-top:.7rem;padding-top:.7rem;border-top:1px solid var(--line)}
+@media(max-width:700px){
+  .port-hero-equity{font-size:1.45rem}
+  .port-daily-val{font-size:1.15rem}
+}

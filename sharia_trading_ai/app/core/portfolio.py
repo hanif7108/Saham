@@ -49,46 +49,57 @@ def _save(rows: list[dict[str, Any]]) -> None:
     STORE.write_text(json.dumps(rows, ensure_ascii=False, indent=2))
 
 
-def _current_price(ticker: str) -> float | None:
-    """Harga selive mungkin: intraday 5m (cache pendek), fallback ke close harian.
-
-    Harga posisi/jual butuh kesegaran — daily close bisa lag saat sesi berjalan.
-    `price_ttl_seconds` menjaga harga ≤ beberapa menit tanpa membebani yfinance.
-    """
+def _price_ttl(ticker: str) -> int:
+    """TTL cache harga: pendek saat sesi, panjang saat pasar tutup."""
     from datetime import datetime, time
     from app.data.provider import is_us_ticker
     is_us = is_us_ticker(ticker)
-    
     try:
         from zoneinfo import ZoneInfo
         tz = ZoneInfo("America/New_York" if is_us else "Asia/Jakarta")
     except Exception:
         tz = None
-
     now = datetime.now(tz) if tz else datetime.now()
-    
-    # US trading hours: 09:30 - 16:00 EST. IDX trading hours: 09:00 - 16:15 WIB.
     trading_start = time(9, 30) if is_us else time(9, 0)
     trading_end = time(16, 0) if is_us else time(16, 15)
-    
     if now.weekday() >= 5 or not (trading_start <= now.time() <= trading_end):
-        ttl = 43200  # 12 jam jika pasar tutup
-    else:
-        ttl = settings.price_ttl_seconds
+        return 43200  # 12 jam jika pasar tutup
+    return settings.price_ttl_seconds
 
+
+def _price_pair(ticker: str) -> tuple[float | None, float | None]:
+    """(harga_live, prev_close) dalam satu fetch agar daily P/L efisien."""
+    ttl = _price_ttl(ticker)
+    current: float | None = None
+    prev_close: float | None = None
+
+    try:
+        df = provider.get_history(ticker, period="10d", interval="1d", ttl=ttl)
+        if df is not None and not df.empty:
+            closes = df["Close"].dropna()
+            if len(closes) >= 1:
+                current = round(float(closes.iloc[-1]), 2)
+            if len(closes) >= 2:
+                prev_close = round(float(closes.iloc[-2]), 2)
+    except Exception:
+        pass
+
+    # Prefer intraday last price saat sesi berjalan (lebih segar dari daily close)
     try:
         intr = provider.get_history(ticker, period="1d", interval="5m", ttl=ttl)
         if intr is not None and not intr.empty:
-            return round(float(intr["Close"].iloc[-1]), 2)
+            live = float(intr["Close"].dropna().iloc[-1])
+            if live > 0:
+                current = round(live, 2)
     except Exception:
         pass
-    try:
-        df = provider.get_history(ticker, period="5d", ttl=ttl)
-        if df is None or df.empty:
-            return None
-        return round(float(df["Close"].iloc[-1]), 2)
-    except Exception:
-        return None
+
+    return current, prev_close
+
+
+def _current_price(ticker: str) -> float | None:
+    """Harga selive mungkin: intraday 5m (cache pendek), fallback ke close harian."""
+    return _price_pair(ticker)[0]
 
 
 def add_position(ticker: str, lots: int, avg_price: float,
@@ -149,13 +160,15 @@ def list_positions() -> dict[str, Any]:
     rows = _load()
     positions: list[dict[str, Any]] = []
     tot_cost = tot_value = tot_net_value = tot_total_cost = 0.0
-    
+    tot_daily_pl = 0.0
+    tot_prev_value = 0.0
+
     trading_cost = trading_total_cost = trading_value = trading_net_value = 0.0
     investasi_cost = investasi_total_cost = investasi_value = investasi_net_value = 0.0
 
-    # Pemuatan harga secara paralel agar tidak memblokir sekuensial (terutama saat cache kosong)
+    # Pemuatan harga + prev_close paralel
     with ThreadPoolExecutor(max_workers=min(5, max(1, len(rows)))) as executor:
-        prices = list(executor.map(lambda r: _current_price(r["ticker"]), rows))
+        price_pairs = list(executor.map(lambda r: _price_pair(r["ticker"]), rows))
 
     usd_rate = get_usd_idr_rate()
 
@@ -165,12 +178,12 @@ def list_positions() -> dict[str, Any]:
         is_us = is_us_ticker(ticker)
         rate = usd_rate if is_us else 1.0
         shares_multiplier = 1 if is_us else MM.SHARES_PER_LOT
-        
+
         shares = r["lots"] * shares_multiplier
         gross_cost = shares * r["avg_price"]
         buy_fee = gross_cost * fee_buy / 100
         total_cost = gross_cost + buy_fee                       # modal riil (termasuk biaya beli)
-        cur = prices[idx]
+        cur, prev_close = price_pairs[idx]
         value = shares * cur if cur is not None else None       # nilai pasar kotor
         sell_fee = (value * fee_sell / 100) if value is not None else None
         net_value = (value - sell_fee) if value is not None else None   # hasil bersih bila dijual
@@ -178,16 +191,24 @@ def list_positions() -> dict[str, Any]:
         pl_pct = round(pl / gross_cost * 100, 2) if (pl is not None and gross_cost) else None
         net_pl = (net_value - total_cost) if net_value is not None else None   # P/L bersih (semua biaya)
         net_pl_pct = round(net_pl / total_cost * 100, 2) if (net_pl is not None and total_cost) else None
-        
+
+        # P/L hari ini vs prev close (mark-to-market)
+        daily_pl = daily_pl_pct = None
+        if cur is not None and prev_close and prev_close > 0:
+            daily_pl = shares * (cur - prev_close)
+            daily_pl_pct = round((cur - prev_close) / prev_close * 100, 2)
+            tot_daily_pl += daily_pl * rate
+            tot_prev_value += shares * prev_close * rate
+
         # harga impas (break-even)
         if shares and fee_sell < 100:
             be_val = total_cost / (shares * (1 - fee_sell / 100))
             break_even = round(be_val, 2) if is_us else round(be_val)
         else:
             break_even = None
-            
+
         compliant = sharia_screening.screen_sharia(ticker)["compliant"]
-        
+
         # Sum in IDR (convert if US)
         tot_cost += gross_cost * rate
         tot_total_cost += total_cost * rate
@@ -210,37 +231,59 @@ def list_positions() -> dict[str, Any]:
                 trading_net_value += net_value * rate
 
         positions.append({
-            **r, 
-            "shares": shares, 
-            "cost": round(gross_cost, 2) if is_us else round(gross_cost), 
+            **r,
+            "shares": shares,
+            "cost": round(gross_cost, 2) if is_us else round(gross_cost),
             "total_cost": round(total_cost, 2) if is_us else round(total_cost),
-            "buy_fee": round(buy_fee, 2) if is_us else round(buy_fee), 
-            "fee_buy_pct": fee_buy, 
+            "buy_fee": round(buy_fee, 2) if is_us else round(buy_fee),
+            "fee_buy_pct": fee_buy,
             "fee_sell_pct": fee_sell,
-            "current_price": cur, 
+            "current_price": cur,
+            "prev_close": prev_close,
             "value": round(value, 2) if (value is not None and is_us) else round(value) if value is not None else None,
             "sell_fee": round(sell_fee, 2) if (sell_fee is not None and is_us) else round(sell_fee) if sell_fee is not None else None,
             "net_value": round(net_value, 2) if (net_value is not None and is_us) else round(net_value) if net_value is not None else None,
-            "pl": round(pl, 2) if (pl is not None and is_us) else round(pl) if pl is not None else None, 
+            "pl": round(pl, 2) if (pl is not None and is_us) else round(pl) if pl is not None else None,
             "pl_pct": pl_pct,
-            "net_pl": round(net_pl, 2) if (net_pl is not None and is_us) else round(net_pl) if net_pl is not None else None, 
+            "net_pl": round(net_pl, 2) if (net_pl is not None and is_us) else round(net_pl) if net_pl is not None else None,
             "net_pl_pct": net_pl_pct,
-            "break_even": break_even, 
+            "daily_pl": round(daily_pl, 2) if (daily_pl is not None and is_us) else round(daily_pl) if daily_pl is not None else None,
+            "daily_pl_pct": daily_pl_pct,
+            "break_even": break_even,
             "syariah": compliant,
             "type": p_type,
             "currency": "USD" if is_us else "IDR",
             "rate": rate
         })
-        
+
     tot_pl = tot_value - tot_cost
     tot_net_pl = tot_net_value - tot_total_cost
-    
-    trading_pl = trading_value - trading_cost
+
     trading_net_pl = trading_net_value - trading_total_cost
-    
-    investasi_pl = investasi_value - investasi_cost
     investasi_net_pl = investasi_net_value - investasi_total_cost
-    
+    daily_pl_pct = round(tot_daily_pl / tot_prev_value * 100, 2) if tot_prev_value else 0.0
+
+    # Realized P/L dari trade yang ditutup hari ini (WIB)
+    from datetime import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("Asia/Jakarta")).date().isoformat()
+    except Exception:
+        today = datetime.now().date().isoformat()
+    realized_today_pl = 0.0
+    realized_today_n = 0
+    try:
+        from app.core import roi as roi_mod
+        for t in roi_mod._load():
+            closed = str(t.get("closed") or "")
+            if closed.startswith(today):
+                realized_today_pl += float(t.get("roi_idr") or 0)
+                realized_today_n += 1
+    except Exception:
+        pass
+
+    day_total_pl = tot_daily_pl + realized_today_pl
+
     return {
         "positions": positions,
         "summary": {
@@ -251,6 +294,12 @@ def list_positions() -> dict[str, Any]:
             "total_net_pl": round(tot_net_pl),
             "total_net_pl_pct": round(tot_net_pl / tot_total_cost * 100, 2) if tot_total_cost else 0,
             "jumlah_posisi": len(positions),
+            "daily_pl": round(tot_daily_pl),
+            "daily_pl_pct": daily_pl_pct,
+            "realized_today_pl": round(realized_today_pl),
+            "realized_today_n": realized_today_n,
+            "day_total_pl": round(day_total_pl),
+            "as_of": today,
         },
         "trading_summary": {
             "total_cost": round(trading_cost), "total_modal": round(trading_total_cost),

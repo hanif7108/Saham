@@ -17,15 +17,3 @@ exports/
 
 # OS
 .DS_Store
-
-# melebihi batas GitHub 100MB
-backup_old_flask_app/AI Scanner/StockHunter.zip
-
-# Build / binary artifacts (melebihi atau mendekati batas GitHub)
-sharia_trading_ai/bin/
-sharia_trading_ai/dist/
-sharia_trading_ai/*.msi
-sharia_trading_ai/ollama_models
-TradingAgents-main.zip
-2412.20138v7.pdf
-Untitled/

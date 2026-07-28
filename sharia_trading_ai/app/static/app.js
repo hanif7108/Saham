@@ -174,6 +174,11 @@ document.querySelectorAll('.tab-btn-main').forEach(t => t.onclick = () => {
   if(p==='dash' && !_loaded.cc){ loadCrossCheck(); }   // auto-load radar saat buka Dashboard
 });
 
+/* Buka accordion Kelola → muat detail RDN */
+document.getElementById('port-manage')?.addEventListener('toggle', (e) => {
+  if(e.target.open) loadRDN();
+});
+
 /* sub-tabs (+ lazy load) */
 document.querySelectorAll('.sub-tab-btn').forEach(btn => {
   btn.onclick = () => {
@@ -2451,58 +2456,149 @@ function loadPedoman(){
 }
 
 /* ===================== PORTOFOLIO ===================== */
-async function loadPortfolio(){
-  $('#port-table').innerHTML='<div class="empty"><span class="spin"></span> Memuat harga…</div>';
-  try{ const d=await api('/api/portfolio'); const s=d.summary;
-    window._portfolioData = d;
-    $('#port-summary').innerHTML=`${miniStat('Total Nilai',fmt(s.total_value),s.jumlah_posisi+' posisi')}
-      ${plStat('P/L Bersih',s.total_net_pl)}${plStat('Return Bersih',s.total_net_pl_pct,true)}`;
-    
-    const trading_ps = d.positions.filter(p => (p.type || 'trading') === 'trading');
-    const investasi_ps = d.positions.filter(p => p.type === 'investasi');
-    
-    function renderTable(ps, title, summary) {
-      let h = `<h3 class="sec" style="margin: 1.5rem 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .4rem; display: flex; justify-content: space-between; align-items: center;">
-        <span>📊 ${title}</span>
-        <span style="font-size: .8rem; font-weight: normal; color: var(--mute);">
-          Modal: <b>Rp ${fmt(summary.total_modal)}</b> · pasar: <b>Rp ${fmt(summary.total_value)}</b> · P/L: <b class="${summary.total_pl>=0?'pl-up':'pl-down'}">${summary.total_pl>=0?'+':''}Rp ${fmt(Math.abs(summary.total_pl))} (${summary.total_pl_pct>=0?'+':''}${summary.total_pl_pct}%)</b>
-        </span>
-      </h3>`;
-      if (!ps.length) {
-        h += '<div class="empty" style="padding: 1rem 0;">Belum ada posisi di portfolio ini.</div>';
-        return h;
-      }
-      h += '<table><thead><tr><th>Kode</th><th>Lot / Lembar (US)</th><th style="text-align:right">Avg</th><th style="text-align:right" title="harga impas setelah biaya beli+jual">Impas</th><th style="text-align:right">Harga</th><th style="text-align:right" title="nilai pasar kotor → hasil bersih bila dijual (stlh fee jual)">Nilai (kotor → jual bersih)</th><th style="text-align:right" title="setelah biaya beli & jual">P/L Bersih</th><th></th></tr></thead><tbody>';
-      ps.forEach(p => { 
-        const isUSD = p.currency === 'USD';
-        const cSymbol = isUSD ? '$' : 'Rp ';
-        const cFmt = val => {
-          if (val === null || val === undefined || val === '') return '—';
-          return isUSD ? Number(val).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : Number(val).toLocaleString('id-ID');
-        };
-        const up=(p.net_pl||0)>=0; 
-        const beUp=p.current_price>=p.break_even;
-        h += `<tr><td><span class="tkr">${p.ticker}</span> ${p.syariah?'<span class="badge buy" style="font-size:.6rem">✓</span>':'<span class="badge sell" style="font-size:.6rem">non</span>'}${p.broker?` <span class="badge na" style="font-size:.55rem" title="fee beli ${p.fee_buy_pct}% / jual ${p.fee_sell_pct}%">${esc(p.broker)}</span>`:''}</td>
-          <td class="num">${p.lots} <span class="mut" style="font-size:.65rem">${isUSD?'sh':'lot'}</span></td>
-          <td style="text-align:right" class="num">${cSymbol}${cFmt(p.avg_price)}</td>
-          <td style="text-align:right" class="num ${beUp?'pl-up':'pl-down'}" title="impas (sudah hitung biaya)">${cSymbol}${cFmt(p.break_even)}</td>
-          <td style="text-align:right" class="num">${cSymbol}${cFmt(p.current_price)}</td>
-          <td style="text-align:right" class="num">${cSymbol}${cFmt(p.value)}<br><span class="mut" style="font-size:.62rem" title="hasil bersih bila dijual semua kini (stlh fee jual ${p.fee_sell_pct}%)">jual ≈ <b style="color:var(--buy)">${cSymbol}${cFmt(p.net_value)}</b></span></td>
-          <td style="text-align:right" class="num ${up?'pl-up':'pl-down'}"><b>${p.net_pl>=0?'+':''}${cSymbol}${cFmt(Math.abs(p.net_pl))}</b><br><span style="font-size:.72rem">${p.net_pl_pct>=0?'+':''}${p.net_pl_pct}%</span><br><span class="mut" style="font-size:.62rem" title="P/L kotor (harga saja)">kotor ${p.pl>=0?'+':''}${cSymbol}${cFmt(Math.abs(p.pl))}</span></td>
-          <td style="text-align:right;white-space:nowrap"><button class="btn ghost" style="padding:.2rem .5rem;font-size:.7rem" onclick="openSell(${p.id},'${p.ticker}',${p.lots},${p.current_price||p.avg_price},${p.fee_sell_pct||0.25})" title="Jual (sebagian/penuh) & sinkron">💰 Jual</button>
-            <button class="del-btn" onclick="delPosition(${p.id})" title="Hapus tanpa catat">🗑</button></td></tr>`;
-      });
-      h += '</tbody></table>';
-      return h;
-    }
-    
-    let htmlContent = renderTable(trading_ps, 'Portofolio Trading Harian', d.trading_summary || {total_modal:0,total_value:0,total_pl:0,total_pl_pct:0});
-    htmlContent += renderTable(investasi_ps, 'Portofolio Investasi Saham (Tahunan)', d.investasi_summary || {total_modal:0,total_value:0,total_pl:0,total_pl_pct:0});
-    
-    $('#port-table').innerHTML = htmlContent;
-  }catch(e){ $('#port-table').innerHTML='<div class="empty">Gagal memuat.</div>'; }
-  loadRDN(); loadROI();
+window._portFilter = 'all';
+
+function _portSigned(v, pct){
+  if(v==null||Number.isNaN(v)) return '—';
+  const n = Number(v);
+  const sign = n>=0?'+':'';
+  if(pct) return `${sign}${n}%`;
+  return `${sign}Rp ${fmt(Math.abs(n))}`;
 }
+
+function renderPortHero(d, rdn){
+  const s = d.summary || {};
+  const t = (rdn && rdn.total) || {};
+  const equity = t.equity != null ? t.equity : (s.total_net_value||0) + (t.cash||0) + (t.gold_value||0);
+  const dayPl = s.day_total_pl != null ? s.day_total_pl : (s.daily_pl||0);
+  const dayPct = s.daily_pl_pct;
+  const dayUp = dayPl >= 0;
+  const heroEq = $('#port-hero-equity');
+  const heroDaily = $('#port-hero-daily');
+  const heroStats = $('#port-hero-stats');
+  const heroAsof = $('#port-hero-asof');
+  if(heroEq) heroEq.textContent = 'Rp ' + fmt(equity);
+  if(heroAsof) heroAsof.textContent = s.as_of ? `Per ${s.as_of} · vs prev close` : '';
+  if(heroDaily){
+    heroDaily.className = 'port-hero-daily ' + (dayUp ? 'up' : 'down');
+    const val = heroDaily.querySelector('.port-daily-val');
+    const sub = heroDaily.querySelector('.port-daily-sub');
+    if(val) val.textContent = _portSigned(dayPl);
+    const parts = [];
+    if(dayPct!=null) parts.push(`${dayPct>=0?'+':''}${dayPct}% MTM`);
+    if(s.realized_today_n) parts.push(`realized ${s.realized_today_n} trade: ${_portSigned(s.realized_today_pl)}`);
+    else parts.push('belum ada jual hari ini');
+    if(sub) sub.textContent = parts.join(' · ');
+  }
+  if(heroStats){
+    heroStats.innerHTML = `
+      <div class="port-stat"><span class="lbl">Aset Saham</span><b>Rp ${fmt(s.total_value||0)}</b></div>
+      <div class="port-stat"><span class="lbl">P/L Bersih</span><b class="${(s.total_net_pl||0)>=0?'pl-up':'pl-down'}">${_portSigned(s.total_net_pl)} <span class="mut">(${_portSigned(s.total_net_pl_pct,true)})</span></b></div>
+      <div class="port-stat"><span class="lbl">Cash</span><b>Rp ${fmt(t.cash||0)}</b></div>
+      <div class="port-stat"><span class="lbl">Emas</span><b>Rp ${fmt(t.gold_value||0)}</b></div>
+      <div class="port-stat"><span class="lbl">Posisi</span><b>${s.jumlah_posisi||0}</b></div>
+      <div class="port-stat"><span class="lbl">Δ Hari Ini (MTM)</span><b class="${(s.daily_pl||0)>=0?'pl-up':'pl-down'}">${_portSigned(s.daily_pl)}</b></div>`;
+  }
+}
+
+function renderPortTable(d, filter){
+  const all = d.positions || [];
+  const f = filter || 'all';
+  const ps = f==='all' ? all : all.filter(p => (p.type||'trading') === f);
+  const meta = $('#port-filter-meta');
+  if(meta){
+    const ts = d.trading_summary || {};
+    const is_ = d.investasi_summary || {};
+    meta.textContent = f==='all'
+      ? `${all.length} posisi · Trading ${ts.jumlah_posisi||0} · Investasi ${is_.jumlah_posisi||0}`
+      : `${ps.length} posisi ${f}`;
+  }
+
+  if(!all.length){
+    const nTrades = (window._roiData && window._roiData.realized && window._roiData.realized.n_trades) || 0;
+    return `<div class="port-empty">
+      <div style="font-size:1.6rem;margin-bottom:.4rem">📭</div>
+      <b>Tidak ada posisi terbuka</b>
+      <p class="sub" style="margin:.35rem 0 .8rem">${nTrades?`ROI realized dari ${nTrades} trade tetap tercatat di bawah.`:'Tambah posisi atau impor PDF broker untuk mulai pantau harian.'}</p>
+      <button class="btn primary" onclick="document.getElementById('port-manage').open=true;document.getElementById('port-manage').scrollIntoView({behavior:'smooth'});loadRDN()">⚙️ Kelola / Impor</button>
+    </div>`;
+  }
+  if(!ps.length){
+    return `<div class="empty" style="padding:1.2rem 0">Tidak ada posisi di filter ini.</div>`;
+  }
+
+  let h = `<div class="table-wrap"><table class="port-table"><thead><tr>
+    <th>Kode</th><th>Tipe</th><th>Lot</th>
+    <th style="text-align:right">Avg</th>
+    <th style="text-align:right">Harga</th>
+    <th style="text-align:right" title="Perubahan vs prev close">Hari Ini</th>
+    <th style="text-align:right">Nilai</th>
+    <th style="text-align:right" title="P/L bersih setelah biaya">P/L</th>
+    <th></th></tr></thead><tbody>`;
+
+  const sorted = [...ps].sort((a,b)=> Math.abs(b.daily_pl||0) - Math.abs(a.daily_pl||0));
+  sorted.forEach(p=>{
+    const isUSD = p.currency === 'USD';
+    const cSymbol = isUSD ? '$' : 'Rp ';
+    const cFmt = val => {
+      if(val===null||val===undefined||val==='') return '—';
+      return isUSD ? Number(val).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : Number(val).toLocaleString('id-ID');
+    };
+    const up=(p.net_pl||0)>=0;
+    const dUp=(p.daily_pl||0)>=0;
+    const tipe = (p.type||'trading')==='investasi' ? 'Investasi' : 'Trading';
+    const dailyCell = (p.daily_pl==null)
+      ? '<span class="mut">—</span>'
+      : `<b class="${dUp?'pl-up':'pl-down'}">${p.daily_pl>=0?'+':''}${cSymbol}${cFmt(Math.abs(p.daily_pl))}</b><br><span style="font-size:.7rem" class="${dUp?'pl-up':'pl-down'}">${p.daily_pl_pct>=0?'+':''}${p.daily_pl_pct}%</span>`;
+    h += `<tr>
+      <td><span class="tkr">${p.ticker}</span> ${p.syariah?'<span class="badge buy" style="font-size:.55rem">✓</span>':'<span class="badge sell" style="font-size:.55rem">non</span>'}
+        ${p.broker?`<div class="mut" style="font-size:.58rem;margin-top:.1rem">${esc(p.broker)}</div>`:''}</td>
+      <td><span class="badge na" style="font-size:.6rem">${tipe}</span></td>
+      <td class="num">${p.lots} <span class="mut" style="font-size:.62rem">${isUSD?'sh':'lot'}</span></td>
+      <td style="text-align:right" class="num">${cSymbol}${cFmt(p.avg_price)}</td>
+      <td style="text-align:right" class="num">${cSymbol}${cFmt(p.current_price)}</td>
+      <td style="text-align:right" class="num">${dailyCell}</td>
+      <td style="text-align:right" class="num"><b>${cSymbol}${cFmt(p.value)}</b><br><span class="mut" style="font-size:.62rem">jual ≈ ${cSymbol}${cFmt(p.net_value)}</span></td>
+      <td style="text-align:right" class="num ${up?'pl-up':'pl-down'}"><b>${p.net_pl>=0?'+':''}${cSymbol}${cFmt(Math.abs(p.net_pl||0))}</b><br><span style="font-size:.7rem">${p.net_pl_pct>=0?'+':''}${p.net_pl_pct}%</span></td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn ghost" style="padding:.2rem .45rem;font-size:.68rem" onclick="openSell(${p.id},'${p.ticker}',${p.lots},${p.current_price||p.avg_price},${p.fee_sell_pct||0.25})">💰</button>
+        <button class="del-btn" onclick="delPosition(${p.id})" title="Hapus tanpa catat">🗑</button>
+      </td></tr>`;
+  });
+  h += '</tbody></table></div>';
+  return h;
+}
+
+function filterPortPositions(filter){
+  window._portFilter = filter;
+  document.querySelectorAll('#port-filters .port-chip').forEach(b=>{
+    b.classList.toggle('active', b.dataset.filter===filter);
+  });
+  if(window._portfolioData){
+    $('#port-table').innerHTML = renderPortTable(window._portfolioData, filter);
+  }
+}
+
+async function loadPortfolio(){
+  $('#port-table').innerHTML='<div class="empty"><span class="spin"></span> Memuat harga & ROI harian…</div>';
+  try{
+    const [d, rdn] = await Promise.all([
+      api('/api/portfolio'),
+      api('/api/portfolio/rdn').catch(()=>null),
+    ]);
+    window._portfolioData = d;
+    window._rdnBreakdown = rdn;
+    renderPortHero(d, rdn);
+    $('#port-table').innerHTML = renderPortTable(d, window._portFilter||'all');
+  }catch(e){
+    console.error(e);
+    $('#port-table').innerHTML='<div class="empty">Gagal memuat portofolio.</div>';
+  }
+  loadROI();
+  const manage = document.getElementById('port-manage');
+  if(manage && manage.open) loadRDN();
+}
+
 async function loadInvestasiSaham() {
   $('#inv-summary-cards').innerHTML = '<div class="empty"><span class="spin"></span> Memuat ringkasan…</div>';
   $('#inv-port-table-container').innerHTML = '<div class="empty"><span class="spin"></span> Memuat portofolio…</div>';
@@ -2712,33 +2808,53 @@ async function loadInvestasiSaham() {
   }
 }
 async function loadROI(){
-  try{ const d=await api('/api/portfolio/roi'); const I=d.integral, U=d.unrealized, R=d.realized, a=d.adaptive;
+  try{
+    const d=await api('/api/portfolio/roi');
+    window._roiData = d;
+    const I=d.integral, U=d.unrealized, R=d.realized, a=d.adaptive;
     const ok=d.on_track, roiC=I.roi_pct>=0?'pl-up':'pl-down';
     const prog=Math.max(0,Math.min(100, (I.roi_pct/d.target_pct)*100));
-    let h=`<div class="grid g-3" style="gap:.8rem;margin-top:.5rem">
-      <div class="cardlet"><div class="lbl mut" style="font-size:.7rem">ROI INTEGRAL (realized+unrealized)</div>
-        <div class="num ${roiC}" style="font-size:1.5rem;font-weight:800">${I.roi_pct>=0?'+':''}${I.roi_pct}%</div>
-        <div class="mut" style="font-size:.7rem">${fmt(I.pl)} dari modal ${fmt(I.invested)}</div></div>
-      <div class="cardlet"><div class="lbl mut" style="font-size:.7rem">REALIZED (${R.n_trades} trade)</div>
-        <div class="num ${(R.roi_pct||0)>=0?'pl-up':'pl-down'}" style="font-size:1.3rem;font-weight:800">${R.roi_pct==null?'–':(R.roi_pct>=0?'+':'')+R.roi_pct+'%'}</div>
-        <div class="mut" style="font-size:.7rem">win ${R.win_rate??'–'}% · avg ${R.avg_roi??'–'}%</div></div>
-      <div class="cardlet"><div class="lbl mut" style="font-size:.7rem">UNREALIZED (terbuka)</div>
-        <div class="num ${(U.roi_pct||0)>=0?'pl-up':'pl-down'}" style="font-size:1.3rem;font-weight:800">${U.roi_pct>=0?'+':''}${U.roi_pct}%</div>
-        <div class="mut" style="font-size:.7rem">${fmt(U.pl)}</div></div></div>`;
-    h+=`<div style="margin-top:.7rem"><div class="between" style="font-size:.78rem"><span>Progres ke target <b>${d.target_pct}%</b></span>
-      <span class="${ok?'pl-up':'pl-down'}">${ok?'✓ on-track':'gap '+d.gap_to_target+'%'}</span></div>
-      <div class="bar" style="height:9px;margin-top:.3rem"><i style="width:${prog}%;background:${ok?'var(--buy)':'var(--brand-2)'}"></i></div></div>`;
-    h+=`<div style="margin-top:.7rem"><div class="mut" style="font-size:.74rem;margin-bottom:.2rem">📈 Equity curve — ROI kumulatif realized vs target ${d.target_pct}%</div>${roiChart(d.curve, d.target_pct)}</div>`;
+
+    const strip = $('#port-roi-strip');
+    if(strip){
+      strip.innerHTML = `<div class="port-roi-strip">
+        <div class="port-roi-pill">
+          <span class="lbl">Integral</span>
+          <b class="${roiC}">${I.roi_pct>=0?'+':''}${I.roi_pct}%</b>
+          <span class="mut">${fmt(I.pl)}</span>
+        </div>
+        <div class="port-roi-pill">
+          <span class="lbl">Realized · ${R.n_trades} trade</span>
+          <b class="${(R.roi_pct||0)>=0?'pl-up':'pl-down'}">${R.roi_pct==null?'–':(R.roi_pct>=0?'+':'')+R.roi_pct+'%'}</b>
+          <span class="mut">win ${R.win_rate??'–'}%</span>
+        </div>
+        <div class="port-roi-pill">
+          <span class="lbl">Unrealized</span>
+          <b class="${(U.roi_pct||0)>=0?'pl-up':'pl-down'}">${U.roi_pct>=0?'+':''}${U.roi_pct}%</b>
+          <span class="mut">${fmt(U.pl)}</span>
+        </div>
+        <div class="port-roi-pill target">
+          <span class="lbl">Target ${d.target_pct}%</span>
+          <b class="${ok?'pl-up':'pl-down'}">${ok?'On track':'Gap '+d.gap_to_target+'%'}</b>
+          <div class="bar" style="height:7px;margin-top:.35rem"><i style="width:${prog}%;background:${ok?'var(--buy)':'var(--brand-2)'}"></i></div>
+        </div>
+      </div>`;
+    }
+
+    let h=`<div class="mut" style="font-size:.74rem;margin-bottom:.2rem">📈 Equity curve — ROI kumulatif realized vs target ${d.target_pct}%</div>${roiChart(d.curve, d.target_pct)}`;
     h+=`<div class="sub" style="margin-top:.6rem;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:10px;padding:.55rem .8rem">
-      🤖 <b>Strategi adaptif</b> (ROI Integral): ambang akurasi BELI = <b>${a.min_buy_accuracy}%</b> · target jual net <b>${a.take_profit_net_pct}%</b>
+      🤖 <b>Strategi adaptif</b>: ambang akurasi BELI = <b>${a.min_buy_accuracy}%</b> · target jual net <b>${a.take_profit_net_pct}%</b>
       ${a.roi_pct!=null?` · ROI basis <b>${a.roi_pct}%</b> (${esc(a.roi_basis||'integral')})`:''}
-      ${(a.notes&&a.notes[0])?`<div class="mut" style="font-size:.72rem;margin-top:.25rem">${esc(a.notes[0])}</div>`:''}
       ${(a.notes||[]).map(n=>`<div class="mut" style="font-size:.74rem;margin-top:.2rem">• ${esc(n)}</div>`).join('')}</div>`;
     if(d.trades&&d.trades.length){
       h+=`<div style="margin-top:.6rem;font-size:.76rem"><span class="mut">Riwayat:</span> `+d.trades.slice(-6).reverse().map(t=>`<span class="badge ${t.win?'buy':'sell'}" title="${t.lots} lot @ ${fmt(t.avg_price)}→${fmt(t.exit_price)}">${t.ticker} ${t.roi_pct>=0?'+':''}${t.roi_pct}%</span>`).join(' ')+`</div>`;
     }
-    $('#port-roi').innerHTML=h;
-  }catch(e){ $('#port-roi').innerHTML='<p class="sub">Gagal memuat ROI.</p>'; }
+    const detail = $('#port-roi');
+    if(detail) detail.innerHTML=h;
+  }catch(e){
+    const strip=$('#port-roi-strip'); if(strip) strip.innerHTML='<p class="sub">Gagal memuat ROI.</p>';
+    const detail=$('#port-roi'); if(detail) detail.innerHTML='';
+  }
 }
 function roiChart(curve, target){
   if(!curve||!curve.length) return '<div class="sub" style="font-size:.76rem">Belum ada transaksi tertutup — kurva muncul setelah Anda menutup posisi via tombol 💰 Jual.</div>';
