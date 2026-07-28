@@ -16,5 +16,7 @@ ml_data/
 # Artifact ML: commit hanya horizon default (h5) supaya repo tetap ramping;
 # h10/h20 dihasilkan ulang oleh scripts/retrain_ml.sh di Mac Mini.
 app/ml/artifacts/*
-!app/ml/artifacts/ml_signal_h5.txt
-!app/ml/artifacts/ml_signal_h5.meta.json
+!app/ml/artifacts/ml_signal_h10.txt
+!app/ml/artifacts/ml_signal_h10.meta.json
+!app/ml/artifacts/ml_rank_h10.txt
+!app/ml/artifacts/ml_rank_h10.meta.json

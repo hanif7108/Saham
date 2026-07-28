@@ -2073,14 +2073,14 @@ function loadEksekusi(){
   <div class="panel-header"><h2>🎯 Pedoman Eksekusi Harian</h2></div>
   <p class="dim">Prinsip: <b>mesin mengusulkan, manusia memutuskan.</b> Screening manual bukan penyaring awal — perannya di gerbang akhir. Ditetapkan 28 Jul 2026 berdasarkan bukti walk-forward di data sendiri; ditinjau ulang tiap bulan lewat panel Track Record.</p>
 
-  <h4>0. Mengapa urutan ini? (bukti backtest 2024–2026, top-5, biaya 0.4%)</h4>
+  <h4>0. Mengapa urutan ini? (backtest SADAR-BIAYA 2024–2026: fee 0.4% + slippage 2 tick BEI, harga ≥ Rp200)</h4>
   <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem">
-    <tr style="text-align:left;color:var(--text-muted)"><th style="padding:.3rem 0">Strategi seleksi</th><th style="text-align:right">Sharpe</th><th style="text-align:right">Return</th><th style="text-align:right">Max DD</th></tr>
-    <tr><td style="padding:.25rem 0">Screening konvensional top-10 saja (≈ screening manual disiplin)</td><td style="text-align:right">0.24</td><td style="text-align:right">+3.8%</td><td style="text-align:right">−50%</td></tr>
-    <tr><td style="padding:.25rem 0">Screening dulu → ML memilih di dalamnya</td><td style="text-align:right">0.76</td><td style="text-align:right">+76%</td><td style="text-align:right">−45%</td></tr>
-    <tr><td style="padding:.25rem 0"><b>ML ensemble seluruh universe → review manual di akhir</b></td><td style="text-align:right"><b>1.46</b></td><td style="text-align:right"><b>+224%</b></td><td style="text-align:right"><b>−37%</b></td></tr>
+    <tr style="text-align:left;color:var(--text-muted)"><th style="padding:.3rem 0">Konfigurasi</th><th style="text-align:right">Sharpe</th><th style="text-align:right">Return</th><th style="text-align:right">Max DD</th></tr>
+    <tr><td style="padding:.25rem 0">IHSG (benchmark periode sama)</td><td style="text-align:right">−0.29</td><td style="text-align:right">−17.6%</td><td style="text-align:right">−42%</td></tr>
+    <tr><td style="padding:.25rem 0">ML horizon 5 hari (turnover tinggi → biaya makan edge)</td><td style="text-align:right">−0.28</td><td style="text-align:right">−41%</td><td style="text-align:right">−50%</td></tr>
+    <tr><td style="padding:.25rem 0"><b>ML horizon 10 hari + gerbang classifier + harga ≥ Rp500</b></td><td style="text-align:right"><b>+0.53</b></td><td style="text-align:right"><b>+39%</b></td><td style="text-align:right"><b>−39%</b></td></tr>
   </table></div>
-  <p class="dim" style="font-size:.78rem">Pelajaran: menyaring lebih dulu memangkas ruang peluang model; sentuhan manusia paling bernilai sebagai <i>gerbang risiko</i>, bukan sumber kandidat.</p>
+  <p class="dim" style="font-size:.78rem">Pelajaran keras yang jujur: tanpa biaya, backtest memamerkan +224%; dengan slippage tick BEI, strategi mingguan justru RUGI. Edge nyata baru muncul di horizon 2 minggu, saham ≥ Rp500. Angka indah tanpa model biaya = ilusi. Sentuhan manusia tetap gerbang risiko, bukan sumber kandidat.</p>
 
   <h4>1. Ritme harian (WIB, hari bursa)</h4>
   <ul>
@@ -4601,7 +4601,7 @@ async function loadMlSignals(refresh=false){
     html+=`<div class="mut" style="font-size:.76rem;margin:.7rem 0 .4rem">⚠️ <b>Peringatan SELL terkuat</b></div>
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">${header}${sells.map(chip).join('')}</table></div>`;
   }
-  html+=`<div class="mut" style="font-size:.7rem;margin-top:.55rem;line-height:1.5">✓ = melewati ambang confidence. Model LightGBM walk-forward, label: return 5 hari bursa &gt; +2% (BUY) / &lt; −2% (SELL). Realisasinya direkam otomatis di panel Track Record di bawah.</div>`;
+  html+=`<div class="mut" style="font-size:.7rem;margin-top:.55rem;line-height:1.5">✓ = melewati ambang confidence · 🚫 = veto P(SELL) tinggi. Label: return 10 hari bursa &gt; +3% (BUY) / &lt; −3% (SELL). Saham &lt; Rp500 dikecualikan (slippage tick BEI menggerus edge — backtest sadar-biaya). Realisasi direkam di panel Track Record di bawah.</div>`;
   el.innerHTML=html;
 }
 
@@ -4625,7 +4625,7 @@ async function loadMlTrack(){
   if(!s.evaluated){
     el.innerHTML=`<div class="mut" style="font-size:.82rem;line-height:1.6">
       Belum ada prediksi yang jatuh tempo. Sistem mencatat prediksi ML tiap sore hari bursa (${esc(String((d&&d.updated_at)||'menunggu pencatatan pertama'))})
-      dan mengevaluasinya vs harga aktual setelah horizon 5 hari bursa. Track record terisi otomatis mulai ±1 minggu setelah pencatatan pertama.
+      dan mengevaluasinya vs harga aktual setelah horizon berjalan (10 hari bursa). Track record terisi otomatis begitu prediksi pertama jatuh tempo.
       <b>Tercatat:</b> ${s.logged_total||0} prediksi · <b>menunggu evaluasi:</b> ${s.pending||0}.</div>`;
     return;
   }
@@ -4640,7 +4640,7 @@ async function loadMlTrack(){
       <tr><td style="padding:.25rem 0">📐 Rule-based BUY-ish</td><td>${cell(s.rule_buyish)}</td></tr>
       <tr><td style="padding:.25rem 0">🌐 Baseline universe</td><td>${s.universe_baseline?((s.universe_baseline.avg_ret_pct>=0?'+':'')+s.universe_baseline.avg_ret_pct+'% avg (n='+s.universe_baseline.n+')'):'—'}</td></tr>
     </table>
-    <div class="mut" style="font-size:.7rem;margin-top:.55rem;line-height:1.5">hit = arah prediksi benar per definisi label (±2% utk 5 hari) · win = return realisasi &gt; 0 · avg = rata-rata return realisasi per sinyal. Data: <code>/api/ml/track</code>. Ambang confidence dikalibrasi ulang otomatis dari realisasi (≥30 sampel BUY).</div>`;
+    <div class="mut" style="font-size:.7rem;margin-top:.55rem;line-height:1.5">hit = arah prediksi benar per definisi label (±3% utk 10 hari) · win = return realisasi &gt; 0 · avg = rata-rata return realisasi per sinyal. Data: <code>/api/ml/track</code>. Ambang confidence dikalibrasi ulang otomatis dari realisasi (≥30 sampel BUY).</div>`;
 }
 
 /* ===================== INIT ===================== */

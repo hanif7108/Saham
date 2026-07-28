@@ -102,7 +102,8 @@ def test_watchlist_ml_active_veto_and_buy(monkeypatch):
 
     base = {"ticker": "KLBF", "trend": "UPTREND", "fundamental_score": 5,
             "fundamental_max": 7, "technical_signal": "HOLD", "rsi": 55,
-            "ma_cross": "GOLDEN", "sector": "Healthcare", "jalur7": {}}
+            "ma_cross": "GOLDEN", "sector": "Healthcare", "jalur7": {},
+            "current_price": 1500.0}
 
     sell = {**base, "ml_signal": {"available": True, "signal": "SELL",
                                   "confident": True, "p_buy": 0.1}}
@@ -114,6 +115,11 @@ def test_watchlist_ml_active_veto_and_buy(monkeypatch):
     res = decisions.decide_for_watchlist(buy, set(), {})
     assert res is not None and res["action"] == "BUY"
     assert res["context"] == "ML_SIGNAL"
+
+    # gerbang harga minimum: saham murah TIDAK dijadikan kandidat BUY ML
+    cheap = {**buy, "current_price": 200.0}
+    res_cheap = decisions.decide_for_watchlist(cheap, set(), {})
+    assert res_cheap is None or res_cheap.get("context") != "ML_SIGNAL"
 
     # shadow mode: sinyal ML yang sama TIDAK mengubah keputusan
     monkeypatch.setattr(settings, "ml_signal_mode", "shadow", raising=False)

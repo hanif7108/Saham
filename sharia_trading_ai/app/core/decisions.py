@@ -227,7 +227,9 @@ def decide_for_watchlist(s: dict, prospects_set: set, top5_lookup: dict[str, int
     if ml_active and ml.get("confident"):
         if ml.get("signal") == "SELL":
             return None  # veto entry baru: model yakin turun > threshold
-        if ml.get("signal") == "BUY" and fs >= max(1, min_fs - 1):
+        price_ok = (s.get("current_price") or 0) >= float(
+            getattr(settings, "ml_min_price", 500) or 0)
+        if ml.get("signal") == "BUY" and fs >= max(1, min_fs - 1) and price_ok:
             return make("BUY", "HIGH", "HIGH",
                         f"Sinyal ML h{ml.get('horizon')}d — P(BUY) {ml.get('p_buy', 0):.0%} "
                         f"+ Fund {fs}/{fmax}{suffix}", 15, 1.0, ctx="ML_SIGNAL")

@@ -87,6 +87,30 @@ PYTHONPATH=. .venv/bin/python -m app.ml.train --no-eval      # artifact saja (ce
    `launchctl kickstart -k gui/$(id -u)/com.shariata.app`
    (atau label `com.sharia.trading` sesuai plist yang aktif).
 
+## v3 — BACA INI DULU: backtest sadar-biaya (2026-07-28 sore)
+
+Setelah slippage dimodelkan (2 tick BEI per round-trip + fee 0.4%) dan
+filter harga >= Rp200 diterapkan point-in-time di dataset, SEMUA angka
+indah di bawah bagian ini terbukti ilusi biaya:
+
+| Konfigurasi (test 2024-2026) | Sharpe | Return | Max DD |
+|---|---:|---:|---:|
+| IHSG | −0.29 | −17.6% | −42% |
+| h5 classifier (tanpa biaya realistis: +172%!) | −0.28 | **−41%** | −50% |
+| h5 ensemble+veto (tanpa biaya: +224%!) | −0.38 | −39% | −52% |
+| h20 classifier | −0.19 | −26% | −39% |
+| **h10 classifier + pick harga >= Rp500 (PRODUKSI)** | **+0.53** | **+39.3%** | −39% |
+
+Pelajaran: turnover mingguan × tick size IDX = drag 30-45%/tahun; edge
+mentah model tidak cukup menutupnya. Konfigurasi produksi sekarang:
+`ml_horizon=10`, kandidat BUY harga >= Rp500 (`ML_MIN_PRICE`), urutan
+p_buy classifier (ensemble tampil sebagai info; urutannya TIDAK terbukti
+lebih baik setelah biaya). Ekspektasi live yang wajar: Sharpe ~0.3-0.5,
+bukan angka fantastis bagian historis di bawah.
+
+Bagian-bagian di bawah dipertahankan sebagai jejak riset (angka PRA-biaya
+— jangan dikutip sebagai ekspektasi).
+
 ## Algoritma v2: ensemble ranking lintas-saham + classifier (2026-07-28)
 
 Classifier menjawab "apakah saham X naik >2%?", padahal keputusan trading

@@ -35,6 +35,27 @@ WALKFWD_DIR = BASE_DIR.parent / "ml_data" / "walkforward"
 TEST_START = "2024-01-01"     # sesuai rencana: test rolling 2024-2026
 TOP_K = 5                     # jumlah posisi per rebalance (selaras Top-5 dashboard)
 COST_ROUNDTRIP = 0.004        # fee beli+jual IDX ~0.4%
+SLIPPAGE_TICKS = 2.0          # asumsi menyeberangi spread saat beli DAN jual
+
+
+def tick_size(price: float) -> float:
+    """Fraksi harga (tick) resmi BEI."""
+    if price < 200:
+        return 1.0
+    if price < 500:
+        return 2.0
+    if price < 2000:
+        return 5.0
+    if price < 5000:
+        return 10.0
+    return 25.0
+
+
+def slippage_roundtrip(price: float) -> float:
+    """Estimasi slippage round-trip sebagai fraksi harga (SLIPPAGE_TICKS tick)."""
+    if price is None or price <= 0:
+        return 0.0
+    return SLIPPAGE_TICKS * tick_size(price) / price
 CONF_THRESHOLD = 0.45         # P(BUY) minimum agar sinyal ML dianggap layak
 
 CLASS_MAP = {-1.0: 0, 0.0: 1, 1.0: 2}   # SELL, HOLD, BUY
@@ -105,6 +126,7 @@ def simulate(df: pd.DataFrame, horizon: int, signal_col: str, rank_col: str,
     if len(dates) == 0:
         return {}
     rebal_dates = dates[::horizon]
+    has_price = "price" in df.columns
 
     period_returns, picks_log = [], []
     for d in rebal_dates:
@@ -114,7 +136,12 @@ def simulate(df: pd.DataFrame, horizon: int, signal_col: str, rank_col: str,
             period_returns.append(0.0)
             continue
         picks = day.nlargest(top_k, rank_col)
-        r = float(picks[fwd_col].mean()) - cost
+        if has_price:
+            # biaya per pick = fee + slippage tick-based sesuai harga saham itu
+            per_pick = picks[fwd_col] - cost - picks["price"].map(slippage_roundtrip)
+            r = float(per_pick.mean())
+        else:
+            r = float(picks[fwd_col].mean()) - cost
         period_returns.append(r)
         picks_log.append({"date": str(pd.Timestamp(d).date()),
                           "tickers": picks["ticker"].tolist(),
@@ -197,7 +224,9 @@ def walk_forward(panel: pd.DataFrame, horizon: int,
             continue
         engine, model = train_model(train[FEATURE_COLUMNS], train[label_col])
         proba = predict_proba(engine, model, test[FEATURE_COLUMNS])
-        chunk = test[["date", "ticker", fwd_col, label_col]].copy()
+        keep = ["date", "ticker", fwd_col, label_col] + (
+            ["price"] if "price" in test.columns else [])
+        chunk = test[keep].copy()
         chunk["p_sell"], chunk["p_hold"], chunk["p_buy"] = proba.T
         preds.append(chunk)
 

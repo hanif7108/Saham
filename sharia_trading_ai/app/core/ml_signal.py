@@ -243,13 +243,16 @@ def scan_universe(force: bool = False, hist_ttl: int = 14400) -> dict[str, Any]:
         with ThreadPoolExecutor(max_workers=10) as ex:
             rows = [r for r in ex.map(one, tickers) if r]
 
-        rows = [r for r in rows if r["ticker"] in feat_rows] + \
-               [r for r in rows if r["ticker"] not in feat_rows]
+        # Filter harga minimum: band murah tergerus slippage tick BEI
+        # (backtest sadar-biaya 2026-07-28: pick >= Rp500 satu-satunya positif)
+        min_price = float(getattr(settings, "ml_min_price", 500) or 0)
+        rows = [r for r in rows if (r.get("price") or 0) >= min_price]
         with_feats = [r for r in rows if r["ticker"] in feat_rows]
         rows = _apply_ensemble(with_feats, feat_rows, _horizon()) + \
                [r for r in rows if r["ticker"] not in feat_rows]
-        if not any("ens_score" in r for r in rows):
-            rows.sort(key=lambda r: r["p_buy"], reverse=True)
+        # Urutan produksi: p_buy classifier (konfigurasi terbaik di backtest
+        # sadar-biaya); skor ensemble tetap tampil sebagai informasi.
+        rows.sort(key=lambda r: r["p_buy"], reverse=True)
         from datetime import datetime as _dt
         from zoneinfo import ZoneInfo as _ZI
         data = {**base, "signals": rows,
@@ -307,7 +310,9 @@ def focus_top10(force: bool = False) -> dict[str, Any]:
                 if ml.get("available"):
                     agree = (ml["signal"] == "BUY") == buyish if (buyish or ml["signal"] != "HOLD") else None
                 sc = scan_by_tk.get(tk) or {}
+                min_price = float(getattr(settings, "ml_min_price", 500) or 0)
                 rows.append({
+                    "below_min_price": bool((r.get("current_price") or 0) < min_price),
                     "rank": i, "ticker": tk, "name": r.get("name"),
                     "skor_funnel": r.get("skor"), "final_signal": r.get("final_signal"),
                     "keputusan": r.get("keputusan"), "price": r.get("current_price"),

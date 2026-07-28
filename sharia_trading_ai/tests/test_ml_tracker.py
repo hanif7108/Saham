@@ -163,3 +163,27 @@ def test_cross_sectional_ranks_bounds():
         assert out[c].between(0, 1).all()
         # dalam satu hari, ranking unik terisi merata
         assert out.groupby("date")[c].max().min() == 1.0
+
+
+def test_tick_size_and_slippage_bei():
+    from app.ml.train import tick_size, slippage_roundtrip
+    assert tick_size(150) == 1 and tick_size(350) == 2 and tick_size(1500) == 5
+    assert tick_size(3000) == 10 and tick_size(8000) == 25
+    # saham murah: slippage relatif jauh lebih besar
+    assert slippage_roundtrip(200) == pytest.approx(2*2/200)     # 2.0%
+    assert slippage_roundtrip(5000) == pytest.approx(2*25/5000)  # 1.0%
+    assert slippage_roundtrip(1000) == pytest.approx(2*5/1000)   # 1.0%
+    assert slippage_roundtrip(0) == 0.0
+
+
+def test_simulate_applies_price_slippage():
+    from app.ml import train as T
+    dates = pd.bdate_range("2024-01-01", periods=1)
+    df = pd.DataFrame({
+        "date": list(dates)*2, "ticker": ["A","B"],
+        "fwd_ret_10": [0.05, 0.05], "price": [200.0, 5000.0],
+        "sig": [True, True], "rank": [2.0, 1.0],
+    })
+    bt = T.simulate(df, 10, "sig", "rank", top_k=2, cost=0.004)
+    # return bersih = 5% - 0.4% - rata2 slippage (2% & 1%) = 3.1%
+    assert bt["avg_period_ret"] == pytest.approx(0.05 - 0.004 - (0.02+0.01)/2, abs=1e-4)

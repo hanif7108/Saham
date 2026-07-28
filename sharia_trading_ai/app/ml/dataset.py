@@ -26,6 +26,10 @@ DATASET_PATH = data_fetch.ML_DATA_DIR / "dataset.parquet"
 # Likuiditas minimum: median turnover 20 hari (Rp) agar sinyal bisa dieksekusi.
 MIN_TURNOVER = 1e9
 
+# Harga minimum (Rp) — saham di bawah ini dikecualikan dari training & sinyal:
+# tick size relatif besar => slippage riil menggerus edge (keputusan 2026-07-28).
+MIN_PRICE = 200.0
+
 
 def build_dataset(min_bars: int = 300) -> pd.DataFrame:
     market = data_fetch.load_history(data_fetch.INDEX_TICKER)
@@ -46,9 +50,13 @@ def build_dataset(min_bars: int = 300) -> pd.DataFrame:
         # di hari seperti itu tidak bisa dieksekusi dengan wajar.
         turnover = (df["Close"] * df["Volume"]).rolling(20).median()
         feats = feats[turnover.reindex(feats.index) >= MIN_TURNOVER]
+        # Filter harga point-in-time: harga PADA TANGGAL itu >= MIN_PRICE
+        close_at = df["Close"].reindex(feats.index)
+        feats = feats[close_at >= MIN_PRICE]
         feats = feats.dropna(subset=["rsi14", "close_sma200"])  # rolling belum penuh
         if feats.empty:
             continue
+        feats["price"] = df["Close"].reindex(feats.index)
         feats = feats.reset_index().rename(columns={"Date": "date", "index": "date"})
         feats.insert(0, "ticker", tk)
         frames.append(feats)

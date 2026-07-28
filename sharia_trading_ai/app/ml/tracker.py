@@ -356,8 +356,9 @@ def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any],
     if label:
         d = f"{d} · {label}"
     n_conf = int(rows["confident"].sum()) if not rows.empty else 0
+    h = int(rows["horizon"].iloc[0]) if ("horizon" in rows.columns and not rows.empty) else 10
     lines = [f"🤖 <b>Sinyal ML Harian</b> — {d}",
-             f"Mode <b>shadow</b> · horizon 5 hari bursa · {len(rows)} ticker · {n_conf} confident", ""]
+             f"Mode <b>shadow</b> · horizon {h} hari bursa · {len(rows)} ticker · {n_conf} confident", ""]
 
     sort_col = "ens_score" if ("ens_score" in rows.columns
                                and rows["ens_score"].notna().any()) else "p_buy"
@@ -405,6 +406,9 @@ def _scan_rows() -> pd.DataFrame:
         return pd.DataFrame()
     rows = pd.DataFrame(sigs)
     rows["date"] = today_wib().isoformat()
+    if "horizon" not in rows.columns:
+        from app.config import settings as _st
+        rows["horizon"] = int(getattr(_st, "ml_horizon", 10) or 10)
     rows["rule_signal"] = None
     st = _load()
     if not st.empty:

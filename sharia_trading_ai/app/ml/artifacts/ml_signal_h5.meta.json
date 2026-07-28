@@ -1,6 +1,7 @@
 {
  "engine": "lightgbm",
  "model_file": "ml_signal_h5.txt",
+ "variant": "global",
  "horizon": 5,
  "label_threshold": 0.02,
  "conf_threshold": 0.45,
@@ -42,201 +43,44 @@
   "HOLD",
   "BUY"
  ],
- "trained_at": "2026-07-28T06:20:01",
- "train_rows": 168579,
+ "trained_at": "2026-07-28T13:16:27",
+ "train_rows": 156602,
  "train_range": [
   "2015-01-02",
   "2026-07-20"
  ],
  "feature_importance": {
-  "mkt_close_sma200": 0.1339,
-  "mkt_ret_20": 0.0958,
-  "atr14_pct": 0.0942,
-  "month": 0.0668,
-  "dist_low52w": 0.0489,
-  "dist_high52w": 0.0478,
-  "std20": 0.0402,
-  "sma50_sma200": 0.0396,
-  "turnover_log": 0.034,
-  "close_sma200": 0.0318,
-  "ret_60": 0.0312,
-  "close_sma50": 0.0295,
-  "rs_60": 0.0283,
-  "ret_5": 0.0261,
-  "range_pct": 0.0237,
-  "close_sma20": 0.0233,
-  "ret_10": 0.0224,
-  "rs_20": 0.0223,
-  "stoch_d": 0.0219,
+  "mkt_close_sma200": 0.1277,
+  "atr14_pct": 0.0976,
+  "mkt_ret_20": 0.0916,
+  "month": 0.0637,
+  "dist_low52w": 0.0481,
+  "dist_high52w": 0.0477,
+  "sma50_sma200": 0.0424,
+  "std20": 0.0409,
+  "turnover_log": 0.0346,
+  "ret_60": 0.0329,
+  "close_sma50": 0.0319,
+  "close_sma200": 0.0307,
+  "rs_60": 0.0292,
+  "ret_5": 0.0254,
+  "rs_20": 0.0242,
+  "close_sma20": 0.0231,
+  "range_pct": 0.0224,
+  "ret_20": 0.0221,
+  "ret_10": 0.0216,
+  "stoch_d": 0.0214,
   "stoch_k": 0.0211,
-  "ret_20": 0.02,
-  "rsi14": 0.019,
-  "vol_ratio20": 0.018,
-  "vol_z20": 0.0159,
-  "ret_1": 0.0144,
-  "body_pct": 0.011,
-  "gap_pct": 0.0108,
-  "dow": 0.0078,
-  "breakout20": 0.0003,
-  "breakout60": 0.0001,
+  "rsi14": 0.0199,
+  "vol_ratio20": 0.0179,
+  "vol_z20": 0.0164,
+  "ret_1": 0.0142,
+  "gap_pct": 0.012,
+  "body_pct": 0.0116,
+  "dow": 0.0074,
+  "breakout20": 0.0002,
+  "breakout60": 0.0002,
   "ma_cross_up": 0.0
  },
- "walkforward_metrics": {
-  "horizon": 5,
-  "threshold_buy_sell": 0.02,
-  "test_range": [
-   "2024-01-02",
-   "2026-07-20"
-  ],
-  "n_test_rows": 43238,
-  "accuracy": 0.392,
-  "baseline_majority": 0.345,
-  "buy_precision": 0.355,
-  "backtest_ml": {
-   "periods": 121,
-   "periods_invested": 105,
-   "total_return": 1.7196,
-   "cagr": 0.517,
-   "sharpe": 1.1,
-   "max_drawdown": -0.3986,
-   "avg_period_ret": 0.0121,
-   "hit_rate_trades": 0.487,
-   "avg_trade_ret": 0.006,
-   "n_signals": 6125,
-   "picks_sample": [
-    {
-     "date": "2026-06-10",
-     "tickers": [
-      "EMTK",
-      "INDY",
-      "SMGR",
-      "BRMS",
-      "FILM"
-     ],
-     "ret": 0.0853
-    },
-    {
-     "date": "2026-06-18",
-     "tickers": [
-      "SMGR",
-      "ASII",
-      "KLBF",
-      "PWON",
-      "MIKA"
-     ],
-     "ret": 0.0478
-    },
-    {
-     "date": "2026-06-25",
-     "tickers": [
-      "SMGR",
-      "EMTK",
-      "ARTO",
-      "PWON",
-      "ELSA"
-     ],
-     "ret": -0.0223
-    },
-    {
-     "date": "2026-07-02",
-     "tickers": [
-      "BRMS",
-      "INDY",
-      "ENRG",
-      "BUMI",
-      "DEWA"
-     ],
-     "ret": 0.0689
-    },
-    {
-     "date": "2026-07-09",
-     "tickers": [
-      "BRMS",
-      "AMMN",
-      "EMTK",
-      "INDY",
-      "BRPT"
-     ],
-     "ret": 0.1264
-    },
-    {
-     "date": "2026-07-16",
-     "tickers": [
-      "EMTK",
-      "KPIG",
-      "SCMA",
-      "SMGR",
-      "AMMN"
-     ],
-     "ret": 0.0071
-    }
-   ]
-  },
-  "backtest_rule_proxy": {
-   "periods": 121,
-   "periods_invested": 54,
-   "total_return": -0.0962,
-   "cagr": -0.0412,
-   "sharpe": -0.02,
-   "max_drawdown": -0.3488,
-   "avg_period_ret": -0.0003,
-   "hit_rate_trades": 0.43,
-   "avg_trade_ret": 0.0017,
-   "n_signals": 451,
-   "picks_sample": [
-    {
-     "date": "2026-02-27",
-     "tickers": [
-      "INCO",
-      "UNVR",
-      "AUTO",
-      "TAPG"
-     ],
-     "ret": -0.0962
-    },
-    {
-     "date": "2026-03-06",
-     "tickers": [
-      "TAPG"
-     ],
-     "ret": -0.0185
-    },
-    {
-     "date": "2026-04-13",
-     "tickers": [
-      "TKIM",
-      "ENRG"
-     ],
-     "ret": -0.043
-    },
-    {
-     "date": "2026-04-27",
-     "tickers": [
-      "AKRA"
-     ],
-     "ret": -0.0296
-    },
-    {
-     "date": "2026-05-12",
-     "tickers": [
-      "ADRO",
-      "MARK"
-     ],
-     "ret": -0.0845
-    },
-    {
-     "date": "2026-06-18",
-     "tickers": [
-      "MAPI"
-     ],
-     "ret": 0.0026
-    }
-   ]
-  },
-  "benchmark_ihsg": {
-   "total_return": -0.1491,
-   "sharpe": -0.23,
-   "max_drawdown": -0.4152
-  }
- }
+ "walkforward_metrics": {}
 }

@@ -266,8 +266,12 @@ class Settings(BaseSettings):
     #   "shadow" = tampil di ranking/dashboard, tidak mengubah keputusan (DEFAULT)
     #   "active" = ML confident ikut menggerakkan keputusan watchlist
     ml_signal_mode: str = "shadow"
-    ml_horizon: int = 5                 # horizon label hari bursa (5/10/20)
+    ml_horizon: int = 10                # horizon label hari bursa (5/10/20).
+                                        # 10 = satu-satunya yang positif bersih
+                                        # setelah slippage tick BEI (2026-07-28)
     ml_conf_threshold: float = 0.0      # 0 = kalibrasi realisasi / meta artifact
+    ml_min_price: float = 500.0         # kandidat BUY ML: harga >= Rp500
+                                        # (slippage band 200-500 menggerus edge)
     # Track record ML: catat prediksi tiap sore bursa & evaluasi vs realisasi
     # (lingkaran belajar prediksi-vs-realitas; lihat app/ml/tracker.py)
     ml_track_enabled: bool = True
