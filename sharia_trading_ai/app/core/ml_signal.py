@@ -32,7 +32,8 @@ ARTIFACT_DIR = BASE_DIR / "ml" / "artifacts"
 MIN_BARS = 280   # butuh SMA200 + rolling 252 hari yang terisi
 
 _LOCK = threading.Lock()
-_CACHE: dict[int, Optional[dict]] = {}   # horizon -> {engine, model, meta} | None
+# horizon -> {"mtime": float, "bundle": {engine, model, meta} | None}
+_CACHE: dict[int, dict] = {}
 
 
 def _horizon() -> int:
@@ -45,14 +46,21 @@ def mode() -> str:
 
 
 def _load(horizon: int) -> Optional[dict]:
-    """Muat artifact sekali per proses (aman dipanggil dari thread pool)."""
-    if horizon in _CACHE:
-        return _CACHE[horizon]
+    """Muat artifact, cache per proses; reload otomatis bila file berubah
+    (retrain bulanan menimpa artifact tanpa perlu restart uvicorn)."""
+    meta_path = ARTIFACT_DIR / f"ml_signal_h{horizon}.meta.json"
+    try:
+        mtime = meta_path.stat().st_mtime
+    except OSError:
+        mtime = -1.0
+    cached = _CACHE.get(horizon)
+    if cached is not None and cached["mtime"] == mtime:
+        return cached["bundle"]
     with _LOCK:
-        if horizon in _CACHE:
-            return _CACHE[horizon]
+        cached = _CACHE.get(horizon)
+        if cached is not None and cached["mtime"] == mtime:
+            return cached["bundle"]
         loaded = None
-        meta_path = ARTIFACT_DIR / f"ml_signal_h{horizon}.meta.json"
         try:
             meta = json.loads(meta_path.read_text())
             model_path = ARTIFACT_DIR / meta["model_file"]
@@ -65,7 +73,7 @@ def _load(horizon: int) -> Optional[dict]:
             loaded = {"engine": meta["engine"], "model": model, "meta": meta}
         except Exception:
             loaded = None
-        _CACHE[horizon] = loaded
+        _CACHE[horizon] = {"mtime": mtime, "bundle": loaded}
         return loaded
 
 
