@@ -1,0 +1,9 @@
+[Unit]
+Description=Jadwal koleksi datalake harian (17:20 WIB — TZ rig Europe/London, pakai TZ eksplisit)
+
+[Timer]
+OnCalendar=*-*-* 17:20:00 Asia/Jakarta
+Persistent=true
+
+[Install]
+WantedBy=timers.target

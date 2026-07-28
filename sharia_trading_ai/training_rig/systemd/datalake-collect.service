@@ -1,0 +1,9 @@
+[Unit]
+Description=Koleksi datalake harian Saham Syariah (universe penuh IDX -> NAS)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Saham/sharia_trading_ai
+Environment=DATALAKE=qnap@100.70.97.42:/share/CACHEDEV1_DATA/DataLake/saham-syariah
+Environment=OMP_NUM_THREADS=16
+ExecStart=/usr/bin/bash %h/Saham/sharia_trading_ai/training_rig/collect_universe.sh

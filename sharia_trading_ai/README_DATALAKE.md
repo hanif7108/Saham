@@ -78,6 +78,21 @@ RTX 4090 (kantor)  ── latih & evaluasi ──▶  NAS 7TB (datalake pusat)
   validasi = produksi tidak tersentuh.
 - **Kit rig**: `training_rig/README_RTX4090.md` + `train_and_publish.sh`.
 
+## Kepemilikan zona (sejak 2026-07-28 malam — WAJIB dipatuhi agar tak saling timpa)
+
+| Zona | Pemilik (penulis) | Kapan |
+|---|---|---|
+| `raw/prices`, `raw/universe` | **RIG RTX 4090** (broadband kantor, LAN→NAS) | timer 17:20 WIB |
+| `raw/fundamentals`, `curated/`, `predictions/`, `models/YYYY-MM`, `logs/audit*` | **Mac Mini** | 17:05 WIB |
+| `models/candidate/`, `research/rig_experiments/` | **RIG** | saat training |
+| `logs/collect_state.json` | RIG | tiap koleksi |
+
+Pembagian peran: **Mini = web service & keputusan** (internet rumahan cukup —
+trafiknya ringan: kuota live 75 ticker + Telegram); **RIG = mesin produksi
+data & komputasi** (outbound-only, tanpa port listening — jejak jaringan
+kantor minimal). Mini bisa `pull` history dari NAS kapan pun untuk retrain
+lokal/restore.
+
 ## Operasional
 
 - Jadwal: `com.shariata.datalake_sync` (LaunchAgent) harian **17:05 WIB**.

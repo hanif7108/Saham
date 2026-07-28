@@ -97,7 +97,9 @@ push(){
   local fail=0 month; month=$(date +%Y-%m)
   R(){ eval "$RSYNC $1 \"$NAS_USER@$NAS_HOST:$2\"" >>"$LOG" 2>&1 || { log "rsync gagal: $1"; fail=1; }; }
 
-  R "$ML_DATA/history/"                       "$NAS_ROOT/raw/prices/"
+  # raw/prices & raw/universe kini MILIK RIG (koleksi 17:20 WIB dari kantor,
+  # LAN ke NAS). Mini tidak menulis zona itu lagi agar tidak menimpa data
+  # yang lebih segar. (Pull utk retrain lokal tetap tersedia: mode pull.)
   R "$ML_DATA/fundamentals_snapshots/"        "$NAS_ROOT/raw/fundamentals/"
   [ -f "$ML_DATA/dataset.parquet" ] && \
   R "$ML_DATA/dataset.parquet"                "$NAS_ROOT/curated/datasets/dataset_latest.parquet"
@@ -110,8 +112,6 @@ push(){
   [ -f "$ML_DATA/intraday_scans.parquet" ] && \
   R "$ML_DATA/intraday_scans.parquet"         "$NAS_ROOT/predictions/intraday_scans.parquet"
   R "$ML_DATA/decisions_snapshots/"           "$NAS_ROOT/predictions/decisions/"
-  [ -d "$ML_DATA/universe_snapshots" ] && \
-  R "$ML_DATA/universe_snapshots/"            "$NAS_ROOT/raw/universe/"
   R "$APP_DIR/app/ml/artifacts/"              "$NAS_ROOT/models/$month/"
   [ -f "$ML_DATA/audit_summary.json" ] && \
   R "$ML_DATA/audit_summary.json"             "$NAS_ROOT/logs/audit_summary.json"
@@ -146,6 +146,6 @@ case "${1:-all}" in
   push)     push ;;
   ingest)   ingest ;;
   pull)     pull ;;
-  all)      snapshot; collect; push; ingest ;;
+  all)      snapshot; push; ingest ;;   # collect 844 kini tugas RIG (17:20 WIB)
   *) echo "mode: snapshot|collect|push|ingest|pull|all"; exit 2 ;;
 esac
