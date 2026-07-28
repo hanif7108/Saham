@@ -35,6 +35,22 @@ FEATURE_COLUMNS = [
     "dow", "month",
 ]
 
+# Fitur peringkat lintas-saham (persentil antar ticker pada tanggal sama).
+# Dipakai model ranking; dihitung per tanggal di dataset & per scan di runtime.
+CS_RANK_BASE = ["ret_5", "ret_20", "rs_20", "rs_60", "vol_ratio20",
+                "atr14_pct", "dist_high52w", "turnover_log"]
+CS_RANK_COLUMNS = [f"csr_{c}" for c in CS_RANK_BASE]
+RANK_MODEL_FEATURES = FEATURE_COLUMNS + CS_RANK_COLUMNS
+
+
+def add_cross_sectional_ranks(panel):
+    """Tambah kolom csr_* = persentil fitur antar ticker per tanggal."""
+    out = panel.copy()
+    for c in CS_RANK_BASE:
+        out[f"csr_{c}"] = out.groupby("date")[c].rank(pct=True)
+    return out
+
+
 LABEL_HORIZONS = (5, 10, 20)
 
 # Ambang klasifikasi BUY/SELL per horizon (forward return).

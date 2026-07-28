@@ -87,6 +87,31 @@ PYTHONPATH=. .venv/bin/python -m app.ml.train --no-eval      # artifact saja (ce
    `launchctl kickstart -k gui/$(id -u)/com.shariata.app`
    (atau label `com.sharia.trading` sesuai plist yang aktif).
 
+## Algoritma v2: ensemble ranking lintas-saham + classifier (2026-07-28)
+
+Classifier menjawab "apakah saham X naik >2%?", padahal keputusan trading
+sebenarnya "5 terbaik dari kandidat hari ini yang mana?" — itu masalah
+peringkat lintas-saham. Maka ditambah **model ranking** (`ml_rank_h5`):
+LightGBM regresi persentil forward-return 5d suatu saham RELATIF terhadap
+saham lain di tanggal sama, dengan 8 fitur persentil lintas-saham tambahan
+(csr_*). Urutan pilihan akhir = **skor ensemble** (rata-rata persentil skor
+ranking & p_buy classifier) dengan **veto**: kandidat dibuang bila
+P(SELL) classifier ≥ 0.45.
+
+Walk-forward 2024-2026 (top-5, biaya 0.4%):
+
+| Strategi | Sharpe | Return | Max DD |
+|---|---:|---:|---:|
+| Classifier saja (v1) | 1.10 | +172% | −40% |
+| Ranking saja | 1.22 | +164% | −41% |
+| **Ensemble + veto SELL (v2)** | **1.46** | **+224%** | **−37%** |
+
+Rank IC 0.046 (IR 0.31). Runtime: skor dihitung batch di `scan_universe`
+(persentil antar ticker hari itu), tampil sebagai kolom **Ens⚡** + tanda 🚫
+(veto) di dashboard & fokus; Telegram memakai urutan ensemble; tracker
+mencatat `rank_score`/`ens_score`/`veto_sell` untuk evaluasi realisasi.
+Retrain bulanan melatih ketiga artifact (global, screened, rank).
+
 ## Alur dua tahap: screening konvensional → ML (fokus Top-10)
 
 Mekanisme (sesuai keputusan 2026-07-28): **screening konvensional dulu, AI

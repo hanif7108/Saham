@@ -122,22 +122,10 @@ def predict(ticker: str, hist: Optional[pd.DataFrame] = None,
     if hist is None or len(hist) < MIN_BARS or index_hist is None or index_hist.empty:
         return {**base, "reason": f"data historis kurang (butuh >= {MIN_BARS} bar)"}
 
-    from app.ml.features import FEATURE_COLUMNS, build_features
+    from app.ml.features import FEATURE_COLUMNS
     try:
-        hist = hist.copy()
-        hist.index = pd.to_datetime(hist.index)
-        if getattr(hist.index, "tz", None) is not None:
-            hist.index = hist.index.tz_localize(None)
-        hist.index = hist.index.normalize()
-        mkt = index_hist.copy()
-        mkt.index = pd.to_datetime(mkt.index)
-        if getattr(mkt.index, "tz", None) is not None:
-            mkt.index = mkt.index.tz_localize(None)
-        mkt.index = mkt.index.normalize()
-
-        feats = build_features(hist, mkt)
-        row = feats.iloc[[-1]]
-        if row[["rsi14", "close_sma200", "dist_high52w"]].isna().any(axis=None):
+        row = _last_feature_row(hist, index_hist)
+        if row is None:
             return {**base, "reason": "fitur belum lengkap (rolling window)"}
 
         meta = bundle["meta"]
@@ -190,7 +178,7 @@ def predict(ticker: str, hist: Optional[pd.DataFrame] = None,
         "horizon": horizon,
         "label_threshold": meta.get("label_threshold"),
         "trained_at": meta.get("trained_at"),
-        "as_of": str(feats.index[-1].date()),
+        "as_of": str(row.index[-1].date()),
         "top_features": top_feats,
     }
 
@@ -229,12 +217,20 @@ def scan_universe(force: bool = False, hist_ttl: int = 14400) -> dict[str, Any]:
                    if not provider.is_us_ticker(t)]
         index_hist = provider.get_index_history()
 
+        feat_rows: dict[str, pd.DataFrame] = {}
+
         def one(tk):
             try:
                 hist = provider.get_history(tk, ttl=hist_ttl)
                 r = predict(tk, hist=hist, index_hist=index_hist)
                 if not r.get("available"):
                     return None
+                try:
+                    fr = _last_feature_row(hist, index_hist)
+                    if fr is not None:
+                        feat_rows[tk] = fr
+                except Exception:
+                    pass
                 price = float(hist["Close"].iloc[-1]) if hist is not None and len(hist) else None
                 return {"ticker": tk, "name": names.get(tk),
                         "signal": r["signal"], "confident": r["confident"],
@@ -247,7 +243,13 @@ def scan_universe(force: bool = False, hist_ttl: int = 14400) -> dict[str, Any]:
         with ThreadPoolExecutor(max_workers=10) as ex:
             rows = [r for r in ex.map(one, tickers) if r]
 
-        rows.sort(key=lambda r: r["p_buy"], reverse=True)
+        rows = [r for r in rows if r["ticker"] in feat_rows] + \
+               [r for r in rows if r["ticker"] not in feat_rows]
+        with_feats = [r for r in rows if r["ticker"] in feat_rows]
+        rows = _apply_ensemble(with_feats, feat_rows, _horizon()) + \
+               [r for r in rows if r["ticker"] not in feat_rows]
+        if not any("ens_score" in r for r in rows):
+            rows.sort(key=lambda r: r["p_buy"], reverse=True)
         from datetime import datetime as _dt
         from zoneinfo import ZoneInfo as _ZI
         data = {**base, "signals": rows,
@@ -293,6 +295,8 @@ def focus_top10(force: bool = False) -> dict[str, Any]:
             top10 = sorted(idx_rows, key=lambda r: float(r.get("skor") or 0),
                            reverse=True)[:10]
             index_hist = provider.get_index_history()
+            scan = scan_universe()
+            scan_by_tk = {s["ticker"]: s for s in (scan.get("signals") or [])}
             rows = []
             for i, r in enumerate(top10, 1):
                 tk = r["ticker"]
@@ -302,12 +306,16 @@ def focus_top10(force: bool = False) -> dict[str, Any]:
                 agree = None
                 if ml.get("available"):
                     agree = (ml["signal"] == "BUY") == buyish if (buyish or ml["signal"] != "HOLD") else None
+                sc = scan_by_tk.get(tk) or {}
                 rows.append({
                     "rank": i, "ticker": tk, "name": r.get("name"),
                     "skor_funnel": r.get("skor"), "final_signal": r.get("final_signal"),
                     "keputusan": r.get("keputusan"), "price": r.get("current_price"),
                     "ml": summary_for_ranking(ml),
                     "ml_variant": ml.get("variant"),
+                    "rank_score": sc.get("rank_score"),
+                    "ens_score": sc.get("ens_score"),
+                    "veto_sell": sc.get("veto_sell"),
                     "agree": agree,
                 })
             base["rows"] = rows
@@ -315,6 +323,85 @@ def focus_top10(force: bool = False) -> dict[str, Any]:
             base["error"] = str(e)[:200]
         _FOCUS_CACHE.update(ts=_time.time(), data=base)
         return base
+
+
+def _last_feature_row(hist: pd.DataFrame, index_hist: pd.DataFrame):
+    """Baris fitur terakhir (df 1 baris, index tanggal) — None bila belum lengkap."""
+    from app.ml.features import build_features
+    h = hist.copy()
+    h.index = pd.to_datetime(h.index)
+    if getattr(h.index, "tz", None) is not None:
+        h.index = h.index.tz_localize(None)
+    h.index = h.index.normalize()
+    m = index_hist.copy()
+    m.index = pd.to_datetime(m.index)
+    if getattr(m.index, "tz", None) is not None:
+        m.index = m.index.tz_localize(None)
+    m.index = m.index.normalize()
+    feats = build_features(h, m)
+    row = feats.iloc[[-1]]
+    if row[["rsi14", "close_sma200", "dist_high52w"]].isna().any(axis=None):
+        return None
+    return row
+
+
+def _load_rank(horizon: int) -> Optional[dict]:
+    """Artifact model ranking (ml_rank_h{N}); cache + auto-reload spt _load."""
+    key = f"rank{horizon}"
+    meta_path = ARTIFACT_DIR / f"ml_rank_h{horizon}.meta.json"
+    try:
+        mtime = meta_path.stat().st_mtime
+    except OSError:
+        mtime = -1.0
+    cached = _CACHE.get(key)
+    if cached is not None and cached["mtime"] == mtime:
+        return cached["bundle"]
+    with _LOCK:
+        cached = _CACHE.get(key)
+        if cached is not None and cached["mtime"] == mtime:
+            return cached["bundle"]
+        loaded = None
+        try:
+            meta = json.loads(meta_path.read_text())
+            import lightgbm as lgb
+            model = lgb.Booster(model_file=str(ARTIFACT_DIR / meta["model_file"]))
+            loaded = {"model": model, "meta": meta}
+        except Exception:
+            loaded = None
+        _CACHE[key] = {"mtime": mtime, "bundle": loaded}
+        return loaded
+
+
+def _apply_ensemble(rows: list[dict], feat_rows: dict[str, pd.DataFrame],
+                    horizon: int) -> list[dict]:
+    """Skor ranking lintas-saham + ensemble dengan p_buy + veto P(SELL).
+
+    Walk-forward 2024-2026: urutan ensemble + veto SELL -> Sharpe 1.46,
+    +224%, maxDD -37% (vs classifier saja 1.10/+172%/-40%).
+    """
+    bundle = _load_rank(horizon)
+    if bundle is None or not rows:
+        return rows
+    try:
+        from app.ml.features import CS_RANK_BASE, RANK_MODEL_FEATURES
+        X = pd.concat([feat_rows[r["ticker"]] for r in rows], axis=0)
+        X = X.reset_index(drop=True)
+        for c in CS_RANK_BASE:                       # persentil antar ticker hari ini
+            X[f"csr_{c}"] = X[c].rank(pct=True)
+        scores = bundle["model"].predict(X[RANK_MODEL_FEATURES])
+        veto_thr = float(bundle["meta"].get("veto_p_sell", 0.45))
+        s = pd.Series(scores)
+        pr_rank = s.rank(pct=True)
+        pr_cls = pd.Series([r["p_buy"] for r in rows]).rank(pct=True)
+        ens = (pr_rank + pr_cls) / 2
+        for i, r in enumerate(rows):
+            r["rank_score"] = round(float(scores[i]), 4)
+            r["ens_score"] = round(float(ens.iloc[i]), 4)
+            r["veto_sell"] = bool(r.get("p_sell", 0) >= veto_thr)
+        rows.sort(key=lambda r: r["ens_score"], reverse=True)
+    except Exception:
+        pass
+    return rows
 
 
 def summary_for_ranking(ml: dict[str, Any]) -> dict[str, Any]:

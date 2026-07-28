@@ -144,3 +144,22 @@ def test_log_marks_focus_top10(isolated_store):
     tracker.log_today(ranking=ranking, force=True)
     df = pd.read_parquet(tracker.STORE)
     assert bool(df.set_index("ticker").loc["KLBF", "in_focus"])
+
+
+def test_cross_sectional_ranks_bounds():
+    from app.ml.features import add_cross_sectional_ranks, CS_RANK_COLUMNS
+    rng = np.random.default_rng(11)
+    n_days, n_tk = 5, 8
+    df = pd.DataFrame({
+        "date": np.repeat(pd.bdate_range("2024-01-01", periods=n_days), n_tk),
+        "ticker": np.tile([f"T{i}" for i in range(n_tk)], n_days),
+        "ret_5": rng.normal(0, .05, n_days*n_tk), "ret_20": rng.normal(0, .1, n_days*n_tk),
+        "rs_20": rng.normal(0, .05, n_days*n_tk), "rs_60": rng.normal(0, .1, n_days*n_tk),
+        "vol_ratio20": rng.uniform(.5, 3, n_days*n_tk), "atr14_pct": rng.uniform(.01, .1, n_days*n_tk),
+        "dist_high52w": rng.uniform(-.6, 0, n_days*n_tk), "turnover_log": rng.uniform(15, 25, n_days*n_tk),
+    })
+    out = add_cross_sectional_ranks(df)
+    for c in CS_RANK_COLUMNS:
+        assert out[c].between(0, 1).all()
+        # dalam satu hari, ranking unik terisi merata
+        assert out.groupby("date")[c].max().min() == 1.0

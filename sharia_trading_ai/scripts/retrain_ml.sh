@@ -19,6 +19,7 @@ cd "$APP_DIR"
   PYTHONPATH="$APP_DIR" "$VENV" -m app.ml.dataset --screened
   PYTHONPATH="$APP_DIR" "$VENV" -m app.ml.train
   PYTHONPATH="$APP_DIR" "$VENV" -m app.ml.train --screened
+  PYTHONPATH="$APP_DIR" "$VENV" -m app.ml.train --rank
   echo "=== Selesai training: $(date) ==="
 
   # Lingkaran belajar: evaluasi prediksi live yang jatuh tempo + laporan

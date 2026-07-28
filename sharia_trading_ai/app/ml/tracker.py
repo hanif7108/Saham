@@ -95,6 +95,12 @@ def log_today(ranking: Optional[list[dict]] = None, force: bool = False) -> dict
         ranking = decisions.build_ranking()
 
     from app.data import provider
+    try:
+        from app.core import ml_signal as _mls
+        scan_by_tk = {s["ticker"]: s for s in
+                      (_mls.scan_universe().get("signals") or [])}
+    except Exception:
+        scan_by_tk = {}
     idx_rank = [s for s in ranking if not provider.is_us_ticker(s.get("ticker") or "")]
     focus_set = {s["ticker"] for s in sorted(
         idx_rank, key=lambda r: float(r.get("skor") or 0), reverse=True)[:10]}
@@ -115,6 +121,9 @@ def log_today(ranking: Optional[list[dict]] = None, force: bool = False) -> dict
             "p_sell": float(ml.get("p_sell") or 0),
             "confident": bool(ml.get("confident")),
             "in_focus": tk in focus_set,
+            "rank_score": (scan_by_tk.get(tk) or {}).get("rank_score"),
+            "ens_score": (scan_by_tk.get(tk) or {}).get("ens_score"),
+            "veto_sell": (scan_by_tk.get(tk) or {}).get("veto_sell"),
             "rule_signal": s.get("final_signal"),
             "rule_skor": float(s.get("skor") or 0),
             "rule_keputusan": s.get("keputusan"),
@@ -350,9 +359,15 @@ def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any],
     lines = [f"🤖 <b>Sinyal ML Harian</b> — {d}",
              f"Mode <b>shadow</b> · horizon 5 hari bursa · {len(rows)} ticker · {n_conf} confident", ""]
 
-    top = rows[rows["signal"] == "BUY"].nlargest(5, "p_buy")
+    sort_col = "ens_score" if ("ens_score" in rows.columns
+                               and rows["ens_score"].notna().any()) else "p_buy"
+    cand = rows[rows["signal"] == "BUY"]
+    if "veto_sell" in rows.columns:
+        cand = cand[~cand["veto_sell"].fillna(False).astype(bool)]
+    top = cand.nlargest(5, sort_col)
     if not top.empty:
-        lines.append("🏆 <b>Top P(BUY)</b>:")
+        lines.append("🏆 <b>Top pilihan ML</b> (urut skor ensemble, veto SELL disaring):"
+                     if sort_col == "ens_score" else "🏆 <b>Top P(BUY)</b>:")
         for i, (_, r) in enumerate(top.iterrows(), 1):
             mark = " ✓" if r["confident"] else ""
             lines.append(f"{i}. <b>{r['ticker']}</b> {r['p_buy']*100:.0f}%{mark} · Rp{_fmt_rp(r['price'])} · rule: {r['rule_signal'] or '—'}")

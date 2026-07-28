@@ -279,6 +279,46 @@ def train_final(panel: pd.DataFrame, horizon: int,
     return model_path
 
 
+RANK_VETO_PSELL = 0.45   # gerbang veto: jangan pilih bila P(SELL) classifier >= ini
+
+
+def train_rank_final(panel: pd.DataFrame, horizon: int = 5,
+                     wf_metrics: dict | None = None) -> Path:
+    """Model ranking lintas-saham: regresi persentil fwd return per tanggal.
+
+    Skor dipakai untuk MENGURUTKAN kandidat (ensemble dengan p_buy classifier
+    + veto P(SELL)); walk-forward 2024-2026: ensemble Sharpe 1.46 vs 1.10
+    classifier saja. Butuh kolom csr_* (add_cross_sectional_ranks).
+    """
+    from app.ml.features import RANK_MODEL_FEATURES
+    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+    lab = panel.dropna(subset=[f"fwd_ret_{horizon}"]).copy()
+    lab["y_rank"] = lab.groupby("date")[f"fwd_ret_{horizon}"].rank(pct=True)
+    lgb = _lgbm()
+    if lgb is None:
+        raise RuntimeError("model ranking butuh lightgbm")
+    params = dict(objective="regression", learning_rate=0.05, num_leaves=63,
+                  min_data_in_leaf=200, feature_fraction=0.8,
+                  bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0,
+                  verbosity=-1, seed=42)
+    model = lgb.train(params, lgb.Dataset(lab[RANK_MODEL_FEATURES],
+                                          label=lab["y_rank"]),
+                      num_boost_round=400)
+    path = ARTIFACT_DIR / f"ml_rank_h{horizon}.txt"
+    model.save_model(str(path))
+    meta = {
+        "engine": "lightgbm", "model_file": path.name, "kind": "rank",
+        "horizon": horizon, "feature_columns": RANK_MODEL_FEATURES,
+        "veto_p_sell": RANK_VETO_PSELL,
+        "trained_at": datetime.now().isoformat(timespec="seconds"),
+        "train_rows": int(len(lab)),
+        "train_range": [str(lab["date"].min().date()), str(lab["date"].max().date())],
+        "walkforward_metrics": wf_metrics or {},
+    }
+    (ARTIFACT_DIR / f"ml_rank_h{horizon}.meta.json").write_text(json.dumps(meta, indent=1))
+    return path
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--horizon", type=int, choices=list(LABEL_HORIZONS))
@@ -286,8 +326,15 @@ def main() -> None:
                     help="lewati walk-forward, langsung latih artifact final")
     ap.add_argument("--screened", action="store_true",
                     help="latih varian screened (populasi top-10 konvensional/hari, h5)")
+    ap.add_argument("--rank", action="store_true",
+                    help="latih model ranking lintas-saham (h5, untuk ensemble)")
     args = ap.parse_args()
 
+    if args.rank:
+        panel = pd.read_parquet(DATASET_PATH)
+        path = train_rank_final(panel, args.horizon or 5)
+        print(f"Artifact ranking: {path}")
+        return
     if args.screened:
         from app.ml.dataset import SCREENED_PATH
         panel = pd.read_parquet(SCREENED_PATH)

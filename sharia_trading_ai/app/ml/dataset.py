@@ -55,6 +55,8 @@ def build_dataset(min_bars: int = 300) -> pd.DataFrame:
 
     panel = pd.concat(frames, ignore_index=True)
     panel["date"] = pd.to_datetime(panel["date"])
+    from app.ml.features import add_cross_sectional_ranks
+    panel = add_cross_sectional_ranks(panel)
     return panel.sort_values(["date", "ticker"]).reset_index(drop=True)
 
 
