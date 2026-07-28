@@ -360,15 +360,14 @@ def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any],
     lines = [f"🤖 <b>Sinyal ML Harian</b> — {d}",
              f"Mode <b>shadow</b> · horizon {h} hari bursa · {len(rows)} ticker · {n_conf} confident", ""]
 
-    sort_col = "ens_score" if ("ens_score" in rows.columns
-                               and rows["ens_score"].notna().any()) else "p_buy"
+    # Urutan produksi = p_buy classifier (konfigurasi terbaik pada backtest
+    # sadar-biaya); veto SELL tetap disaring sebagai pengaman.
     cand = rows[rows["signal"] == "BUY"]
     if "veto_sell" in rows.columns:
         cand = cand[~cand["veto_sell"].fillna(False).astype(bool)]
-    top = cand.nlargest(5, sort_col)
+    top = cand.nlargest(5, "p_buy")
     if not top.empty:
-        lines.append("🏆 <b>Top pilihan ML</b> (urut skor ensemble, veto SELL disaring):"
-                     if sort_col == "ens_score" else "🏆 <b>Top P(BUY)</b>:")
+        lines.append("🏆 <b>Top pilihan ML</b> (urut P(BUY), veto SELL disaring):")
         for i, (_, r) in enumerate(top.iterrows(), 1):
             mark = " ✓" if r["confident"] else ""
             lines.append(f"{i}. <b>{r['ticker']}</b> {r['p_buy']*100:.0f}%{mark} · Rp{_fmt_rp(r['price'])} · rule: {r['rule_signal'] or '—'}")
