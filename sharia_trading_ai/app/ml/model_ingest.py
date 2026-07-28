@@ -113,6 +113,10 @@ def run(dry_run: bool = False) -> dict:
     if not CANDIDATE_DIR.exists():
         return {"candidates": 0, "results": results}
     for cdir in sorted(p for p in CANDIDATE_DIR.iterdir() if p.is_dir()):
+        if (cdir / "PROMOTED_AT").exists():
+            results.append({"dir": cdir.name, "ok": True, "promoted": False,
+                            "reason": "sudah dipromosikan sebelumnya (skip)"})
+            continue
         val = validate_candidate(cdir)
         if val["ok"] and val.get("has_promote") and not dry_run:
             try:
