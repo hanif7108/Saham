@@ -47,6 +47,7 @@ def today_wib() -> date:
 STORE = ML_DATA_DIR / "ml_track.parquet"
 SUMMARY = ML_DATA_DIR / "ml_track_summary.json"
 INTRADAY_SNAPSHOT = ML_DATA_DIR / "intraday_snapshot.json"
+INTRADAY_SCANS = ML_DATA_DIR / "intraday_scans.parquet"
 
 # Sinyal rule-based yang dianggap "ajakan beli" (untuk perbandingan apel-ke-apel)
 RULE_BUYISH = {"STRONG BUY", "BUY", "SPECULATIVE BUY", "ACCUMULATE"}
@@ -453,6 +454,31 @@ def _save_intraday_snapshot(rows: pd.DataFrame, label: Optional[str]) -> None:
         pass
 
 
+def _append_intraday_scan(rows: pd.DataFrame, label: Optional[str]) -> None:
+    """Arsipkan SELURUH prediksi scan intraday (append, permanen).
+
+    Ini datalake mikro-struktur: probabilitas semua ticker pada beberapa
+    titik waktu intraday + (kelak) realisasi harga = bahan training untuk
+    perbaikan akurasi berikutnya. Ikut tersinkron ke NAS tiap sore.
+    """
+    try:
+        snap = rows.copy()
+        snap["scan_label"] = label or now_wib().strftime("%H:%M WIB")
+        snap["scanned_at"] = now_wib().isoformat(timespec="seconds")
+        keep = [c for c in ("date", "scan_label", "scanned_at", "ticker",
+                            "signal", "p_buy", "p_hold", "p_sell", "confident",
+                            "price", "horizon") if c in snap.columns]
+        snap = snap[keep]
+        if INTRADAY_SCANS.exists():
+            snap = pd.concat([pd.read_parquet(INTRADAY_SCANS), snap],
+                             ignore_index=True)
+        tmp = INTRADAY_SCANS.with_suffix(".tmp.parquet")
+        snap.to_parquet(tmp)
+        os.replace(tmp, INTRADAY_SCANS)
+    except Exception:
+        pass
+
+
 def _closing_comparison_lines(close_rows: pd.DataFrame) -> list[str]:
     """Baris 'harga saat sinyal intraday -> penutupan' utk pesan penutupan."""
     try:
@@ -487,6 +513,7 @@ def telegram_summary(source: str = "store",
     if source == "scan":
         rows = _scan_rows()
         _save_intraday_snapshot(rows, label)
+        _append_intraday_scan(rows, label)
     else:
         df = _load()
         rows = df[df["date"] == df["date"].max()] if not df.empty else pd.DataFrame()

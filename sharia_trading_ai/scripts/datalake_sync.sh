@@ -86,6 +86,8 @@ push(){
   R "$ML_DATA/ml_track.parquet"               "$NAS_ROOT/predictions/ml_track.parquet"
   [ -f "$ML_DATA/ml_track_summary.json" ] && \
   R "$ML_DATA/ml_track_summary.json"          "$NAS_ROOT/predictions/ml_track_summary.json"
+  [ -f "$ML_DATA/intraday_scans.parquet" ] && \
+  R "$ML_DATA/intraday_scans.parquet"         "$NAS_ROOT/predictions/intraday_scans.parquet"
   R "$ML_DATA/decisions_snapshots/"           "$NAS_ROOT/predictions/decisions/"
   R "$APP_DIR/app/ml/artifacts/"              "$NAS_ROOT/models/$month/"
   [ -f "$ML_DATA/audit_summary.json" ] && \

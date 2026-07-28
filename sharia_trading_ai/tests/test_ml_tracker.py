@@ -242,3 +242,21 @@ def test_closing_message_compares_intraday_snapshot(isolated_store, monkeypatch)
         "picks": [{"ticker": "EMTK", "price": 515.0, "p_buy": 0.7}]}))
     txt2 = tracker.build_telegram_text(rows, {})
     assert "→ penutupan" not in txt2
+
+
+def test_intraday_scan_archive_appends(isolated_store, monkeypatch):
+    monkeypatch.setattr(tracker, "INTRADAY_SCANS",
+                        tracker.STORE.parent / "intraday_scans.parquet")
+    rows = pd.DataFrame([
+        {"date": "2026-07-29", "ticker": "EMTK", "signal": "BUY", "p_buy": .7,
+         "p_hold": .2, "p_sell": .1, "confident": True, "price": 520.0,
+         "horizon": 10},
+        {"date": "2026-07-29", "ticker": "ANTM", "signal": "HOLD", "p_buy": .3,
+         "p_hold": .5, "p_sell": .2, "confident": False, "price": 2900.0,
+         "horizon": 10}])
+    tracker._append_intraday_scan(rows, "09:30 WIB")
+    tracker._append_intraday_scan(rows, "15:30 WIB")
+    df = pd.read_parquet(tracker.INTRADAY_SCANS)
+    assert len(df) == 4                                   # append, tidak menimpa
+    assert sorted(df["scan_label"].unique()) == ["09:30 WIB", "15:30 WIB"]
+    assert "scanned_at" in df.columns and df["scanned_at"].str.contains("\\+07:00").all()
