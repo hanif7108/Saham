@@ -2067,6 +2067,69 @@ async function rrr(){
     <p class="sub">${esc(d.catatan)}</p>`; }
 
 /* ===================== PEDOMAN ===================== */
+function loadEksekusi(){
+  const el=document.getElementById('eksekusi-body'); if(!el) return;
+  el.innerHTML = `
+  <div class="panel-header"><h2>🎯 Pedoman Eksekusi Harian</h2></div>
+  <p class="dim">Prinsip: <b>mesin mengusulkan, manusia memutuskan.</b> Screening manual bukan penyaring awal — perannya di gerbang akhir. Ditetapkan 28 Jul 2026 berdasarkan bukti walk-forward di data sendiri; ditinjau ulang tiap bulan lewat panel Track Record.</p>
+
+  <h4>0. Mengapa urutan ini? (bukti backtest 2024–2026, top-5, biaya 0.4%)</h4>
+  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem">
+    <tr style="text-align:left;color:var(--text-muted)"><th style="padding:.3rem 0">Strategi seleksi</th><th style="text-align:right">Sharpe</th><th style="text-align:right">Return</th><th style="text-align:right">Max DD</th></tr>
+    <tr><td style="padding:.25rem 0">Screening konvensional top-10 saja (≈ screening manual disiplin)</td><td style="text-align:right">0.24</td><td style="text-align:right">+3.8%</td><td style="text-align:right">−50%</td></tr>
+    <tr><td style="padding:.25rem 0">Screening dulu → ML memilih di dalamnya</td><td style="text-align:right">0.76</td><td style="text-align:right">+76%</td><td style="text-align:right">−45%</td></tr>
+    <tr><td style="padding:.25rem 0"><b>ML ensemble seluruh universe → review manual di akhir</b></td><td style="text-align:right"><b>1.46</b></td><td style="text-align:right"><b>+224%</b></td><td style="text-align:right"><b>−37%</b></td></tr>
+  </table></div>
+  <p class="dim" style="font-size:.78rem">Pelajaran: menyaring lebih dulu memangkas ruang peluang model; sentuhan manusia paling bernilai sebagai <i>gerbang risiko</i>, bukan sumber kandidat.</p>
+
+  <h4>1. Ritme harian (WIB, hari bursa)</h4>
+  <ul>
+    <li><b>08:30</b> — Telegram pra-pembukaan: baca Top-5 ensemble semalam; tandai kandidat yang mau di-review.</li>
+    <li><b>09:30 / 11:30 / 14:30 / 15:30</b> — snapshot intraday: hanya pemantauan, <b>bukan</b> pemicu order impulsif.</li>
+    <li><b>16:20</b> — kiriman <i>penutupan</i> (resmi, masuk track record): dasar rencana order untuk esok pagi.</li>
+    <li><b>Malam / pagi sebelum buka</b> — jalankan langkah 2–5 di bawah, pasang rencana order.</li>
+  </ul>
+
+  <h4>2. Mesin mengusulkan (otomatis)</h4>
+  <ul>
+    <li>Dashboard → panel <b>🤖 Sinyal ML</b>: kandidat = urutan teratas kolom <b>Ens⚡</b> (ensemble ranking lintas-saham × classifier). Baris ber-<b>🚫</b> (veto P(SELL) ≥ 0.45) <b>haram disentuh</b> — jangan ditimpa perasaan.</li>
+    <li>Panel <b>🎯 Fokus Dua Tahap</b>: lihat kolom <b>Kesepakatan</b> — ✓ selaras berarti metoda konvensional (6 Magic + CAN SLIM + teknikal + jalur7) dan ML searah.</li>
+    <li>Regime IHSG <b>BEARISH</b> &amp; mesin memblok entry? Hormati. Fokus ke watchlist, emas/cash — bukan memaksa beli.</li>
+  </ul>
+
+  <h4>3. Manusia me-review (checklist ±2 menit per kandidat, maks 5–10 nama)</h4>
+  <ul>
+    <li>☐ <b>Berita &amp; aksi korporasi</b> — ada kabar yang model tidak tahu (rights issue, suspensi, gugatan, akuisisi)?</li>
+    <li>☐ <b>Kalender emiten</b> — dekat tanggal laporan keuangan / cum-ex dividen? (gap risk)</li>
+    <li>☐ <b>Likuiditas riil</b> — spread bid-offer wajar? antrian cukup tebal untuk size Anda?</li>
+    <li>☐ <b>Konsentrasi</b> — tidak menumpuk &gt;2 posisi di sektor yang sama?</li>
+    <li>☐ <b>Keyakinan syariah pribadi</b> — tetap nyaman dengan bisnis emiten? (hak veto mutlak Anda)</li>
+  </ul>
+
+  <h4>4. Eksekusi disiplin</h4>
+  <ul>
+    <li>Maksimal <b>3–5 posisi</b> (selaras target_holdings); dana per posisi mengikuti alokasi Money Management × <b>regime multiplier</b>.</li>
+    <li>Prioritas: kandidat <b>✓ selaras</b> (rule × ML sepakat). Kandidat <b>≠ beda</b> boleh, tapi size dipotong ±50% sampai track record membuktikan siapa benar.</li>
+    <li>Disiplin jalur 7%: <b>SL −7%</b> · target <b>+7%</b>; pasang saat order, bukan setelah nyangkut.</li>
+    <li>Tunai &amp; long-only (Fatwa DSN-MUI 40/2003 &amp; 80/2011) — tanpa margin, tanpa short.</li>
+  </ul>
+
+  <h4>5. Evaluasi — standar yang sama untuk mesin &amp; manusia</h4>
+  <ul>
+    <li>Prediksi mesin diadili otomatis di panel <b>Track Record</b> (hit/win/avg-ret; subset fokus &amp; veto tercatat).</li>
+    <li>Keputusan Anda terekam via portofolio &amp; simulasi — tinjau bulanan: apakah override manual <b>menambah</b> atau <b>mengurangi</b> nilai vs mengikuti mesin mentah-mentah?</li>
+    <li>Mode ML tetap <b>shadow</b> sampai track record ≥ 1–2 bulan meyakinkan; naik ke <b>active</b> adalah keputusan berbasis bukti, bukan selera.</li>
+  </ul>
+
+  <h4>6. Batas peran manual yang sah</h4>
+  <ul>
+    <li><b>Kurasi universe syariah</b> (DES/ISSI &amp; keyakinan pribadi) — sepenuhnya manusia.</li>
+    <li><b>Informasi di luar model</b> (berita, kondisi makro mendadak) — boleh veto/tunda, catat alasannya.</li>
+    <li><b>Yang tidak sah</b>: memilih 10 saham secara manual sebagai penyaring awal, menimpa veto 🚫, membeli saat mesin memblok regime — semua terbukti menurunkan hasil di backtest.</li>
+  </ul>
+  <p class="dim" style="font-size:.75rem">Referensi teknis &amp; angka lengkap: README_ML.md (repo) · panel Track Record · /api/ml/track.</p>`;
+}
+
 function loadPedoman(){
   $('#ped-body').innerHTML = `
   <div class="panel-header"><h2>📜 Pedoman Trading Saham Syariah</h2></div>
@@ -4583,7 +4646,7 @@ async function loadMlTrack(){
 /* ===================== INIT ===================== */
 function refreshAll(){ loadMarket(); loadUniverse(); _loaded.cmd=false; toast('Data pasar disegarkan.'); }
 (async()=>{
-  loadMarket(); loadUniverse(); loadPedoman(); loadStrategi(); loadEngines(); loadPortfolio(); loadMlTrack(); loadDatalakeStatus(); setTimeout(loadMlSignals, 1500); setTimeout(loadMlFocus, 2500);
+  loadMarket(); loadUniverse(); loadPedoman(); loadEksekusi(); loadStrategi(); loadEngines(); loadPortfolio(); loadMlTrack(); loadDatalakeStatus(); setTimeout(loadMlSignals, 1500); setTimeout(loadMlFocus, 2500);
   try{ const dc=await api('/api/disclaimer');
     $('#disc').innerHTML=`<b>Disclaimer:</b> ${esc(dc.disclaimer)}<br><br><b>Acuan:</b> ${dc.acuan.map(esc).join(' · ')}`;
   }catch(e){}
