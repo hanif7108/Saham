@@ -12,10 +12,11 @@ rsync -az --partial "$DATALAKE/raw/prices/" "$APP_DIR/ml_data/history/"
 
 echo "[2/4] Bangun dataset + latih semua varian (walk-forward sadar-biaya)..."
 cd "$APP_DIR"
-PYTHONPATH=. .venv/bin/python -m app.ml.dataset --screened
-PYTHONPATH=. .venv/bin/python -m app.ml.train                 # h5/h10/h20 + eval
-PYTHONPATH=. .venv/bin/python -m app.ml.train --screened --horizon 10
-PYTHONPATH=. .venv/bin/python -m app.ml.train --rank --horizon 10
+PY=".venv/bin/python"; [ -x ".venv312/bin/python" ] && PY=".venv312/bin/python"
+PYTHONPATH=. $PY -m app.ml.dataset --screened
+PYTHONPATH=. $PY -m app.ml.train                 # h5/h10/h20 + eval
+PYTHONPATH=. $PY -m app.ml.train --screened --horizon 10
+PYTHONPATH=. $PY -m app.ml.train --rank --horizon 10
 
 echo "[3/4] Publikasi kandidat ke NAS models/candidate/${STAMP}_rig/ ..."
 DEST="$DATALAKE/models/candidate/${STAMP}_rig/"

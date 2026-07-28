@@ -15,10 +15,19 @@ ke NAS. Validasi & promosi selalu di sisi Mini (`app/ml/model_ingest.py`).
 
 ## Setup sekali (Linux/WSL disarankan; Windows native juga bisa)
 
+> ⚠️ PENTING (pelajaran 2026-07-28): system Python di rig adalah 3.14 dan
+> TERBUKTI segfault intermiten saat training LightGBM multithread
+> (crash senyap, log kosong, jejak di /var/crash). SELALU pakai
+> Python 3.12 via uv seperti di bawah.
+
 ```bash
 git clone https://github.com/hanif7108/Saham.git && cd Saham/sharia_trading_ai
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-# GPU (opsional, LightGBM CUDA): pip install lightgbm --config-settings=cmake.define.USE_CUDA=ON
+curl -LsSf https://astral.sh/uv/install.sh | sh && export PATH="$HOME/.local/bin:$PATH"
+uv python install 3.12 && uv venv --python 3.12 .venv312
+uv pip install --python .venv312/bin/python "pandas<3" numpy lightgbm pyarrow \
+   scikit-learn joblib pydantic pydantic-settings python-dotenv httpx
+# Jalankan proses panjang dengan detach penuh:
+#   setsid nohup .venv312/bin/python <skrip> > log 2>&1 < /dev/null &
 ```
 
 Akses NAS (satu LAN — pakai IP lokal NAS, bukan Tailscale, agar cepat):
