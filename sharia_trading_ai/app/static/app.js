@@ -616,15 +616,16 @@ function buildFunnelMarkdown(d){
   lines.push('');
   lines.push('Skor Keyakinan = 40% Funnel + 30% Undervalue + 30% Akurasi Backtest.');
   lines.push('');
-  lines.push('| Rank | Ticker | Nama | Keyakinan | Funnel | Sinyal | UV | Akurasi | Status |');
-  lines.push('|---:|---|---|---:|---:|---|---:|---:|---|');
+  lines.push('| Rank | Ticker | Nama | Keyakinan | Funnel | Sinyal | UV | Akurasi | ML | Status |');
+  lines.push('|---:|---|---|---:|---:|---|---:|---:|---|---|');
   if(top10.length){
     top10.forEach((t,i)=>{
       const rank=t.rank||(i+1);
-      lines.push(`| ${rank} | **${t.ticker}** | ${(t.name||'').replace(/\|/g,'/')} | ${t.conviction??'—'} | ${t.funnel_skor??'—'} | ${t.funnel_signal||'—'} | ${t.uv_score??'—'} | ${t.akurasi_pct??'—'}% | ${t.status||'—'} |`);
+      const ml=t.ml_signal&&t.ml_signal.available?`${t.ml_signal.signal} ${Math.round((t.ml_signal.p_buy||0)*100)}%`:'—';
+      lines.push(`| ${rank} | **${t.ticker}** | ${(t.name||'').replace(/\|/g,'/')} | ${t.conviction??'—'} | ${t.funnel_skor??'—'} | ${t.funnel_signal||'—'} | ${t.uv_score??'—'} | ${t.akurasi_pct??'—'}% | ${ml} | ${t.status||'—'} |`);
     });
   } else {
-    lines.push('| — | — | — | — | — | — | — | — | — |');
+    lines.push('| — | — | — | — | — | — | — | — | — | — |');
   }
   lines.push('');
 
@@ -749,11 +750,15 @@ async function runDecision(isAuto = false, opts = {}){
     const statusMap={BELI:['buy','BELI'],HOLD:['warning','HOLD'],JUAL:['sell','JUAL'],DIMILIKI:['na','dimiliki'],TERTAHAN:['na','tertahan']};
     const top5=t5d.map(t=>{ const c=t.conviction; const cc=c==null?'na':c>=55?'buy':c>=45?'warning':'sell';
       const sm=statusMap[t.status]||['na',t.status||''];
-      const tip=`Keyakinan gabungan ${c??'-'}% = funnel ${t.funnel_skor??'-'} (${t.funnel_signal||'-'}) · undervalue ${t.uv_score??'-'} · akurasi ${t.akurasi_pct??'-'}% · status ${sm[1]}`;
+      const ml=t.ml_signal&&t.ml_signal.available?t.ml_signal:null;
+      const mlTxt=ml?` · ML(h${ml.horizon||'-'}): ${ml.signal} ${(ml.p_buy!=null?Math.round(ml.p_buy*100)+'% BUY':'')}${ml.confident?' ✓':''}`:'';
+      const tip=`Keyakinan gabungan ${c??'-'}% = funnel ${t.funnel_skor??'-'} (${t.funnel_signal||'-'}) · undervalue ${t.uv_score??'-'} · akurasi ${t.akurasi_pct??'-'}% · status ${sm[1]}${mlTxt}`;
+      const mlCls=ml?(ml.signal==='BUY'?'buy':ml.signal==='SELL'?'sell':'warning'):'na';
       return `<span class="badge brand" style="cursor:pointer; font-size:.85rem; padding:.35rem .75rem; border-radius:8px; display:inline-flex; align-items:center; gap:.35rem;" title="${tip}" onclick="gotoAnalyze('${t.ticker}')">
         ${t.ticker}
         ${c!=null?`<span class="badge ${cc}" style="font-size:.65rem; padding:1px 4px; border-radius:4px;">${c}</span>`:''}
         ${t.status?`<span class="badge ${sm[0]}" style="font-size:.62rem; padding:1px 4px; border-radius:4px;">${sm[1]}</span>`:''}
+        ${ml?`<span class="badge ${mlCls}" style="font-size:.62rem; padding:1px 4px; border-radius:4px;" title="Sinyal ML LightGBM horizon ${ml.horizon} hari — P(BUY) ${Math.round((ml.p_buy||0)*100)}%">🤖${ml.signal==='BUY'?'▲':ml.signal==='SELL'?'▼':'•'}${Math.round((ml.p_buy||0)*100)}</span>`:''}
       </span>`;
     }).join(' ');
     const top5Legend=`<div class="mut" style="font-size:.78rem; margin-top:.6rem; line-height:1.6">

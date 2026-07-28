@@ -38,6 +38,12 @@ def analyze_stock(ticker: str, ttl: Optional[int] = None) -> dict[str, Any]:
 
     recommendation = _recommend(sharia, fund, cslim, tech, j7, osignal, bandar, ticker=ticker)
 
+    # Sinyal ML (shadow/active) — selalu graceful: dict {"available": False}
+    # bila artifact/data belum siap, pipeline rule-based tidak terganggu.
+    from app.core import ml_signal
+    ml = (ml_signal.predict(ticker, hist=hist, index_hist=index_hist)
+          if ml_signal.mode() != "off" else {"available": False, "reason": "off"})
+
     # Konsistensi data: EPS Magic vs huruf C tidak boleh saling bertentangan
     data_notes = list(cslim.get("sync_notes") or [])
     fund_eps = (fund.get("raw") or {}).get("eps_qnq")
@@ -60,6 +66,7 @@ def analyze_stock(ticker: str, ttl: Optional[int] = None) -> dict[str, Any]:
         "signal": osignal,
         "jalur7": j7,
         "bandarmologi": bandar,
+        "ml_signal": ml,
         "rekomendasi": recommendation,
         "in_funnel_universe": bool(sharia.get("in_funnel_universe")),
         "input_mode": "funnel" if sharia.get("in_funnel_universe") else "manual",
