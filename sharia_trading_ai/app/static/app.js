@@ -4544,7 +4544,7 @@ async function loadMlFocus(refresh=false){
       :r.agree===false?'<span class="badge warning" style="font-size:.64rem;padding:1px 6px">≠ beda</span>':'<span class="mut" style="font-size:.68rem">—</span>';
     return `<tr style="cursor:pointer" onclick="gotoAnalyze('${r.ticker}')" title="${esc(r.name||'')}">
       <td style="padding:.3rem 0" class="mut">${r.rank}</td>
-      <td style="font-weight:700">${esc(r.ticker)}</td>
+      <td style="font-weight:700">${esc(r.ticker)}${r.below_min_price?' <span title="Harga < Rp500 — di luar kelayakan eksekusi ML (slippage tick besar)">⚠️</span>':''}</td>
       <td style="text-align:right">${r.skor_funnel??'—'}</td>
       <td><span class="badge na" style="font-size:.66rem;padding:1px 6px">${esc(r.final_signal||r.keputusan||'—')}</span></td>
       <td>${ml?`<span class="badge ${mlCls}" style="font-size:.66rem;padding:1px 6px">${esc(ml.signal)}${ml.confident?' ✓':''}</span>`:'<span class="mut">—</span>'}</td>
@@ -4559,7 +4559,7 @@ async function loadMlFocus(refresh=false){
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.8rem">
       <tr style="text-align:left;color:var(--text-muted);font-size:.72rem"><th style="padding:.25rem 0">#</th><th>Ticker</th><th style="text-align:right">Skor Funnel</th><th>Rule</th><th>ML</th><th>P(BUY)</th><th style="text-align:right" title="Skor ensemble ranking x classifier">Ens⚡</th><th>Kesepakatan</th></tr>
       ${tr}</table></div>
-    <div class="mut" style="font-size:.68rem;margin-top:.4rem">Model varian: ${esc(rows[0].ml_variant||'—')} · di-refresh bersama cache funnel. ✓ selaras = rule & ML searah; ≠ beda = sinyal bertentangan (perhatikan track record sebelum memihak).</div>`;
+    <div class="mut" style="font-size:.68rem;margin-top:.4rem">Model varian: ${esc(rows[0].ml_variant||'—')} · ⚠️ = harga &lt; Rp500 (di luar kelayakan eksekusi ML) · di-refresh bersama cache funnel. ✓ selaras = rule & ML searah; ≠ beda = sinyal bertentangan (perhatikan track record sebelum memihak).</div>`;
 }
 
 /* ===================== SINYAL ML UNIVERSE (DASHBOARD) ===================== */
