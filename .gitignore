@@ -17,3 +17,8 @@ exports/
 
 # OS
 .DS_Store
+
+# Artefak build Windows / model lokal — jangan pernah masuk git (ratusan MB)
+sharia_trading_ai/dist/
+sharia_trading_ai/*.msi
+sharia_trading_ai/ollama_models

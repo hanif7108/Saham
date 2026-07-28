@@ -4506,6 +4506,18 @@ async function loadMlSignals(refresh=false){
   el.innerHTML=html;
 }
 
+/* ===================== DATALAKE STATUS ===================== */
+async function loadDatalakeStatus(){
+  const el=document.getElementById('datalake-chip'); if(!el) return;
+  try{
+    const d=await api('/api/datalake/status');
+    const ok=d.last_status==='ok';
+    const cls=ok?'buy':(d.last_status==='partial'?'warning':'na');
+    const when=d.last_success?new Date(d.last_success).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+    el.innerHTML=`<span class="badge ${cls}" style="font-size:.66rem;padding:2px 7px" title="${esc(d.last_message||'')} · NAS ${esc(d.nas||'')}">🗄️ Datalake NAS: ${ok?('✓ '+when):(d.last_status||'—')}</span>`;
+  }catch(e){ el.innerHTML=''; }
+}
+
 /* ===================== TRACK RECORD ML ===================== */
 async function loadMlTrack(){
   const el=document.getElementById('ml-track-body'); if(!el) return;
@@ -4535,7 +4547,7 @@ async function loadMlTrack(){
 /* ===================== INIT ===================== */
 function refreshAll(){ loadMarket(); loadUniverse(); _loaded.cmd=false; toast('Data pasar disegarkan.'); }
 (async()=>{
-  loadMarket(); loadUniverse(); loadPedoman(); loadStrategi(); loadEngines(); loadPortfolio(); loadMlTrack(); setTimeout(loadMlSignals, 1500);
+  loadMarket(); loadUniverse(); loadPedoman(); loadStrategi(); loadEngines(); loadPortfolio(); loadMlTrack(); loadDatalakeStatus(); setTimeout(loadMlSignals, 1500);
   try{ const dc=await api('/api/disclaimer');
     $('#disc').innerHTML=`<b>Disclaimer:</b> ${esc(dc.disclaimer)}<br><br><b>Acuan:</b> ${dc.acuan.map(esc).join(' · ')}`;
   }catch(e){}
