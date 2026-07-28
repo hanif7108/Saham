@@ -313,11 +313,73 @@ def summary_for_ai() -> Optional[dict[str, Any]]:
     }
 
 
+def _fmt_rp(v: Any) -> str:
+    try:
+        return f"{float(v):,.0f}".replace(",", ".")
+    except Exception:
+        return "—"
+
+
+def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any]) -> str:
+    """Susun pesan HTML ringkasan sinyal ML harian (murni dari data)."""
+    d = rows["date"].iloc[0] if not rows.empty else date.today().isoformat()
+    n_conf = int(rows["confident"].sum()) if not rows.empty else 0
+    lines = [f"🤖 <b>Sinyal ML Harian</b> — {d}",
+             f"Mode <b>shadow</b> · horizon 5 hari bursa · {len(rows)} ticker · {n_conf} confident", ""]
+
+    top = rows[rows["signal"] == "BUY"].nlargest(5, "p_buy")
+    if not top.empty:
+        lines.append("🏆 <b>Top P(BUY)</b>:")
+        for i, (_, r) in enumerate(top.iterrows(), 1):
+            mark = " ✓" if r["confident"] else ""
+            lines.append(f"{i}. <b>{r['ticker']}</b> {r['p_buy']*100:.0f}%{mark} · Rp{_fmt_rp(r['price'])} · rule: {r['rule_signal'] or '—'}")
+
+    sells = rows[rows["signal"] == "SELL"].nlargest(3, "p_sell")
+    if not sells.empty:
+        lines.append("")
+        lines.append("⚠️ <b>Peringatan SELL</b>: " + " · ".join(
+            f"{r['ticker']} {r['p_sell']*100:.0f}%" for _, r in sells.iterrows()))
+
+    if s.get("evaluated"):
+        mb = s.get("ml_buy_all") or {}
+        rb = s.get("rule_buyish") or {}
+        lines.append("")
+        lines.append(f"📊 <b>Track record</b> ({s['evaluated']} evaluasi): "
+                     f"ML BUY win {mb.get('win_rate_pos', 0)*100:.0f}% · avg {mb.get('avg_ret_pct', 0):+.1f}%"
+                     + (f" | rule {rb.get('win_rate_pos', 0)*100:.0f}% · {rb.get('avg_ret_pct', 0):+.1f}%" if rb.get("n") else ""))
+
+    lines.append("")
+    lines.append("<i>Shadow mode — pembanding terukur, bukan perintah beli. "
+                 "Detail: dashboard → panel Sinyal ML.</i>")
+    return "\n".join(lines)
+
+
+def telegram_summary() -> dict[str, Any]:
+    """Kirim ringkasan sinyal ML hari ini ke Telegram (baris terbaru di store)."""
+    from app.core import telegram_notify
+    if not telegram_notify.is_configured():
+        return {"ok": False, "error": "Telegram belum dikonfigurasi"}
+    df = _load()
+    if df.empty:
+        return {"ok": False, "error": "belum ada prediksi tercatat"}
+    last_date = df["date"].max()
+    rows = df[df["date"] == last_date]
+    text = build_telegram_text(rows, stats(last_days=180))
+    return telegram_notify.send(text)
+
+
 def run_daily() -> dict[str, Any]:
     """Dipanggil scheduler tiap sore hari bursa: evaluasi dulu, lalu catat baru."""
     ev = evaluate_matured()
     lg = log_today()
-    return {"evaluate": ev, "log": lg}
+    tg = None
+    try:
+        from app.config import settings
+        if getattr(settings, "ml_track_telegram", False) and (lg.get("ok") or lg.get("skipped")):
+            tg = telegram_summary()
+    except Exception as e:  # noqa: BLE001
+        tg = {"ok": False, "error": str(e)}
+    return {"evaluate": ev, "log": lg, "telegram": tg}
 
 
 def main() -> None:
@@ -325,12 +387,15 @@ def main() -> None:
     ap.add_argument("--log", action="store_true")
     ap.add_argument("--evaluate", action="store_true")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--telegram", action="store_true", help="kirim ringkasan hari terakhir ke Telegram")
     ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
     if args.log:
         print(json.dumps(log_today(force=args.force), indent=1))
     if args.evaluate:
         print(json.dumps(evaluate_matured(), indent=1))
+    if args.telegram:
+        print(json.dumps(telegram_summary(), ensure_ascii=False, indent=1))
     if args.report:
         print(json.dumps({"stats": stats(), "calibration": calibrate()},
                          ensure_ascii=False, indent=1))

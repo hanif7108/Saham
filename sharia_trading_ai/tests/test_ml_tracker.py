@@ -96,3 +96,19 @@ def test_calibrated_threshold_flows_to_predict(isolated_store, monkeypatch):
     tracker.SUMMARY.write_text(
         '{"calibration": {"ok": true, "suggested_conf_threshold": 0.5}}')
     assert tracker.calibrated_threshold() == 0.5
+
+
+def test_build_telegram_text(isolated_store):
+    tracker.log_today(ranking=_fake_ranking(), force=True)
+    df = pd.read_parquet(tracker.STORE)
+    txt = tracker.build_telegram_text(df, {})
+    assert "Sinyal ML Harian" in txt
+    assert "KLBF" in txt and "52%" in txt          # top BUY + probabilitasnya
+    assert "ANTM 50%" in txt                        # peringatan SELL
+    assert "shadow" in txt
+    # dengan track record terevaluasi -> baris track record ikut
+    txt2 = tracker.build_telegram_text(df, {
+        "evaluated": 10,
+        "ml_buy_all": {"n": 5, "win_rate_pos": 0.6, "avg_ret_pct": 1.2},
+        "rule_buyish": {"n": 4, "win_rate_pos": 0.5, "avg_ret_pct": 0.3}})
+    assert "Track record" in txt2 and "60%" in txt2

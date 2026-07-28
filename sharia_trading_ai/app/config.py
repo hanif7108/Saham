@@ -269,6 +269,7 @@ class Settings(BaseSettings):
     # (lingkaran belajar prediksi-vs-realitas; lihat app/ml/tracker.py)
     ml_track_enabled: bool = True
     ml_track_time: str = "16:20"        # setelah bursa tutup & pipeline sore
+    ml_track_telegram: bool = True      # kirim ringkasan sinyal ML harian ke Telegram
 
 
 settings = Settings()
