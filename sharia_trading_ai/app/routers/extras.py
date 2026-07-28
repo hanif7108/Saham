@@ -44,6 +44,13 @@ def datalake_status():
                 "last_message": "pasang SSH key dulu: ssh-copy-id qnap@100.70.97.42"}
 
 
+@router.get("/ml/focus")
+def ml_focus(refresh: bool = False):
+    """Dua tahap: top-10 screening konvensional -> dinilai model ML screened."""
+    from app.core import ml_signal
+    return ml_signal.focus_top10(force=refresh)
+
+
 @router.get("/ml/signals")
 def ml_signals(refresh: bool = False):
     """Prediksi ML seluruh universe IDX (cache 15 mnt) — untuk panel dashboard."""

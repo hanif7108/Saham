@@ -4465,6 +4465,39 @@ async function sendBSJPTelegram() {
   } catch(e) { toast('Error: ' + e); }
 }
 
+/* ===================== FOKUS DUA TAHAP: SCREENING x ML ===================== */
+async function loadMlFocus(refresh=false){
+  const el=document.getElementById('ml-focus-body'); if(!el) return;
+  if(refresh) el.innerHTML='<span class="spin"></span> <span class="mut">Menjalankan screening + ML…</span>';
+  let d; try{ d=await api('/api/ml/focus'+(refresh?'?refresh=true':'')); }
+  catch(e){ el.innerHTML=''; return; }
+  const rows=(d&&d.rows)||[];
+  if(!rows.length){ el.innerHTML=`<div class="mut" style="font-size:.78rem">Fokus screening belum tersedia${d&&d.error?': '+esc(d.error):''}.</div>`; return; }
+  const fmtP=(v)=>Math.round((v||0)*100);
+  const tr=rows.map(r=>{
+    const ml=r.ml&&r.ml.available?r.ml:null;
+    const mlCls=ml?(ml.signal==='BUY'?'buy':ml.signal==='SELL'?'sell':'warning'):'na';
+    const agree=r.agree===true?'<span class="badge buy" style="font-size:.64rem;padding:1px 6px">✓ selaras</span>'
+      :r.agree===false?'<span class="badge warning" style="font-size:.64rem;padding:1px 6px">≠ beda</span>':'<span class="mut" style="font-size:.68rem">—</span>';
+    return `<tr style="cursor:pointer" onclick="gotoAnalyze('${r.ticker}')" title="${esc(r.name||'')}">
+      <td style="padding:.3rem 0" class="mut">${r.rank}</td>
+      <td style="font-weight:700">${esc(r.ticker)}</td>
+      <td style="text-align:right">${r.skor_funnel??'—'}</td>
+      <td><span class="badge na" style="font-size:.66rem;padding:1px 6px">${esc(r.final_signal||r.keputusan||'—')}</span></td>
+      <td>${ml?`<span class="badge ${mlCls}" style="font-size:.66rem;padding:1px 6px">${esc(ml.signal)}${ml.confident?' ✓':''}</span>`:'<span class="mut">—</span>'}</td>
+      <td style="min-width:8rem">${ml?`<div style="display:flex;align-items:center;gap:.4rem">
+        <div style="flex:1;height:6px;background:var(--line);border-radius:4px;overflow:hidden"><div style="width:${fmtP(ml.p_buy)}%;height:100%;background:var(--buy)"></div></div>
+        <span style="font-size:.72rem;width:2.6rem;text-align:right">${fmtP(ml.p_buy)}%</span></div>`:'—'}</td>
+      <td>${agree}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML=`<div class="mut" style="font-size:.76rem;margin-bottom:.4rem">🎯 <b>Fokus Dua Tahap</b> — Tahap 1: screening konvensional (6 Magic + CAN SLIM + teknikal + jalur7 → skor funnel) pilih 10 paling prospektif · Tahap 2: model ML <b>khusus populasi screening</b> menilai tiap kandidat.</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.8rem">
+      <tr style="text-align:left;color:var(--text-muted);font-size:.72rem"><th style="padding:.25rem 0">#</th><th>Ticker</th><th style="text-align:right">Skor Funnel</th><th>Rule</th><th>ML</th><th>P(BUY)</th><th>Kesepakatan</th></tr>
+      ${tr}</table></div>
+    <div class="mut" style="font-size:.68rem;margin-top:.4rem">Model varian: ${esc(rows[0].ml_variant||'—')} · di-refresh bersama cache funnel. ✓ selaras = rule & ML searah; ≠ beda = sinyal bertentangan (perhatikan track record sebelum memihak).</div>`;
+}
+
 /* ===================== SINYAL ML UNIVERSE (DASHBOARD) ===================== */
 async function loadMlSignals(refresh=false){
   const el=document.getElementById('ml-signals-body'); if(!el) return;
@@ -4547,7 +4580,7 @@ async function loadMlTrack(){
 /* ===================== INIT ===================== */
 function refreshAll(){ loadMarket(); loadUniverse(); _loaded.cmd=false; toast('Data pasar disegarkan.'); }
 (async()=>{
-  loadMarket(); loadUniverse(); loadPedoman(); loadStrategi(); loadEngines(); loadPortfolio(); loadMlTrack(); loadDatalakeStatus(); setTimeout(loadMlSignals, 1500);
+  loadMarket(); loadUniverse(); loadPedoman(); loadStrategi(); loadEngines(); loadPortfolio(); loadMlTrack(); loadDatalakeStatus(); setTimeout(loadMlSignals, 1500); setTimeout(loadMlFocus, 2500);
   try{ const dc=await api('/api/disclaimer');
     $('#disc').innerHTML=`<b>Disclaimer:</b> ${esc(dc.disclaimer)}<br><br><b>Acuan:</b> ${dc.acuan.map(esc).join(' · ')}`;
   }catch(e){}

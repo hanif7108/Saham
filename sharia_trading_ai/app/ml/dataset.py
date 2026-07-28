@@ -58,7 +58,49 @@ def build_dataset(min_bars: int = 300) -> pd.DataFrame:
     return panel.sort_values(["date", "ticker"]).reset_index(drop=True)
 
 
+SCREENED_PATH = data_fetch.ML_DATA_DIR / "dataset_screened.parquet"
+
+
+def apply_conventional_screen(panel: pd.DataFrame, top_k: int = 10) -> pd.DataFrame:
+    """Emulasi screening konvensional secara HISTORIS (point-in-time).
+
+    Meniru gerbang funnel yang bisa dihitung dari harga (fundamental
+    point-in-time belum tersedia — mulai terkumpul di datalake):
+      1. Uptrend: close > SMA200 dan SMA50 > SMA200 (filter tren funnel).
+      2. Momentum tidak overbought ekstrem: RSI14 < 75.
+      3. Likuiditas sudah disaring saat build_dataset (turnover >= Rp1M).
+      4. Ambil top-K per tanggal berdasar skor konvensional: relative
+         strength 60d vs IHSG + momentum 20d + aktivitas volume.
+
+    Hasil: populasi training = "10 saham paling prospektif versi metoda
+    konvensional" per hari — selaras dengan populasi tempat model dipakai.
+    """
+    df = panel.copy()
+    mask = (df["close_sma200"] > 0) & (df["sma50_sma200"] > 0) & (df["rsi14"] < 75)
+    df = df[mask]
+    if df.empty:
+        return df
+
+    def _z(s: pd.Series) -> pd.Series:
+        sd = s.std()
+        return (s - s.mean()) / sd if sd and sd > 0 else s * 0.0
+
+    def _per_day(g: pd.DataFrame) -> pd.DataFrame:
+        score = _z(g["rs_60"].fillna(0)) + _z(g["ret_20"].fillna(0)) \
+            + 0.5 * _z(g["vol_ratio20"].fillna(1))
+        g = g.assign(conv_score=score)
+        return g.nlargest(top_k, "conv_score")
+
+    out = df.groupby("date", group_keys=False).apply(_per_day)
+    return out.reset_index(drop=True)
+
+
 def main() -> None:
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--screened", action="store_true",
+                    help="juga bangun dataset screening konvensional top-10/hari")
+    args = ap.parse_args()
     panel = build_dataset()
     DATASET_PATH.parent.mkdir(parents=True, exist_ok=True)
     panel.to_parquet(DATASET_PATH)
@@ -70,6 +112,11 @@ def main() -> None:
         dist = lab.value_counts(normalize=True).sort_index().round(3).to_dict()
         print(f"  label_{n}: n={len(lab):,} dist={dist}")
     print(f"Tersimpan: {DATASET_PATH}")
+    if args.screened:
+        scr = apply_conventional_screen(panel)
+        scr.to_parquet(SCREENED_PATH)
+        print(f"Screened: {len(scr):,} baris ({scr['ticker'].nunique()} ticker) "
+              f"-> {SCREENED_PATH}")
 
 
 if __name__ == "__main__":

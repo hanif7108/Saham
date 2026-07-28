@@ -16,8 +16,9 @@ cd "$APP_DIR"
 {
   echo "=== ML retrain mulai: $(date) ==="
   PYTHONPATH="$APP_DIR" "$VENV" -m app.ml.data_fetch --force
-  PYTHONPATH="$APP_DIR" "$VENV" -m app.ml.dataset
+  PYTHONPATH="$APP_DIR" "$VENV" -m app.ml.dataset --screened
   PYTHONPATH="$APP_DIR" "$VENV" -m app.ml.train
+  PYTHONPATH="$APP_DIR" "$VENV" -m app.ml.train --screened
   echo "=== Selesai training: $(date) ==="
 
   # Lingkaran belajar: evaluasi prediksi live yang jatuh tempo + laporan

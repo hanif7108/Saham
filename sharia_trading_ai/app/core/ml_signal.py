@@ -45,19 +45,20 @@ def mode() -> str:
     return m if m in ("off", "shadow", "active") else "shadow"
 
 
-def _load(horizon: int) -> Optional[dict]:
-    """Muat artifact, cache per proses; reload otomatis bila file berubah
-    (retrain bulanan menimpa artifact tanpa perlu restart uvicorn)."""
-    meta_path = ARTIFACT_DIR / f"ml_signal_h{horizon}.meta.json"
+def _load(horizon: int, variant: str = "") -> Optional[dict]:
+    """Muat artifact (variant mis. "_screened"), cache per proses; reload
+    otomatis bila file berubah (retrain bulanan tanpa restart uvicorn)."""
+    key = f"{horizon}{variant}"
+    meta_path = ARTIFACT_DIR / f"ml_signal_h{horizon}{variant}.meta.json"
     try:
         mtime = meta_path.stat().st_mtime
     except OSError:
         mtime = -1.0
-    cached = _CACHE.get(horizon)
+    cached = _CACHE.get(key)
     if cached is not None and cached["mtime"] == mtime:
         return cached["bundle"]
     with _LOCK:
-        cached = _CACHE.get(horizon)
+        cached = _CACHE.get(key)
         if cached is not None and cached["mtime"] == mtime:
             return cached["bundle"]
         loaded = None
@@ -73,7 +74,7 @@ def _load(horizon: int) -> Optional[dict]:
             loaded = {"engine": meta["engine"], "model": model, "meta": meta}
         except Exception:
             loaded = None
-        _CACHE[horizon] = {"mtime": mtime, "bundle": loaded}
+        _CACHE[key] = {"mtime": mtime, "bundle": loaded}
         return loaded
 
 
@@ -88,7 +89,8 @@ def reset_cache() -> None:
 
 
 def predict(ticker: str, hist: Optional[pd.DataFrame] = None,
-            index_hist: Optional[pd.DataFrame] = None) -> dict[str, Any]:
+            index_hist: Optional[pd.DataFrame] = None,
+            variant: str = "") -> dict[str, Any]:
     """Prediksi sinyal ML untuk satu ticker dari OHLCV runtime.
 
     Return selalu dict; kunci "available" False bila model/data tak siap.
@@ -98,9 +100,12 @@ def predict(ticker: str, hist: Optional[pd.DataFrame] = None,
     if mode() == "off":
         return {**base, "reason": "ml_signal_mode=off"}
 
-    bundle = _load(horizon)
+    bundle = _load(horizon, variant)
+    if bundle is None and variant:
+        bundle = _load(horizon)          # fallback ke model global
     if bundle is None:
         return {**base, "reason": "artifact tidak tersedia"}
+    base["variant"] = (bundle.get("meta") or {}).get("variant", "global")
 
     from app.data import provider
     if provider.is_us_ticker(ticker):
@@ -173,6 +178,7 @@ def predict(ticker: str, hist: Optional[pd.DataFrame] = None,
     return {
         "available": True,
         "mode": mode(),
+        "variant": base.get("variant", "global"),
         "signal": signal,
         "confident": confident,
         "p_buy": round(p_buy, 3),
@@ -250,6 +256,65 @@ def scan_universe(force: bool = False, hist_ttl: int = 14400) -> dict[str, Any]:
                 "generated_at": _dt.now(_ZI("Asia/Jakarta")).isoformat(timespec="seconds")}
         _SCAN_CACHE.update(ts=_time.time(), data=data)
         return data
+
+
+_FOCUS_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+
+
+def focus_top10(force: bool = False) -> dict[str, Any]:
+    """Alur dua tahap: screening konvensional (funnel skor) pilih top-10,
+    lalu model ML varian screened menilai masing-masing.
+
+    Tahap 1 memakai SELURUH metoda konvensional app (6 Magic, CAN SLIM,
+    teknikal, jalur7, layered scoring -> skor funnel). Tahap 2 memakai
+    artifact yang dilatih khusus pada populasi hasil screening historis.
+    """
+    import time as _time
+    now = _time.time()
+    if not force and _FOCUS_CACHE["data"] is not None and now - _FOCUS_CACHE["ts"] < _SCAN_TTL:
+        return _FOCUS_CACHE["data"]
+    with _SCAN_LOCK:
+        now = _time.time()
+        if not force and _FOCUS_CACHE["data"] is not None and now - _FOCUS_CACHE["ts"] < _SCAN_TTL:
+            return _FOCUS_CACHE["data"]
+
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo as _ZI
+        base: dict[str, Any] = {"mode": mode(), "horizon": _horizon(), "rows": [],
+                                "generated_at": _dt.now(_ZI("Asia/Jakarta")).isoformat(timespec="seconds")}
+        if mode() == "off":
+            _FOCUS_CACHE.update(ts=now, data=base)
+            return base
+        try:
+            from app.core import decisions
+            from app.data import provider
+            ranking = decisions.build_ranking()
+            idx_rows = [r for r in ranking if not provider.is_us_ticker(r["ticker"])]
+            top10 = sorted(idx_rows, key=lambda r: float(r.get("skor") or 0),
+                           reverse=True)[:10]
+            index_hist = provider.get_index_history()
+            rows = []
+            for i, r in enumerate(top10, 1):
+                tk = r["ticker"]
+                ml = predict(tk, index_hist=index_hist, variant="_screened")
+                buyish = (r.get("final_signal") or "") in (
+                    "STRONG BUY", "BUY", "SPECULATIVE BUY", "ACCUMULATE")
+                agree = None
+                if ml.get("available"):
+                    agree = (ml["signal"] == "BUY") == buyish if (buyish or ml["signal"] != "HOLD") else None
+                rows.append({
+                    "rank": i, "ticker": tk, "name": r.get("name"),
+                    "skor_funnel": r.get("skor"), "final_signal": r.get("final_signal"),
+                    "keputusan": r.get("keputusan"), "price": r.get("current_price"),
+                    "ml": summary_for_ranking(ml),
+                    "ml_variant": ml.get("variant"),
+                    "agree": agree,
+                })
+            base["rows"] = rows
+        except Exception as e:
+            base["error"] = str(e)[:200]
+        _FOCUS_CACHE.update(ts=_time.time(), data=base)
+        return base
 
 
 def summary_for_ranking(ml: dict[str, Any]) -> dict[str, Any]:

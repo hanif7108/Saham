@@ -22,3 +22,4 @@ exports/
 sharia_trading_ai/dist/
 sharia_trading_ai/*.msi
 sharia_trading_ai/ollama_models
+sharia_trading_ai/bin/

@@ -87,6 +87,32 @@ PYTHONPATH=. .venv/bin/python -m app.ml.train --no-eval      # artifact saja (ce
    `launchctl kickstart -k gui/$(id -u)/com.shariata.app`
    (atau label `com.sharia.trading` sesuai plist yang aktif).
 
+## Alur dua tahap: screening konvensional → ML (fokus Top-10)
+
+Mekanisme (sesuai keputusan 2026-07-28): **screening konvensional dulu, AI
+kemudian** — meningkatkan presisi per sinyal dan menjaga disiplin metoda.
+
+1. **Tahap 1 — screening konvensional**: 6 Magic Numbers + CAN SLIM +
+   teknikal + jalur7 (skor funnel layered) memilih **10 saham paling
+   prospektif** hari itu.
+2. **Tahap 2 — ML menilai hasil screening**: artifact varian
+   `ml_signal_h5_screened` (dilatih HANYA pada populasi yang lolos emulasi
+   screening historis — `apply_conventional_screen` di dataset.py: uptrend
+   SMA200 & SMA50>SMA200, RSI<75, likuid, top-10 skor konvensional per hari,
+   26.6rb sampel) memberi P(BUY)/P(SELL) tiap kandidat.
+
+Walk-forward 2024–2026 di populasi screening: model screened Sharpe 0.76 /
++76% / maxDD −45% vs model global di populasi sama 0.61 / +64% / −55%,
+dan screening murni tanpa ML hanya +3.8% — dua tahap mengalahkan
+masing-masing tahap sendirian. (Panel universe tetap memakai model global
+sebagai radar discovery.)
+
+Runtime: `GET /api/ml/focus` + tabel "🎯 Fokus Dua Tahap" di dashboard
+(kolom Kesepakatan menandai rule × ML selaras/beda). Track record mencatat
+flag `in_focus` sehingga realisasi subset fokus terukur terpisah
+(`focus_top10_all`, `focus_top10_ml_buy` di /api/ml/track). Retrain bulanan
+melatih ulang kedua varian.
+
 ## Lingkaran belajar: prediksi vs realisasi (`app/ml/tracker.py`)
 
 Setiap sore hari bursa (default 16:20, `ML_TRACK_TIME`) sistem otomatis:

@@ -85,7 +85,7 @@ def test_predict_graceful_without_enough_data(monkeypatch):
 
 def test_predict_unavailable_artifact(monkeypatch, ohlcv, market):
     from app.core import ml_signal
-    monkeypatch.setattr(ml_signal, "_load", lambda h: None)
+    monkeypatch.setattr(ml_signal, "_load", lambda h, v="": None)
     res = ml_signal.predict("KLBF", hist=ohlcv, index_hist=market)
     assert res["available"] is False
     assert "artifact" in res["reason"]

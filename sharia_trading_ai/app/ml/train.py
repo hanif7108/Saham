@@ -240,24 +240,29 @@ def walk_forward(panel: pd.DataFrame, horizon: int,
 #  Artifact final                                                             #
 # --------------------------------------------------------------------------- #
 def train_final(panel: pd.DataFrame, horizon: int,
-                wf_metrics: dict | None = None) -> Path:
-    """Latih model final di seluruh data dan simpan artifact + metadata."""
+                wf_metrics: dict | None = None, suffix: str = "") -> Path:
+    """Latih model final di seluruh data dan simpan artifact + metadata.
+
+    suffix mis. "_screened" = varian yang dilatih pada populasi screening
+    konvensional top-10/hari (dipakai alur fokus dua tahap).
+    """
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     label_col = f"label_{horizon}"
     data = panel.dropna(subset=[label_col])
     engine, model = train_model(data[FEATURE_COLUMNS], data[label_col])
 
     if engine == "lightgbm":
-        model_path = ARTIFACT_DIR / f"ml_signal_h{horizon}.txt"
+        model_path = ARTIFACT_DIR / f"ml_signal_h{horizon}{suffix}.txt"
         model.save_model(str(model_path))
     else:
         import joblib
-        model_path = ARTIFACT_DIR / f"ml_signal_h{horizon}.joblib"
+        model_path = ARTIFACT_DIR / f"ml_signal_h{horizon}{suffix}.joblib"
         joblib.dump(model, model_path)
 
     meta = {
         "engine": engine,
         "model_file": model_path.name,
+        "variant": suffix.lstrip("_") or "global",
         "horizon": horizon,
         "label_threshold": LABEL_THRESHOLDS[horizon],
         "conf_threshold": CONF_THRESHOLD,
@@ -269,7 +274,7 @@ def train_final(panel: pd.DataFrame, horizon: int,
         "feature_importance": feature_importance(engine, model),
         "walkforward_metrics": wf_metrics or {},
     }
-    (ARTIFACT_DIR / f"ml_signal_h{horizon}.meta.json").write_text(
+    (ARTIFACT_DIR / f"ml_signal_h{horizon}{suffix}.meta.json").write_text(
         json.dumps(meta, indent=1))
     return model_path
 
@@ -279,22 +284,31 @@ def main() -> None:
     ap.add_argument("--horizon", type=int, choices=list(LABEL_HORIZONS))
     ap.add_argument("--no-eval", action="store_true",
                     help="lewati walk-forward, langsung latih artifact final")
+    ap.add_argument("--screened", action="store_true",
+                    help="latih varian screened (populasi top-10 konvensional/hari, h5)")
     args = ap.parse_args()
 
-    panel = pd.read_parquet(DATASET_PATH)
-    horizons = [args.horizon] if args.horizon else list(LABEL_HORIZONS)
+    if args.screened:
+        from app.ml.dataset import SCREENED_PATH
+        panel = pd.read_parquet(SCREENED_PATH)
+        horizons = [args.horizon] if args.horizon else [5]
+        suffix = "_screened"
+    else:
+        panel = pd.read_parquet(DATASET_PATH)
+        horizons = [args.horizon] if args.horizon else list(LABEL_HORIZONS)
+        suffix = ""
 
     WALKFWD_DIR.mkdir(parents=True, exist_ok=True)
     for h in horizons:
         wf_metrics = None
         if not args.no_eval:
             pred_df, wf_metrics = walk_forward(panel, h)
-            pred_df.to_parquet(WALKFWD_DIR / f"preds_h{h}.parquet")
-            (WALKFWD_DIR / f"metrics_h{h}.json").write_text(
+            pred_df.to_parquet(WALKFWD_DIR / f"preds_h{h}{suffix}.parquet")
+            (WALKFWD_DIR / f"metrics_h{h}{suffix}.json").write_text(
                 json.dumps(wf_metrics, indent=1))
-            print(f"\n=== Horizon {h} hari ===")
+            print(f"\n=== Horizon {h} hari {suffix or '(global)'} ===")
             print(json.dumps(wf_metrics, indent=1))
-        path = train_final(panel, h, wf_metrics)
+        path = train_final(panel, h, wf_metrics, suffix=suffix)
         print(f"Artifact: {path}")
 
 

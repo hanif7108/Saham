@@ -112,3 +112,35 @@ def test_build_telegram_text(isolated_store):
         "ml_buy_all": {"n": 5, "win_rate_pos": 0.6, "avg_ret_pct": 1.2},
         "rule_buyish": {"n": 4, "win_rate_pos": 0.5, "avg_ret_pct": 0.3}})
     assert "Track record" in txt2 and "60%" in txt2
+
+
+def test_conventional_screen_top_k_per_day():
+    from app.ml.dataset import apply_conventional_screen
+    rng = np.random.default_rng(3)
+    n_days, n_tk = 30, 25
+    dates = np.repeat(pd.bdate_range("2024-01-01", periods=n_days), n_tk)
+    rows = pd.DataFrame({
+        "date": dates,
+        "ticker": np.tile([f"TK{i:02d}" for i in range(n_tk)], n_days),
+        "close_sma200": rng.normal(0.05, 0.1, len(dates)),
+        "sma50_sma200": rng.normal(0.02, 0.05, len(dates)),
+        "rsi14": rng.uniform(20, 90, len(dates)),
+        "rs_60": rng.normal(0, 0.1, len(dates)),
+        "ret_20": rng.normal(0, 0.08, len(dates)),
+        "vol_ratio20": rng.uniform(0.5, 3, len(dates)),
+    })
+    scr = apply_conventional_screen(rows, top_k=10)
+    # tidak pernah > 10 per hari, dan semua lolos gerbang uptrend/RSI
+    assert scr.groupby("date").size().max() <= 10
+    assert (scr["close_sma200"] > 0).all()
+    assert (scr["sma50_sma200"] > 0).all()
+    assert (scr["rsi14"] < 75).all()
+    assert "conv_score" in scr.columns
+
+
+def test_log_marks_focus_top10(isolated_store):
+    ranking = _fake_ranking()
+    ranking[0]["skor"] = 90.0   # KLBF skor tertinggi -> in_focus
+    tracker.log_today(ranking=ranking, force=True)
+    df = pd.read_parquet(tracker.STORE)
+    assert bool(df.set_index("ticker").loc["KLBF", "in_focus"])

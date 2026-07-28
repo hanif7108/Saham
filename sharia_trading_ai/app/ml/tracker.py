@@ -95,6 +95,9 @@ def log_today(ranking: Optional[list[dict]] = None, force: bool = False) -> dict
         ranking = decisions.build_ranking()
 
     from app.data import provider
+    idx_rank = [s for s in ranking if not provider.is_us_ticker(s.get("ticker") or "")]
+    focus_set = {s["ticker"] for s in sorted(
+        idx_rank, key=lambda r: float(r.get("skor") or 0), reverse=True)[:10]}
     rows = []
     for s in ranking:
         tk = s.get("ticker") or ""
@@ -111,6 +114,7 @@ def log_today(ranking: Optional[list[dict]] = None, force: bool = False) -> dict
             "p_hold": float(ml.get("p_hold") or 0),
             "p_sell": float(ml.get("p_sell") or 0),
             "confident": bool(ml.get("confident")),
+            "in_focus": tk in focus_set,
             "rule_signal": s.get("final_signal"),
             "rule_skor": float(s.get("skor") or 0),
             "rule_keputusan": s.get("keputusan"),
@@ -233,6 +237,10 @@ def stats(last_days: Optional[int] = None) -> dict[str, Any]:
 
     rule_buy = ev[ev["rule_signal"].isin(RULE_BUYISH)]
     res["rule_buyish"] = _grp_stats(rule_buy)
+    if "in_focus" in ev.columns:
+        foc = ev[ev["in_focus"].fillna(False).astype(bool)]
+        res["focus_top10_all"] = _grp_stats(foc)
+        res["focus_top10_ml_buy"] = _grp_stats(foc[foc["signal"] == "BUY"])
     res["universe_baseline"] = {
         "n": int(len(ev)),
         "avg_ret_pct": round(float(ev["realized_ret"].mean()) * 100, 2),
