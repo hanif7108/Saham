@@ -218,3 +218,27 @@ def test_telegram_top_respects_min_price(isolated_store):
     df = pd.read_parquet(tracker.STORE)
     txt = tracker.build_telegram_text(df, {})
     assert "KLBF" not in txt.split("Peringatan")[0]   # tidak masuk top pilihan
+
+
+def test_closing_message_compares_intraday_snapshot(isolated_store, monkeypatch):
+    import json as _json
+    monkeypatch.setattr(tracker, "INTRADAY_SNAPSHOT",
+                        tracker.STORE.parent / "intraday_snapshot.json")
+    # snapshot 15:30: EMTK direkomendasikan di Rp515
+    tracker.INTRADAY_SNAPSHOT.write_text(_json.dumps({
+        "date": tracker.today_wib().isoformat(), "label": "15:30 WIB",
+        "picks": [{"ticker": "EMTK", "price": 515.0, "p_buy": 0.7}]}))
+    rows = pd.DataFrame([{  # baris store penutupan: EMTK tutup di Rp525
+        "date": tracker.today_wib().isoformat(), "ticker": "EMTK",
+        "signal": "BUY", "p_buy": 0.73, "p_hold": 0.2, "p_sell": 0.07,
+        "confident": True, "price": 525.0, "rule_signal": "SKIP",
+        "horizon": 10}])
+    txt = tracker.build_telegram_text(rows, {})
+    assert "Sinyal 15:30 WIB → penutupan" in txt
+    assert "EMTK Rp515 → Rp525 (+1.94%) ✅" in txt
+    # snapshot kemarin -> tidak ditampilkan
+    tracker.INTRADAY_SNAPSHOT.write_text(_json.dumps({
+        "date": "2020-01-01", "label": "15:30 WIB",
+        "picks": [{"ticker": "EMTK", "price": 515.0, "p_buy": 0.7}]}))
+    txt2 = tracker.build_telegram_text(rows, {})
+    assert "→ penutupan" not in txt2

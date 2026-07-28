@@ -46,6 +46,7 @@ def today_wib() -> date:
 
 STORE = ML_DATA_DIR / "ml_track.parquet"
 SUMMARY = ML_DATA_DIR / "ml_track_summary.json"
+INTRADAY_SNAPSHOT = ML_DATA_DIR / "intraday_snapshot.json"
 
 # Sinyal rule-based yang dianggap "ajakan beli" (untuk perbandingan apel-ke-apel)
 RULE_BUYISH = {"STRONG BUY", "BUY", "SPECULATIVE BUY", "ACCUMULATE"}
@@ -386,6 +387,9 @@ def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any],
         lines.append("⚠️ <b>Peringatan SELL</b>: " + " · ".join(
             f"{r['ticker']} {r['p_sell']*100:.0f}%" for _, r in sells.iterrows()))
 
+    if "price" in rows.columns and rows["price"].notna().any():
+        lines.extend(_closing_comparison_lines(rows))
+
     if s.get("evaluated"):
         mb = s.get("ml_buy_all") or {}
         rb = s.get("rule_buyish") or {}
@@ -426,6 +430,50 @@ def _scan_rows() -> pd.DataFrame:
     return rows
 
 
+def _save_intraday_snapshot(rows: pd.DataFrame, label: Optional[str]) -> None:
+    """Simpan Top-5 BUY (>= harga minimum) + harga saat kiriman intraday.
+
+    Dibaca pesan penutupan untuk menampilkan "harga saat sinyal vs penutupan"
+    (permintaan 2026-07-28: akurasi intraday terlihat langsung)."""
+    try:
+        from app.config import settings as _st
+        min_p = float(getattr(_st, "ml_min_price", 500) or 0)
+        cand = rows[(rows["signal"] == "BUY") & (rows["price"].fillna(0) >= min_p)]
+        top = cand.nlargest(5, "p_buy")
+        if top.empty:
+            return
+        INTRADAY_SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
+        INTRADAY_SNAPSHOT.write_text(json.dumps({
+            "date": today_wib().isoformat(),
+            "label": label or now_wib().strftime("%H:%M WIB"),
+            "picks": [{"ticker": r["ticker"], "price": float(r["price"]),
+                       "p_buy": float(r["p_buy"])} for _, r in top.iterrows()],
+        }, ensure_ascii=False, indent=1))
+    except Exception:
+        pass
+
+
+def _closing_comparison_lines(close_rows: pd.DataFrame) -> list[str]:
+    """Baris 'harga saat sinyal intraday -> penutupan' utk pesan penutupan."""
+    try:
+        snap = json.loads(INTRADAY_SNAPSHOT.read_text())
+    except Exception:
+        return []
+    if snap.get("date") != today_wib().isoformat() or not snap.get("picks"):
+        return []
+    close_by_tk = dict(zip(close_rows["ticker"], close_rows["price"]))
+    lines = [f"", f"📍 <b>Sinyal {snap['label']} → penutupan</b>:"]
+    for pk in snap["picks"]:
+        tk, p0 = pk["ticker"], float(pk["price"])
+        p1 = close_by_tk.get(tk)
+        if not p1 or p0 <= 0:
+            continue
+        chg = (float(p1) / p0 - 1) * 100
+        arrow = "✅" if chg > 0 else ("➖" if chg == 0 else "❌")
+        lines.append(f"• {tk} Rp{_fmt_rp(p0)} → Rp{_fmt_rp(p1)} ({chg:+.2f}%) {arrow}")
+    return lines if len(lines) > 2 else []
+
+
 def telegram_summary(source: str = "store",
                      label: Optional[str] = None) -> dict[str, Any]:
     """Kirim ringkasan sinyal ML ke Telegram.
@@ -438,6 +486,7 @@ def telegram_summary(source: str = "store",
         return {"ok": False, "error": "Telegram belum dikonfigurasi"}
     if source == "scan":
         rows = _scan_rows()
+        _save_intraday_snapshot(rows, label)
     else:
         df = _load()
         rows = df[df["date"] == df["date"].max()] if not df.empty else pd.DataFrame()
