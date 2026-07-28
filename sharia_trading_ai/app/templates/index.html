@@ -71,6 +71,17 @@
       </div>
     </section>
 
+    <section class="glass-panel" style="margin-bottom:1.4rem" id="ml-signals-panel">
+      <div class="panel-header">
+        <h2>🤖 Sinyal ML (LightGBM · horizon 5 hari)</h2>
+        <div class="flex" style="gap:.5rem;align-items:center">
+          <span class="mut" style="font-size:.72rem" id="ml-signals-meta"></span>
+          <button class="btn secondary" style="font-size:.72rem;padding:.25rem .6rem" onclick="loadMlSignals(true)" title="Pindai ulang seluruh universe">🔄 Scan</button>
+        </div>
+      </div>
+      <div id="ml-signals-body"><span class="mut">Memuat prediksi ML…</span></div>
+    </section>
+
     <section class="glass-panel" style="margin-bottom:1.4rem" id="ml-track-panel">
       <div class="panel-header">
         <h2>🤖 Track Record Sinyal ML</h2>
@@ -817,6 +828,6 @@
   <section class="glass-panel disc" id="disc" style="margin-top:1.4rem"></section>
 </div>
 <div class="toast" id="toast"></div>
-<script src="/static/app.js?v=22"></script>
+<script src="/static/app.js?v=23"></script>
 </body>
 </html>

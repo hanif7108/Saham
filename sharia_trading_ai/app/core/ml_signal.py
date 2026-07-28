@@ -189,6 +189,68 @@ def predict(ticker: str, hist: Optional[pd.DataFrame] = None,
     }
 
 
+_SCAN_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+_SCAN_TTL = 900          # detik — selaras cache funnel (data harian, tak perlu lebih segar)
+_SCAN_LOCK = threading.Lock()
+
+
+def scan_universe(force: bool = False) -> dict[str, Any]:
+    """Prediksi ML seluruh universe IDX, urut P(BUY) tertinggi (untuk dashboard).
+
+    Memakai cache history provider (TTL 4 jam, sudah hangat setelah funnel
+    jalan) + cache hasil 15 menit, jadi murah dipanggil berulang dari UI.
+    """
+    import time as _time
+    now = _time.time()
+    if not force and _SCAN_CACHE["data"] is not None and now - _SCAN_CACHE["ts"] < _SCAN_TTL:
+        return _SCAN_CACHE["data"]
+    with _SCAN_LOCK:
+        now = _time.time()
+        if not force and _SCAN_CACHE["data"] is not None and now - _SCAN_CACHE["ts"] < _SCAN_TTL:
+            return _SCAN_CACHE["data"]
+
+        base = {"mode": mode(), "horizon": _horizon(),
+                "available": available(), "signals": []}
+        if mode() == "off" or not base["available"]:
+            _SCAN_CACHE.update(ts=now, data=base)
+            return base
+
+        from concurrent.futures import ThreadPoolExecutor
+        from app.data import provider
+
+        names = {r["ticker"]: r.get("name") for r in provider.get_universe()}
+        tickers = [t for t in provider.universe_tickers()
+                   if not provider.is_us_ticker(t)]
+        index_hist = provider.get_index_history()
+
+        def one(tk):
+            try:
+                hist = provider.get_history(tk, ttl=14400)
+                r = predict(tk, hist=hist, index_hist=index_hist)
+                if not r.get("available"):
+                    return None
+                price = float(hist["Close"].iloc[-1]) if hist is not None and len(hist) else None
+                return {"ticker": tk, "name": names.get(tk),
+                        "signal": r["signal"], "confident": r["confident"],
+                        "p_buy": r["p_buy"], "p_hold": r["p_hold"],
+                        "p_sell": r["p_sell"], "confidence": r["confidence"],
+                        "as_of": r["as_of"], "price": price}
+            except Exception:
+                return None
+
+        with ThreadPoolExecutor(max_workers=10) as ex:
+            rows = [r for r in ex.map(one, tickers) if r]
+
+        rows.sort(key=lambda r: r["p_buy"], reverse=True)
+        from datetime import datetime as _dt
+        data = {**base, "signals": rows,
+                "n": len(rows),
+                "as_of": rows[0]["as_of"] if rows else None,
+                "generated_at": _dt.now().isoformat(timespec="seconds")}
+        _SCAN_CACHE.update(ts=_time.time(), data=data)
+        return data
+
+
 def summary_for_ranking(ml: dict[str, Any]) -> dict[str, Any]:
     """Subset ringkas untuk item ranking / API dashboard."""
     if not ml.get("available"):

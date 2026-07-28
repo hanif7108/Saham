@@ -29,6 +29,13 @@ def get_decisions(limit: int | None = None, target: int | None = None,
     )
 
 
+@router.get("/ml/signals")
+def ml_signals(refresh: bool = False):
+    """Prediksi ML seluruh universe IDX (cache 15 mnt) — untuk panel dashboard."""
+    from app.core import ml_signal
+    return ml_signal.scan_universe(force=refresh)
+
+
 @router.get("/ml/track")
 def ml_track_record():
     """Track record sinyal ML: prediksi vs realisasi + kalibrasi ambang."""

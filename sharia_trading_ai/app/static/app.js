@@ -4465,6 +4465,47 @@ async function sendBSJPTelegram() {
   } catch(e) { toast('Error: ' + e); }
 }
 
+/* ===================== SINYAL ML UNIVERSE (DASHBOARD) ===================== */
+async function loadMlSignals(refresh=false){
+  const el=document.getElementById('ml-signals-body'); if(!el) return;
+  const meta=document.getElementById('ml-signals-meta');
+  if(refresh) el.innerHTML='<span class="spin"></span> <span class="mut">Memindai universe…</span>';
+  let d; try{ d=await api('/api/ml/signals'+(refresh?'?refresh=true':'')); }
+  catch(e){ el.innerHTML='<span class="mut">Sinyal ML belum tersedia.</span>'; return; }
+  if(!d || !d.available || !(d.signals||[]).length){
+    el.innerHTML=`<span class="mut">${d&&d.mode==='off'?'ml_signal_mode=off.':'Artifact model belum tersedia / data belum siap.'}</span>`;
+    return;
+  }
+  if(meta) meta.textContent=`per ${d.as_of||'—'} · ${d.n} ticker · mode ${d.mode}`;
+  const rows=d.signals;
+  const buys=rows.slice(0,10);
+  const sells=rows.filter(r=>r.signal==='SELL').sort((a,b)=>b.p_sell-a.p_sell).slice(0,5);
+  const fmtP=(v)=>Math.round((v||0)*100);
+  const chip=(r)=>{
+    const cls=r.signal==='BUY'?'buy':r.signal==='SELL'?'sell':'warning';
+    return `<tr style="cursor:pointer" onclick="gotoAnalyze('${r.ticker}')" title="${esc(r.name||'')} — klik untuk analisa lengkap">
+      <td style="padding:.3rem 0;font-weight:700">${esc(r.ticker)}</td>
+      <td class="mut" style="font-size:.74rem;max-width:11rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name||'')}</td>
+      <td><span class="badge ${cls}" style="font-size:.68rem;padding:2px 7px">${esc(r.signal)}${r.confident?' ✓':''}</span></td>
+      <td style="min-width:9rem"><div style="display:flex;align-items:center;gap:.4rem">
+        <div style="flex:1;height:6px;background:var(--line);border-radius:4px;overflow:hidden"><div style="width:${fmtP(r.p_buy)}%;height:100%;background:var(--buy)"></div></div>
+        <span style="font-size:.74rem;width:2.6rem;text-align:right">${fmtP(r.p_buy)}%</span></div></td>
+      <td class="mut" style="font-size:.74rem;text-align:right">${fmtP(r.p_hold)}%</td>
+      <td class="mut" style="font-size:.74rem;text-align:right">${fmtP(r.p_sell)}%</td>
+      <td class="mut" style="font-size:.74rem;text-align:right">${r.price?r.price.toLocaleString('id-ID'):'—'}</td>
+    </tr>`;
+  };
+  const header=`<tr style="text-align:left;color:var(--text-muted);font-size:.72rem"><th style="padding:.25rem 0">Ticker</th><th>Nama</th><th>Sinyal</th><th>P(BUY)</th><th style="text-align:right">P(HOLD)</th><th style="text-align:right">P(SELL)</th><th style="text-align:right">Harga</th></tr>`;
+  let html=`<div class="mut" style="font-size:.76rem;margin-bottom:.4rem">🏆 <b>Top-10 probabilitas BUY</b> — klik baris untuk analisa lengkap. Mode <b>shadow</b>: pembanding, bukan perintah beli.</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">${header}${buys.map(chip).join('')}</table></div>`;
+  if(sells.length){
+    html+=`<div class="mut" style="font-size:.76rem;margin:.7rem 0 .4rem">⚠️ <b>Peringatan SELL terkuat</b></div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">${header}${sells.map(chip).join('')}</table></div>`;
+  }
+  html+=`<div class="mut" style="font-size:.7rem;margin-top:.55rem;line-height:1.5">✓ = melewati ambang confidence. Model LightGBM walk-forward, label: return 5 hari bursa &gt; +2% (BUY) / &lt; −2% (SELL). Realisasinya direkam otomatis di panel Track Record di bawah.</div>`;
+  el.innerHTML=html;
+}
+
 /* ===================== TRACK RECORD ML ===================== */
 async function loadMlTrack(){
   const el=document.getElementById('ml-track-body'); if(!el) return;
@@ -4494,7 +4535,7 @@ async function loadMlTrack(){
 /* ===================== INIT ===================== */
 function refreshAll(){ loadMarket(); loadUniverse(); _loaded.cmd=false; toast('Data pasar disegarkan.'); }
 (async()=>{
-  loadMarket(); loadUniverse(); loadPedoman(); loadStrategi(); loadEngines(); loadPortfolio(); loadMlTrack();
+  loadMarket(); loadUniverse(); loadPedoman(); loadStrategi(); loadEngines(); loadPortfolio(); loadMlTrack(); setTimeout(loadMlSignals, 1500);
   try{ const dc=await api('/api/disclaimer');
     $('#disc').innerHTML=`<b>Disclaimer:</b> ${esc(dc.disclaimer)}<br><br><b>Acuan:</b> ${dc.acuan.map(esc).join(' · ')}`;
   }catch(e){}
