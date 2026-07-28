@@ -264,6 +264,8 @@ def scan_universe(force: bool = False, hist_ttl: int = 14400) -> dict[str, Any]:
 
 
 _FOCUS_CACHE: dict[str, Any] = {"ts": 0.0, "data": None}
+_FOCUS_LOCK = threading.Lock()   # terpisah dari _SCAN_LOCK: focus memanggil
+                                 # scan_universe() di dalamnya (hindari deadlock)
 
 
 def focus_top10(force: bool = False) -> dict[str, Any]:
@@ -278,7 +280,7 @@ def focus_top10(force: bool = False) -> dict[str, Any]:
     now = _time.time()
     if not force and _FOCUS_CACHE["data"] is not None and now - _FOCUS_CACHE["ts"] < _SCAN_TTL:
         return _FOCUS_CACHE["data"]
-    with _SCAN_LOCK:
+    with _FOCUS_LOCK:
         now = _time.time()
         if not force and _FOCUS_CACHE["data"] is not None and now - _FOCUS_CACHE["ts"] < _SCAN_TTL:
             return _FOCUS_CACHE["data"]
