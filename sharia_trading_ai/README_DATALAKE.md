@@ -32,6 +32,10 @@ predictions/
   decisions/         # decisions_YYYY-MM-DD.json — keputusan lengkap app per hari
 models/
   YYYY-MM/           # artifact LightGBM + meta per retrain bulanan (berversi)
+  candidate/         # kandidat dari rig RTX 4090 (+PROMOTE/PROMOTED_AT)
+research/
+  rig_experiments/   # output eksperimen rig per tanggal (multi-seed,
+                     #   walk-forward preds) — jejak riset permanen
 logs/                # audit data dsb.
 ```
 

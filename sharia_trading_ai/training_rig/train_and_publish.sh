@@ -24,6 +24,14 @@ rsync -az app/ml/artifacts/ml_signal_h10.txt app/ml/artifacts/ml_signal_h10.meta
           app/ml/artifacts/ml_rank_h10.txt   app/ml/artifacts/ml_rank_h10.meta.json  \
           "$DEST"
 
+echo "[3b/4] Arsipkan output eksperimen/walk-forward ke datalake research/ ..."
+RDATE=$(date +%Y-%m-%d)
+ssh "${DATALAKE%%:*}" "mkdir -p '${DATALAKE#*:}/research/rig_experiments/${RDATE}'" 2>/dev/null || true
+rsync -az ml_data/walkforward/ "$DATALAKE/research/rig_experiments/${RDATE}/walkforward/" 2>/dev/null || true
+for f in ml_data/multiseed*.json ml_data/multiseed*.parquet; do
+  [ -f "$f" ] && rsync -az "$f" "$DATALAKE/research/rig_experiments/${RDATE}/" || true
+done
+
 echo "[4/4] Selesai. REVIEW metrik dulu, lalu bila layak:"
 echo "      ssh <nas> \"touch <path>/models/candidate/${STAMP}_rig/PROMOTE\""
 echo "      Mac Mini akan memvalidasi & memasang pada sync 17:05 WIB berikutnya."
