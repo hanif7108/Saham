@@ -35,13 +35,13 @@ def datalake_status():
     import json
     from app.config import BASE_DIR
     state = BASE_DIR.parent / "ml_data" / "datalake_state.json"
-    base = {"nas": "100.70.97.42", "remote": "/volume1/DataLake/saham-syariah",
+    base = {"nas": "100.70.97.42", "remote": "/share/CACHEDEV1_DATA/DataLake/saham-syariah",
             "schedule": "harian 17:05 WIB (launchd com.shariata.datalake_sync)"}
     try:
         return {**base, **json.loads(state.read_text())}
     except Exception:
         return {**base, "last_status": "belum pernah sync",
-                "last_message": "pasang SSH key dulu: ssh-copy-id hanif@100.70.97.42"}
+                "last_message": "pasang SSH key dulu: ssh-copy-id qnap@100.70.97.42"}
 
 
 @router.get("/ml/signals")

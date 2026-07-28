@@ -8,7 +8,7 @@
 #     (--partial), dan kalau NAS offline script keluar rapi — data menunggu
 #     lokal sampai sync berikutnya.
 #   - Transfer via SSH key (tanpa password). Pasang sekali:
-#       ssh-copy-id hanif@100.70.97.42
+#       ssh-copy-id qnap@100.70.97.42
 #
 # Mode:
 #   datalake_sync.sh            # snapshot + push (dipakai launchd harian 17:05)
@@ -24,9 +24,9 @@ LOG_DIR="$APP_DIR/logs"; mkdir -p "$LOG_DIR" "$ML_DATA/decisions_snapshots" "$ML
 LOG="$LOG_DIR/datalake_sync.log"
 
 # --- konfigurasi (override via env) ---
-NAS_USER="${DATALAKE_USER:-hanif}"
+NAS_USER="${DATALAKE_USER:-qnap}"
 NAS_HOST="${DATALAKE_HOST:-100.70.97.42}"
-NAS_ROOT="${DATALAKE_REMOTE:-/volume1/DataLake/saham-syariah}"
+NAS_ROOT="${DATALAKE_REMOTE:-/share/CACHEDEV1_DATA/DataLake/saham-syariah}"
 SSH_OPTS="-o ConnectTimeout=15 -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
 RSYNC="rsync -az --partial --timeout=60 -e \"ssh $SSH_OPTS\""
 

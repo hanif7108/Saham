@@ -1,6 +1,6 @@
 # Datalake Trading Saham Sharia — NAS via Tailscale
 
-Arsip data lengkap (basis training AI) di NAS Synology `100.70.97.42`,
+Arsip data lengkap (basis training AI) di NAS QNAP `100.70.97.42` (volume CACHEDEV1_DATA, 7TB),
 sementara Mac Mini hanya menyimpan data panas yang dibutuhkan runtime.
 
 ## Prinsip desain (Mac Mini & NAS beda lokasi)
@@ -16,7 +16,7 @@ sementara Mac Mini hanya menyimpan data panas yang dibutuhkan runtime.
 - **Pruning lokal**: snapshot lokal > 14 hari dihapus HANYA setelah sukses
   tersalin ke NAS — storage Mac Mini tetap ramping.
 
-## Struktur di NAS (`/volume1/DataLake/saham-syariah/`)
+## Struktur di NAS (`/share/CACHEDEV1_DATA/DataLake/saham-syariah/`)
 
 ```
 raw/
@@ -41,14 +41,11 @@ Sync butuh SSH key (tanpa password, aman untuk otomasi). Dari terminal
 Mac Mini, jalankan dan masukkan password NAS **sekali**:
 
 ```bash
-ssh-copy-id hanif@100.70.97.42
+ssh-copy-id qnap@100.70.97.42
 ```
 
-> Bila ditolak: di DSM aktifkan dulu **Control Panel → User & Group →
-> Advanced → Enable user home service**, dan pastikan SSH aktif
-> (**Terminal & SNMP → Enable SSH service**). Folder `DataLake` dibuat
-> otomatis oleh script pada sync pertama (buat shared folder `DataLake`
-> di DSM bila belum ada).
+> Sudah dilakukan 2026-07-28 (user `qnap`). Folder DataLake dibuat
+> otomatis oleh script pada sync pertama.
 
 Uji langsung:
 
