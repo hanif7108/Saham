@@ -4653,8 +4653,13 @@ function refreshAll(){ loadMarket(); loadUniverse(); _loaded.cmd=false; toast('D
   runDecision(false, {fromInit: true, refresh: false});
   // Deep-link: ?analyze=TICKER -> langsung buka tab Analisa Saham & jalankan funnel
   try{
-    const qTk=new URLSearchParams(location.search).get('analyze');
+    const qs=new URLSearchParams(location.search);
+    const qTk=qs.get('analyze');
     if(qTk){ window.__pinnedTicker=qTk.toUpperCase(); gotoAnalyze(window.__pinnedTicker); }
+    const qTab=qs.get('tab');
+    if(qTab){ const b=document.querySelector(`.tab-btn-main[data-p="${qTab}"]`); if(b) b.click();
+      const qSub=qs.get('sub');
+      if(qSub){ const sb=document.querySelector(`.sub-tab-btn[data-sub="${qSub}"]`); if(sb) sb.click(); } }
   }catch(e){}
   // Auto-load Radar Kontradiksi saat Dashboard dibuka (ditunda agar Pusat Keputusan
   // & kartu dashboard ter-render dulu; guard _loaded.cc cegah pemuatan ganda).
