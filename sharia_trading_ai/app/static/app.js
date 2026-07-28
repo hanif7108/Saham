@@ -2127,6 +2127,16 @@ function loadEksekusi(){
     <li><b>Informasi di luar model</b> (berita, kondisi makro mendadak) — boleh veto/tunda, catat alasannya.</li>
     <li><b>Yang tidak sah</b>: memilih 10 saham secara manual sebagai penyaring awal, menimpa veto 🚫, membeli saat mesin memblok regime — semua terbukti menurunkan hasil di backtest.</li>
   </ul>
+  <h4>7. Kamus vonis mesin konvensional: SKIP / WATCHLIST / STRONG BUY</h4>
+  <p class="dim" style="font-size:.82rem">Kolom <b>Rule</b> di panel Sinyal ML &amp; pesan Telegram adalah vonis layered scoring konvensional. Cara terbentuknya, tiga lapis:</p>
+  <ul>
+    <li><b>Hard gate</b> (mutlak): terdaftar DES/ISSI · likuiditas minimum (spread ≤2%, volume median ≥Rp5jt/hari) · IHSG bukan kondisi ekstrem. Gagal = gugur.</li>
+    <li><b>Quality score 0–100</b>: Fundamental 30% + Teknikal 20% + Bandarmologi 15% + Likuiditas 15% + IHSG 15% + Risk 10%.</li>
+    <li><b>Regime multiplier</b>: quality × kondisi pasar — BULLISH ×1.0 · NEUTRAL ×0.8 · <b>BEARISH ×0.5</b> (×0 bila non-defensif). Skor final: <span class="badge buy" style="font-size:.66rem;padding:1px 5px">≥75 STRONG BUY</span> <span class="badge warning" style="font-size:.66rem;padding:1px 5px">55–74 WATCHLIST</span> <span class="badge sell" style="font-size:.66rem;padding:1px 5px">&lt;55 SKIP</span></li>
+  </ul>
+  <p class="dim" style="font-size:.82rem"><b>SKIP = "lewati, jangan beli sekarang"</b> — bukan perintah jual. Saat IHSG DOWNTREND, pengali ×0.5 membuat hampir semua saham SKIP (contoh: quality 55.9 × 0.5 = 27.9 → SKIP) — mesin konvensional memilih duduk menunggu, itu sebabnya kolom BELI kosong di regime bearish.</p>
+  <p class="dim" style="font-size:.82rem"><b>Membaca "ML BUY · rule SKIP"</b>: ini perbedaan pendapat yang sah dari dua logika berbeda — ML mencari alfa dari pola historis (termasuk masa bearish), rule melindungi modal dari pisau jatuh. Jangan buru-buru memihak: panel <b>Track Record</b> yang mengadili lewat realisasi harga. Selama shadow mode, sinyal seperti ini = bahan pengamatan, bukan eksekusi; kalaupun kelak diambil (setelah track record mendukung), Pedoman §4 berlaku — size dipotong ±50% karena berlawanan dengan disiplin regime.</p>
+
   <p class="dim" style="font-size:.75rem">Referensi teknis &amp; angka lengkap: README_ML.md (repo) · panel Track Record · /api/ml/track.</p>`;
 }
 
