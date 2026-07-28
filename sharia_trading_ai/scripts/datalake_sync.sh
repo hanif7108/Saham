@@ -11,9 +11,11 @@
 #       ssh-copy-id qnap@100.70.97.42
 #
 # Mode:
-#   datalake_sync.sh            # snapshot + push (dipakai launchd harian 17:05)
+#   datalake_sync.sh            # collect + snapshot + push + ingest (harian 17:05)
 #   datalake_sync.sh snapshot   # hanya kumpulkan snapshot harian lokal
+#   datalake_sync.sh collect    # snapshot universe penuh + fetch OHLCV 844 ticker
 #   datalake_sync.sh push       # hanya push ke NAS
+#   datalake_sync.sh ingest     # tarik kandidat model dari NAS -> validasi -> promosi
 #   datalake_sync.sh pull       # restore datalake NAS -> lokal (disaster recovery)
 set -uo pipefail
 
@@ -66,6 +68,25 @@ snapshot(){
      && log "snapshot fundamental ${today} OK"
 }
 
+collect(){
+  # Universe penuh IDX (~844 ticker): snapshot keanggotaan + OHLCV incremental.
+  # Universe TRADING tetap 75 terkurasi — ini murni pengayaan DATALAKE.
+  log "collect universe penuh mulai"
+  PYTHONPATH="$APP_DIR" "$APP_DIR/.venv/bin/python" -m app.ml.universe_collector --fetch \
+    >>"$LOG" 2>&1 && log "collect universe penuh OK" || log "collect universe GAGAL (lanjut)"
+}
+
+ingest(){
+  # Tarik kandidat model dari NAS (hasil training RTX 4090) -> validasi -> promosi.
+  mkdir -p "$ML_DATA/candidate_models"
+  eval "$RSYNC "$NAS_USER@$NAS_HOST:$NAS_ROOT/models/candidate/" $ML_DATA/candidate_models/" >>"$LOG" 2>&1 \
+    || { log "ingest: candidate dir belum ada di NAS (lewati)"; return 0; }
+  PYTHONPATH="$APP_DIR" "$APP_DIR/.venv/bin/python" -m app.ml.model_ingest >>"$LOG" 2>&1 \
+    && log "ingest kandidat model selesai" || log "ingest GAGAL"
+  # dorong balik status (PROMOTED_AT / penghapusan marker) agar rig tahu
+  eval "$RSYNC $ML_DATA/candidate_models/ "$NAS_USER@$NAS_HOST:$NAS_ROOT/models/candidate/"" >>"$LOG" 2>&1 || true
+}
+
 push(){
   # sanity: NAS terjangkau?
   if ! ssh $SSH_OPTS "$NAS_USER@$NAS_HOST" "mkdir -p '$NAS_ROOT'/{raw/prices,raw/fundamentals,curated/datasets,curated/walkforward,predictions/decisions,models,logs}" >>"$LOG" 2>&1; then
@@ -89,6 +110,8 @@ push(){
   [ -f "$ML_DATA/intraday_scans.parquet" ] && \
   R "$ML_DATA/intraday_scans.parquet"         "$NAS_ROOT/predictions/intraday_scans.parquet"
   R "$ML_DATA/decisions_snapshots/"           "$NAS_ROOT/predictions/decisions/"
+  [ -d "$ML_DATA/universe_snapshots" ] && \
+  R "$ML_DATA/universe_snapshots/"            "$NAS_ROOT/raw/universe/"
   R "$APP_DIR/app/ml/artifacts/"              "$NAS_ROOT/models/$month/"
   [ -f "$ML_DATA/audit_summary.json" ] && \
   R "$ML_DATA/audit_summary.json"             "$NAS_ROOT/logs/audit_summary.json"
@@ -119,8 +142,10 @@ pull(){
 
 case "${1:-all}" in
   snapshot) snapshot ;;
+  collect)  collect ;;
   push)     push ;;
+  ingest)   ingest ;;
   pull)     pull ;;
-  all)      snapshot; push ;;
-  *) echo "mode: snapshot|push|pull|all"; exit 2 ;;
+  all)      snapshot; collect; push; ingest ;;
+  *) echo "mode: snapshot|collect|push|ingest|pull|all"; exit 2 ;;
 esac

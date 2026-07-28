@@ -53,6 +53,27 @@ Uji langsung:
 bash /Users/hanif/Saham/sharia_trading_ai/scripts/datalake_sync.sh
 ```
 
+## Arsitektur tiga simpul (sejak 2026-07-28 malam)
+
+```
+RTX 4090 (kantor)  ── latih & evaluasi ──▶  NAS 7TB (datalake pusat)
+       ▲                                          │
+       └── baca raw/ via LAN                      ▼  sync harian 17:05 WIB
+                                     Mac Mini (produksi 24/7)
+                                     collect → push → ingest kandidat model
+```
+
+- **Universe penuh IDX (~844 ticker)** dikoleksi harian (`app/ml/universe_collector.py`,
+  sumber scanner TradingView, fallback CSV lokal): snapshot keanggotaan ke
+  `raw/universe/` (obat survivorship bias ke depan) + OHLCV penuh ke
+  `raw/prices/`. Universe TRADING tetap 75 terkurasi.
+- **Jalur balik model** (`app/ml/model_ingest.py`): rig menaruh kandidat di
+  `models/candidate/<nama>/` (artifact + meta ber-walkforward_metrics +
+  marker `PROMOTE`); Mini memvalidasi (kontrak fitur, artifact termuat,
+  metrik ada) → backup → pasang → aktif tanpa restart. Tanpa marker/gagal
+  validasi = produksi tidak tersentuh.
+- **Kit rig**: `training_rig/README_RTX4090.md` + `train_and_publish.sh`.
+
 ## Operasional
 
 - Jadwal: `com.shariata.datalake_sync` (LaunchAgent) harian **17:05 WIB**.

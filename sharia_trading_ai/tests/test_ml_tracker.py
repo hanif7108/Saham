@@ -260,3 +260,58 @@ def test_intraday_scan_archive_appends(isolated_store, monkeypatch):
     assert len(df) == 4                                   # append, tidak menimpa
     assert sorted(df["scan_label"].unique()) == ["09:30 WIB", "15:30 WIB"]
     assert "scanned_at" in df.columns and df["scanned_at"].str.contains("\\+07:00").all()
+
+
+def _make_candidate(tmp_path, monkeypatch, with_metrics=True, with_promote=True,
+                    feats=None):
+    import json as _json, lightgbm as lgb, numpy as np
+    from app.ml import model_ingest as MI
+    from app.ml.features import FEATURE_COLUMNS
+    feats = feats or FEATURE_COLUMNS
+    cdir = tmp_path / "cand" / "20260728_rig"; cdir.mkdir(parents=True)
+    X = np.random.default_rng(1).normal(size=(300, len(feats)))
+    y = (X[:, 0] > 0).astype(int)
+    m = lgb.train({"objective": "binary", "verbosity": -1},
+                  lgb.Dataset(X, label=y), num_boost_round=5)
+    m.save_model(str(cdir / "ml_signal_h10.txt"))
+    meta = {"engine": "lightgbm", "model_file": "ml_signal_h10.txt",
+            "horizon": 10, "feature_columns": list(feats)}
+    if with_metrics:
+        meta["walkforward_metrics"] = {"sharpe": 0.5}
+    (cdir / "ml_signal_h10.meta.json").write_text(_json.dumps(meta))
+    if with_promote:
+        (cdir / "PROMOTE").touch()
+    monkeypatch.setattr(MI, "CANDIDATE_DIR", tmp_path / "cand")
+    monkeypatch.setattr(MI, "ARTIFACT_DIR", tmp_path / "artifacts")
+    (tmp_path / "artifacts").mkdir()
+    monkeypatch.setattr(MI, "ML_DATA_DIR", tmp_path)
+    return MI, cdir
+
+
+def test_model_ingest_promotes_valid_candidate(tmp_path, monkeypatch):
+    MI, cdir = _make_candidate(tmp_path, monkeypatch)
+    out = MI.run()
+    assert out["results"][0]["ok"] and out["results"][0]["promoted"]
+    assert (tmp_path / "artifacts" / "ml_signal_h10.txt").exists()
+    assert (cdir / "PROMOTED_AT").exists() and not (cdir / "PROMOTE").exists()
+
+
+def test_model_ingest_rejects_without_metrics_or_features(tmp_path, monkeypatch):
+    MI, _ = _make_candidate(tmp_path, monkeypatch, with_metrics=False)
+    out = MI.run()
+    assert not out["results"][0]["ok"]
+    assert "walkforward_metrics" in out["results"][0]["reason"]
+
+    MI2, _ = _make_candidate(tmp_path / "b", monkeypatch,
+                             feats=["fitur_asing", "lainnya"])
+    out2 = MI2.run()
+    assert not out2["results"][0]["ok"]
+    assert "fitur" in out2["results"][0]["reason"]
+
+
+def test_model_ingest_no_promote_marker_means_no_install(tmp_path, monkeypatch):
+    MI, _ = _make_candidate(tmp_path, monkeypatch, with_promote=False)
+    out = MI.run()
+    r = out["results"][0]
+    assert r["ok"] and not r["promoted"] and not r["has_promote"]
+    assert not (tmp_path / "artifacts" / "ml_signal_h10.txt").exists()
