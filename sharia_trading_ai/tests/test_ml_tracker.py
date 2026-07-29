@@ -391,3 +391,21 @@ def test_portfolio_snapshot_and_monthly_roi(tmp_path, monkeypatch):
         "positions": []}))
     roi2 = PS.monthly_roi()
     assert roi2 and roi2["approx_basis_changed"]
+
+
+def test_morning_briefing_recap_only_at_0830(isolated_store, monkeypatch):
+    import pandas as _pd
+    from app.data import provider
+    idx = _pd.bdate_range("2025-08-01", periods=250)
+    ihsg = _pd.DataFrame({"Close": [6000.0]*248 + [6200.0, 6184.0]}, index=idx)
+    monkeypatch.setattr(provider, "get_index_history", lambda **kw: ihsg)
+    monkeypatch.setattr(provider, "get_history", lambda tk, **kw: ihsg)
+    from app.core import portfolio as pf
+    monkeypatch.setattr(pf, "list_positions", lambda: {"positions": []})
+    tracker.log_today(ranking=_fake_ranking(), force=True)
+    df = tracker._load()
+    pagi = tracker.build_telegram_text(df, {}, label="08:30 WIB")
+    sore = tracker.build_telegram_text(df, {}, label="penutupan · 16:30 WIB")
+    assert "Briefing Pagi" in pagi and "Rekap pasar kemarin" in pagi
+    assert "IHSG" in pagi and "-0.26%" in pagi          # 6184/6200-1
+    assert "Rekap pasar kemarin" not in sore and "Sinyal ML Harian" in sore

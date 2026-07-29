@@ -355,6 +355,43 @@ def _fmt_rp(v: Any) -> str:
         return "—"
 
 
+def _morning_market_lines() -> list[str]:
+    """Rekap pasar H-1 untuk briefing pagi (08:30, sebelum bursa buka 09:00)."""
+    lines: list[str] = []
+    try:
+        from app.data import provider
+        idx = provider.get_index_history(period="1y")
+        c = idx["Close"].dropna()
+        if len(c) >= 2:
+            last, prev = float(c.iloc[-1]), float(c.iloc[-2])
+            chg = (last / prev - 1) * 100
+            arrow = "🟢" if chg >= 0 else "🔴"
+            sma200 = float(c.rolling(200).mean().iloc[-1])
+            ma20 = float(c.rolling(20).mean().iloc[-1])
+            ma60 = float(c.rolling(60).mean().iloc[-1])
+            regime = "BULLISH" if ma20 > ma60 * 1.01 else (
+                "BEARISH" if ma20 < ma60 * 0.99 else "NETRAL")
+            pos200 = "di atas" if last > sma200 else "di bawah"
+            lines += [f"🌅 <b>Rekap pasar kemarin</b> ({str(c.index[-1])[:10]}):",
+                      f"{arrow} IHSG {last:,.0f} ({chg:+.2f}%) · {pos200} SMA200 "
+                      f"({sma200:,.0f}) · regime <b>{regime}</b>"]
+    except Exception:
+        pass
+    try:
+        from app.data import provider
+        sp = provider.get_history("^GSPC", period="10d", ttl=14400)["Close"].dropna()
+        if len(sp) >= 2:
+            chg = (float(sp.iloc[-1]) / float(sp.iloc[-2]) - 1) * 100
+            arrow = "🟢" if chg >= 0 else "🔴"
+            lines.append(f"{arrow} S&P 500 {float(sp.iloc[-1]):,.0f} ({chg:+.2f}%) "
+                         f"— sentimen global semalam")
+    except Exception:
+        pass
+    if lines:
+        lines.append("")
+    return lines
+
+
 def _positions_lines() -> list[str]:
     """Bagian '📁 Posisi Anda' utk pesan Telegram: P/L + saran exit per aset.
 
@@ -428,8 +465,12 @@ def build_telegram_text(rows: pd.DataFrame, s: dict[str, Any],
         d = f"{d} · {label}"
     n_conf = int(rows["confident"].sum()) if not rows.empty else 0
     h = int(rows["horizon"].iloc[0]) if ("horizon" in rows.columns and not rows.empty) else 10
-    lines = [f"🤖 <b>Sinyal ML Harian</b> — {d}",
+    judul = "🌅 <b>Briefing Pagi</b>" if (label or "").startswith("08:30") \
+        else "🤖 <b>Sinyal ML Harian</b>"
+    lines = [f"{judul} — {d}",
              f"Mode <b>shadow</b> · horizon {h} hari bursa · {len(rows)} ticker · {n_conf} confident", ""]
+    if (label or "").startswith("08:30"):
+        lines.extend(_morning_market_lines())
 
     # Urutan produksi = p_buy classifier (konfigurasi terbaik pada backtest
     # sadar-biaya); veto SELL tetap disaring sebagai pengaman.
