@@ -51,8 +51,18 @@
 
   <!-- ===================== DASHBOARD ===================== -->
   <div class="panel active" id="dash">
-    
-    <section class="glass-panel decision-panel" style="margin-bottom:1.4rem">
+
+    <div id="hero-tiles" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.7rem;margin-bottom:1.4rem"></div>
+
+    <section class="glass-panel" style="margin-bottom:1.4rem" id="pos-panel">
+      <div class="panel-header">
+        <h2>📁 Posisi Anda</h2>
+        <span class="mut" style="font-size:.72rem" id="pos-meta"></span>
+      </div>
+      <div id="pos-body"><span class="mut">Memuat posisi…</span></div>
+    </section>
+
+    <section class="glass-panel decision-panel" style="margin-bottom:1.4rem" id="pk-panel">
       <div class="panel-header">
         <h2>🎯 Pusat Keputusan</h2>
         <div class="flex" style="gap:.7rem">
@@ -836,6 +846,6 @@
   <section class="glass-panel disc" id="disc" style="margin-top:1.4rem"></section>
 </div>
 <div class="toast" id="toast"></div>
-<script src="/static/app.js?v=32"></script>
+<script src="/static/app.js?v=33"></script>
 </body>
 </html>

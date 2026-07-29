@@ -44,6 +44,15 @@ def datalake_status():
                 "last_message": "pasang SSH key dulu: ssh-copy-id qnap@100.70.97.42"}
 
 
+@router.get("/portfolio/review")
+def portfolio_review():
+    """Posisi milik + vonis exit + ML + ROI bulanan (utk dashboard)."""
+    from app.core import portfolio_snapshot
+    out = portfolio_snapshot.build_review()
+    out["monthly_roi"] = portfolio_snapshot.monthly_roi()
+    return out
+
+
 @router.get("/ml/focus")
 def ml_focus(refresh: bool = False):
     """Dua tahap: top-10 screening konvensional -> dinilai model ML screened."""

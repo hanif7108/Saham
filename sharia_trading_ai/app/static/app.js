@@ -4615,6 +4615,82 @@ async function loadMlSignals(refresh=false){
   el.innerHTML=html;
 }
 
+/* ===================== RINGKASAN HERO + POSISI + LIPAT ===================== */
+function heroTile(icon, judul, nilai, sub, cls, target){
+  return `<div class="glass-panel" style="padding:.8rem .9rem;cursor:pointer" onclick="document.getElementById('${target}')?.scrollIntoView({behavior:'smooth'})">
+    <div class="mut" style="font-size:.68rem;text-transform:uppercase;letter-spacing:.05em">${icon} ${judul}</div>
+    <div style="font-size:1.15rem;font-weight:800;margin-top:.15rem" class="${cls||''}">${nilai}</div>
+    <div class="mut" style="font-size:.7rem;margin-top:.1rem">${sub||''}</div>
+  </div>`;
+}
+
+async function loadHero(){
+  const el=document.getElementById('hero-tiles'); if(!el) return;
+  const tiles=[];
+  try{ const d=await api('/api/decisions');
+    const trend=(d.bursa&&(d.bursa.trend||d.bursa.idx_trend))||(d.adaptive&&d.adaptive.market_trend)||'';
+    const j=d.jumlah||{};
+    tiles.push(heroTile('🎯','Aksi Hari Ini',`${j.buy??0} BELI · ${j.sell??0} JUAAL`.replace('JUAAL','JUAL'),`${j.hold??0} hold — Pusat Keputusan`,'','pk-panel'));
+    if(trend) tiles.push(heroTile('🌦️','Regime Pasar',trend,'IHSG — komponen M CAN SLIM',trend==='UPTREND'?'buy':'sell','pk-panel'));
+  }catch(e){}
+  try{ const p=await api('/api/portfolio/review');
+    const n=(p.positions||[]).length;
+    const pl=(p.summary&&p.summary.total_pl_pct!=null)?p.summary.total_pl_pct:null;
+    const alerts=(p.positions||[]).filter(x=>x.exit_action==='SELL'||x.exit_action==='WASPADA').length;
+    tiles.push(heroTile('📁','Posisi Anda',`${n} aset ${pl!=null?`(${pl>=0?'+':''}${pl}%)`:''}`,
+      alerts?`⚠️ ${alerts} butuh perhatian`:'semua dalam rencana',pl!=null&&pl<0?'sell':'buy','pos-panel'));
+    window.__posReview=p; renderPositions(p);
+  }catch(e){}
+  try{ const m=await api('/api/ml/signals');
+    const top=(m.signals||[])[0];
+    if(top) tiles.push(heroTile('🤖','ML Teratas',`${top.ticker} ${Math.round(top.p_buy*100)}%`,`${m.n} ticker · shadow`,'','ml-signals-panel'));
+  }catch(e){}
+  try{ const t=await api('/api/ml/track'); const dl=await api('/api/datalake/status');
+    const s=t.stats||{};
+    tiles.push(heroTile('📊','Track Record',s.evaluated?`${s.evaluated} evaluasi`:`${s.pending??0} menunggu`,
+      `datalake ${dl.last_status==='ok'?'✓':dl.last_status||'—'}`,'','ml-track-panel'));
+  }catch(e){}
+  el.innerHTML=tiles.join('');
+}
+
+function renderPositions(p){
+  const el=document.getElementById('pos-body'); if(!el) return;
+  const meta=document.getElementById('pos-meta');
+  const rows=p.positions||[];
+  if(!rows.length){ el.innerHTML='<span class="mut">Belum ada posisi — tambahkan di tab Portofolio.</span>'; return; }
+  const roi=p.monthly_roi;
+  if(meta) meta.textContent=`${rows.length} aset · ${p.taken_at?String(p.taken_at).slice(11,16)+' WIB':''}${roi?` · ROI bln ${roi.roi_pct>=0?'+':''}${roi.roi_pct}% vs target ${roi.target_pct}%`:''}`;
+  const icon={SELL:'🔴',TRAIL:'🟠',WASPADA:'🟡',HOLD:'🟢'};
+  const badge={SELL:'sell',TRAIL:'warning',WASPADA:'warning',HOLD:'buy'};
+  el.innerHTML=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.8rem">
+    <tr style="text-align:left;color:var(--text-muted);font-size:.72rem"><th style="padding:.25rem 0">Aset</th><th>Broker</th><th style="text-align:right">P/L</th><th>Saran</th><th>Alasan</th><th style="text-align:right">P(SELL)/P(BUY)</th></tr>
+    ${rows.map(r=>`<tr style="cursor:pointer" onclick="gotoAnalyze('${r.ticker}')">
+      <td style="padding:.3rem 0;font-weight:700">${icon[r.exit_action]||'⚪'} ${esc(r.ticker)}</td>
+      <td class="mut" style="font-size:.74rem">${esc(r.broker||'—')}</td>
+      <td style="text-align:right;font-weight:600" class="${(r.pl_pct||0)>=0?'buy':'sell'}">${r.pl_pct!=null?`${r.pl_pct>=0?'+':''}${r.pl_pct}%`:'—'}</td>
+      <td><span class="badge ${badge[r.exit_action]||'na'}" style="font-size:.66rem;padding:1px 6px">${esc(r.exit_action)}</span></td>
+      <td class="mut" style="font-size:.72rem;max-width:20rem">${esc(r.exit_alasan||'')}</td>
+      <td class="mut" style="text-align:right;font-size:.74rem">${r.ml_p_sell!=null?`${Math.round(r.ml_p_sell*100)}% / ${Math.round(r.ml_p_buy*100)}%`:'n/a'}</td>
+    </tr>`).join('')}</table></div>
+  <div class="mut" style="font-size:.68rem;margin-top:.5rem">🟢 HOLD · 🟠 trailing armed · 🟡 waspada ML · 🔴 saatnya exit — detail aturan di Pembelajaran → Eksekusi Harian. Advisory; eksekusi di tangan Anda.</div>`;
+}
+
+function makeCollapsible(id, defaultOpen){
+  const sec=document.getElementById(id); if(!sec) return;
+  const header=sec.querySelector('.panel-header'); if(!header) return;
+  const kids=[...sec.children].filter(c=>c!==header);
+  const wrap=document.createElement('div'); wrap.id=id+'-wrap';
+  kids.forEach(k=>wrap.appendChild(k)); sec.appendChild(wrap);
+  const key='fold:'+id;
+  const btn=document.createElement('button');
+  btn.className='btn secondary'; btn.style.cssText='font-size:.7rem;padding:.15rem .5rem;margin-left:.5rem';
+  header.querySelector('h2')?.appendChild(btn);
+  const apply=(open)=>{ wrap.style.display=open?'':'none'; btn.textContent=open?'▾':'▸'; localStorage.setItem(key, open?'1':'0'); };
+  const saved=localStorage.getItem(key);
+  apply(saved===null?defaultOpen:saved==='1');
+  btn.onclick=(e)=>{ e.stopPropagation(); apply(wrap.style.display==='none'); };
+}
+
 /* ===================== DATALAKE STATUS ===================== */
 async function loadDatalakeStatus(){
   const el=document.getElementById('datalake-chip'); if(!el) return;
@@ -4657,6 +4733,10 @@ async function loadMlTrack(){
 function refreshAll(){ loadMarket(); loadUniverse(); _loaded.cmd=false; toast('Data pasar disegarkan.'); }
 (async()=>{
   loadMarket(); loadUniverse(); loadPedoman(); loadEksekusi(); loadStrategi(); loadEngines(); loadPortfolio(); loadMlTrack(); loadDatalakeStatus(); setTimeout(loadMlSignals, 1500); setTimeout(loadMlFocus, 2500);
+  setTimeout(loadHero, 1200);
+  makeCollapsible('ml-signals-panel', true);
+  makeCollapsible('ml-track-panel', false);
+  makeCollapsible('pos-panel', true);
   try{ const dc=await api('/api/disclaimer');
     $('#disc').innerHTML=`<b>Disclaimer:</b> ${esc(dc.disclaimer)}<br><br><b>Acuan:</b> ${dc.acuan.map(esc).join(' · ')}`;
   }catch(e){}

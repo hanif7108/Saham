@@ -27,8 +27,8 @@ SNAP_DIR = ML_DATA_DIR / "portfolio_snapshots"
 WIB = ZoneInfo("Asia/Jakarta")
 
 
-def save_daily() -> dict[str, Any]:
-    """Bekukan potret portofolio hari ini (overwrite bila diambil ulang)."""
+def build_review() -> dict[str, Any]:
+    """Potret posisi + vonis exit + ML terkini (dipakai snapshot & API)."""
     from app.core import exit_rules, portfolio
     from app.data import provider
 
@@ -78,14 +78,19 @@ def save_daily() -> dict[str, Any]:
         })
 
     today = datetime.now(WIB).date().isoformat()
-    snap = {"date": today,
+    return {"date": today,
             "taken_at": datetime.now(WIB).isoformat(timespec="seconds"),
             "summary": data.get("summary") or {},
             "positions": enriched}
+
+
+def save_daily() -> dict[str, Any]:
+    """Bekukan potret portofolio hari ini (overwrite bila diambil ulang)."""
+    snap = build_review()
     SNAP_DIR.mkdir(parents=True, exist_ok=True)
-    (SNAP_DIR / f"portfolio_{today}.json").write_text(
+    (SNAP_DIR / f"portfolio_{snap['date']}.json").write_text(
         json.dumps(snap, ensure_ascii=False, indent=1))
-    return {"ok": True, "date": today, "positions": len(enriched)}
+    return {"ok": True, "date": snap["date"], "positions": len(snap["positions"])}
 
 
 def monthly_roi() -> Optional[dict[str, Any]]:
