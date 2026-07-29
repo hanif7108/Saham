@@ -409,3 +409,17 @@ def test_morning_briefing_recap_only_at_0830(isolated_store, monkeypatch):
     assert "Briefing Pagi" in pagi and "Rekap pasar kemarin" in pagi
     assert "IHSG" in pagi and "-0.26%" in pagi          # 6184/6200-1
     assert "Rekap pasar kemarin" not in sore and "Sinyal ML Harian" in sore
+
+
+def test_exit_rules_accepts_scan_shaped_ml():
+    """Baris scan tanpa key 'available' HARUS tetap memicu aturan ML."""
+    from app.core.exit_rules import evaluate_exit
+    scan_ml = {"signal": "SELL", "p_buy": 0.1, "p_hold": 0.4, "p_sell": 0.5}
+    v = evaluate_exit(pnl_pct=2.0, price=102, peak_price=103, avg_price=100,
+                      days_held=3, ml=scan_ml)
+    assert v["kode"] == "ML_SELL_WARN"          # dulu bug: tak pernah terpicu
+    # time-stop juga hidup dgn ml scan-shaped lemah
+    weak = {"signal": "HOLD", "p_buy": 0.2, "p_hold": 0.6, "p_sell": 0.2}
+    v2 = evaluate_exit(pnl_pct=1.0, price=101, peak_price=102, avg_price=100,
+                       days_held=25, ml=weak)
+    assert v2["kode"] == "TIME_STOP"

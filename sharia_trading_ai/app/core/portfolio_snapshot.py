@@ -50,6 +50,17 @@ def save_daily() -> dict[str, Any]:
         except Exception:
             closes = None
         ml = scan.get(tk)
+        if ml is None:
+            try:
+                from app.data import provider as _pv
+                if not _pv.is_us_ticker(tk):
+                    from app.core import ml_signal as _mls
+                    pr = _mls.predict(tk)
+                    if pr.get("available"):
+                        ml = {k: pr[k] for k in
+                              ("signal", "p_buy", "p_hold", "p_sell")}
+            except Exception:
+                ml = None
         verdict = exit_rules.evaluate_exit(
             pnl_pct=r.get("pl_pct"), price=r.get("current_price"),
             peak_price=exit_rules.peak_since(closes, r.get("added_at")),

@@ -83,7 +83,9 @@ def evaluate_exit(*, pnl_pct: Optional[float], price: Optional[float],
     ml = ml or {}
     p_sell = float(ml.get("p_sell") or 0)
     p_buy = float(ml.get("p_buy") or 0)
-    ml_ok = bool(ml.get("available"))
+    # 'available' hanya ada di hasil predict(); baris scan tidak membawanya —
+    # dict berisi probabilitas = ML tersedia (bugfix 2026-07-29)
+    ml_ok = bool(ml) and bool(ml.get("available", True))
 
     if pnl_pct is not None and pnl_pct <= SL_PCT:
         return {"action": "SELL", "kode": "CUT_LOSS",

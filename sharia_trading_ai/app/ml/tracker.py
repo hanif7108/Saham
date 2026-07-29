@@ -422,6 +422,17 @@ def _positions_lines() -> list[str]:
             peak = exit_rules.peak_since(closes, r.get("added_at"))
             days = exit_rules.days_held_bursa(r.get("added_at"))
             ml = scan_by_tk.get(tk)
+            if ml is None and not provider.is_us_ticker(tk):
+                # aset milik WAJIB selalu dapat prediksi ML (walau di luar
+                # filter scan / universe tampilan) — prediksi langsung
+                try:
+                    from app.core import ml_signal as _mls2
+                    pr = _mls2.predict(tk)
+                    if pr.get("available"):
+                        ml = {k: pr[k] for k in
+                              ("signal", "p_buy", "p_hold", "p_sell")}
+                except Exception:
+                    ml = None
             v = exit_rules.evaluate_exit(
                 pnl_pct=r.get("pl_pct"), price=r.get("current_price"),
                 peak_price=peak, avg_price=r.get("avg_price"),
@@ -431,7 +442,9 @@ def _positions_lines() -> list[str]:
             pl_txt = f"{pl:+.1f}%" if pl is not None else "—"
             broker = f" [{r['broker']}]" if r.get("broker") else ""
             hari = f" · {days}h" if days is not None else ""
-            mltxt = f" · P(SELL) {float(ml['p_sell']):.0%}" if ml else ""
+            mltxt = (f" · ML {ml.get('signal','—')}: P(SELL) "
+                     f"{float(ml['p_sell']):.0%} / P(BUY) {float(ml['p_buy']):.0%}"
+                     ) if ml else " · ML: n/a (saham US — aturan harga saja)"
             lines.append(f"{icon} <b>{tk}</b>{broker} {pl_txt}{hari} → "
                          f"<b>{v['action']}</b>: {v['alasan']}{mltxt}")
         try:
