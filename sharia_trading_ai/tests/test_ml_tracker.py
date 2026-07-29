@@ -194,6 +194,7 @@ def test_simulate_applies_price_slippage():
 def test_log_transition_day_two_horizons(isolated_store, monkeypatch):
     """Hari transisi: batch horizon lama & baru boleh hidup berdampingan."""
     from app.config import settings
+    monkeypatch.setattr(tracker, "_is_market_data_final", lambda d: True)
     r1 = tracker.log_today(ranking=_fake_ranking(), force=True)   # horizon 5 (fake)
     assert r1["logged"] == 2
     # ganti horizon aktif -> pencatatan kedua TIDAK dianggap duplikat
@@ -369,3 +370,24 @@ def test_telegram_positions_section(isolated_store, monkeypatch):
     assert "KLBF" in txt and "Profits Anywhere" in txt
     assert "AAPL" in txt and "CUT_LOSS" not in txt  # alasan pakai kalimat, bukan kode
     assert "🔴" in txt   # AAPL -8.2% -> SELL cut loss
+
+
+def test_portfolio_snapshot_and_monthly_roi(tmp_path, monkeypatch):
+    import json as _json
+    from app.core import portfolio_snapshot as PS
+    monkeypatch.setattr(PS, "SNAP_DIR", tmp_path)
+    # dua snapshot berjarak ~30 hari, basis modal sama -> ROI presisi
+    for d, v in (("2026-06-28", 15_000_000), ("2026-07-28", 16_200_000)):
+        (tmp_path / f"portfolio_{d}.json").write_text(_json.dumps({
+            "date": d, "summary": {"total_net_value": v, "total_cost": 15_000_000},
+            "positions": []}))
+    roi = PS.monthly_roi()
+    assert roi and roi["roi_pct"] == 8.0 and roi["target_pct"] == 10.0
+    assert not roi["approx_basis_changed"]
+    # basis berubah (ada beli baru) -> ditandai approx
+    (tmp_path / "portfolio_2026-07-28.json").write_text(_json.dumps({
+        "date": "2026-07-28", "summary": {"total_net_value": 20_000_000,
+                                          "total_cost": 19_000_000},
+        "positions": []}))
+    roi2 = PS.monthly_roi()
+    assert roi2 and roi2["approx_basis_changed"]

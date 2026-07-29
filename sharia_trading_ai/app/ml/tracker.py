@@ -397,6 +397,23 @@ def _positions_lines() -> list[str]:
             mltxt = f" · P(SELL) {float(ml['p_sell']):.0%}" if ml else ""
             lines.append(f"{icon} <b>{tk}</b>{broker} {pl_txt}{hari} → "
                          f"<b>{v['action']}</b>: {v['alasan']}{mltxt}")
+        try:
+            from app.core import portfolio_snapshot
+            roi = portfolio_snapshot.monthly_roi()
+            tgt = None
+            if roi:
+                note = " (basis berubah — approx)" if roi.get("approx_basis_changed") else ""
+                emoji = "🎯" if roi["roi_pct"] >= roi["target_pct"] else "📉"
+                lines.append(f"{emoji} ROI {roi['since']}→{roi['until']}: "
+                             f"<b>{roi['roi_pct']:+.2f}%</b> vs target "
+                             f"{roi['target_pct']:.0f}%/bln{note}")
+            else:
+                from app.config import settings as _st3
+                tgt = float(getattr(_st3, "roi_target_monthly_pct", 10.0))
+                lines.append(f"🎯 Target rotasi {tgt:.0f}%/bln — ROI terukur mulai "
+                             f"tersedia setelah beberapa snapshot harian.")
+        except Exception:
+            pass
         lines.append("<i>Saran advisory — eksekusi & risiko di tangan Anda.</i>")
         return lines
     except Exception:
@@ -583,6 +600,11 @@ def run_daily() -> dict[str, Any]:
     """Dipanggil scheduler tiap sore hari bursa: evaluasi dulu, lalu catat baru."""
     ev = evaluate_matured()
     lg = log_today()
+    try:
+        from app.core import portfolio_snapshot
+        portfolio_snapshot.save_daily()
+    except Exception:  # noqa: BLE001
+        pass
     tg = None
     try:
         from app.config import settings

@@ -112,6 +112,8 @@ push(){
   [ -f "$ML_DATA/intraday_scans.parquet" ] && \
   R "$ML_DATA/intraday_scans.parquet"         "$NAS_ROOT/predictions/intraday_scans.parquet"
   R "$ML_DATA/decisions_snapshots/"           "$NAS_ROOT/predictions/decisions/"
+  [ -d "$ML_DATA/portfolio_snapshots" ] && \
+  R "$ML_DATA/portfolio_snapshots/"           "$NAS_ROOT/predictions/portfolio/"
   R "$APP_DIR/app/ml/artifacts/"              "$NAS_ROOT/models/$month/"
   [ -f "$ML_DATA/audit_summary.json" ] && \
   R "$ML_DATA/audit_summary.json"             "$NAS_ROOT/logs/audit_summary.json"
