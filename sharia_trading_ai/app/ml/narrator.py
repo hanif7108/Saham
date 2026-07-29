@@ -83,12 +83,17 @@ _PELAJARAN = {
 
 
 def _narasi_satu(tk: str, name: str, price: Any, pr: dict[str, Any],
-                 rule_signal: Optional[str]) -> list[str]:
+                 rule_signal: Optional[str],
+                 used_lessons: Optional[set] = None) -> list[str]:
     p_buy = float(pr.get("p_buy") or 0)
     p_sell = float(pr.get("p_sell") or 0)
     feats = pr.get("top_features") or []
+    # Prioritaskan fitur KHAS saham (bukan konteks pasar mkt_* yang sama utk
+    # semua) agar tiap narasi unik; mkt_* hanya cadangan bila kalimat kurang.
+    spesifik = [f for f in feats if not str(f.get("feature", "")).startswith("mkt_")]
+    cadangan = [f for f in feats if str(f.get("feature", "")).startswith("mkt_")]
     kalimat = []
-    for f in feats[:5]:
+    for f in spesifik + cadangan:
         s = _feat_sentence(f.get("feature"), f.get("value"))
         if s:
             kalimat.append(s)
@@ -104,10 +109,13 @@ def _narasi_satu(tk: str, name: str, price: Any, pr: dict[str, Any],
             f"<b>{rule_signal}</b> — sejalan." if setuju else
             f"<b>{rule_signal}</b> — berbeda pendapat (biasanya karena disiplin "
             f"regime pasar); track record yang mengadili."))
-    # Pelajaran: dari fitur ter-penting yang punya materi
-    for f in feats:
-        les = _PELAJARAN.get(f.get("feature") or "")
-        if les:
+    # Pelajaran: dari fitur khas terpenting; tidak berulang dalam satu pesan
+    used = used_lessons if used_lessons is not None else set()
+    for f in spesifik + cadangan:
+        key = f.get("feature") or ""
+        les = _PELAJARAN.get(key)
+        if les and key not in used:
+            used.add(key)
             lines.append(f"📚 <i>Pelajaran:</i> {les}")
             break
     return lines
@@ -125,6 +133,8 @@ def build_narrative(picks: list[dict[str, Any]], label: Optional[str],
     if predict_fn is None:
         from app.core.ml_signal import predict as predict_fn  # type: ignore
     blok: list[str] = []
+    used_lessons: set = set()
+    mkt_line = None
     for pk in picks[:3]:
         tk = pk.get("ticker") or ""
         try:
@@ -133,14 +143,25 @@ def build_narrative(picks: list[dict[str, Any]], label: Optional[str],
             continue
         if not pr.get("available"):
             continue
+        if mkt_line is None:                 # konteks pasar cukup SEKALI
+            ctx = [
+                _feat_sentence(f["feature"], f.get("value"))
+                for f in (pr.get("top_features") or [])
+                if str(f.get("feature", "")).startswith("mkt_")]
+            ctx = [c for c in ctx if c]
+            if ctx:
+                mkt_line = "🌐 " + "; ".join(ctx[:2]) + "."
         blok.append("\n".join(_narasi_satu(tk, pk.get("name") or "",
                                            pk.get("price"), pr,
-                                           pk.get("rule_signal"))))
+                                           pk.get("rule_signal"),
+                                           used_lessons)))
     if not blok:
         return None
     head = f"🎓 <b>Narasi & Pembelajaran</b> — 3 pilihan teratas"
     if label:
         head += f" · {label}"
+    if mkt_line:
+        head += "\n" + mkt_line
     tail = ("<i>Penjelasan diturunkan dari fitur yang benar-benar dilihat model "
             "(bukan opini). Shadow mode — bukan perintah beli.</i>")
     return "\n\n".join([head] + blok + [tail])
