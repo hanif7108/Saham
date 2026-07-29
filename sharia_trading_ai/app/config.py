@@ -282,6 +282,7 @@ class Settings(BaseSettings):
     exit_trail_arm_pct: float = 5.0     # trailing aktif setelah profit puncak >= ini
     exit_time_stop_days: int = 20       # hari bursa maks posisi menganggur tanpa target
     roi_target_monthly_pct: float = 10.0  # target rotasi bulanan (rujukan terukur)
+    ml_narrative_telegram: bool = True  # pesan ke-2/sesi: narasi 3 saham teratas
     # Jam kirim ringkasan ML ke Telegram (hari bursa). Jam == ml_track_time
     # memakai data tercatat (setelah tutup); lainnya snapshot scan terkini.
     ml_track_telegram_times: str = "08:30,09:30,11:30,14:30,15:30,16:20"

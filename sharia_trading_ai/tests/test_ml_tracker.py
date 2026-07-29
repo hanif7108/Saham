@@ -423,3 +423,23 @@ def test_exit_rules_accepts_scan_shaped_ml():
     v2 = evaluate_exit(pnl_pct=1.0, price=101, peak_price=102, avg_price=100,
                        days_held=25, ml=weak)
     assert v2["kode"] == "TIME_STOP"
+
+
+def test_narrative_grounded_in_features():
+    from app.ml import narrator
+    fake_pr = {"available": True, "p_buy": 0.71, "p_sell": 0.06,
+               "top_features": [
+                   {"feature": "close_sma200", "importance": .1, "value": 0.18},
+                   {"feature": "rs_60", "importance": .08, "value": 0.12},
+                   {"feature": "vol_ratio20", "importance": .05, "value": 2.1},
+                   {"feature": "month", "importance": .04, "value": 7.0}]}
+    txt = narrator.build_narrative(
+        [{"ticker": "ANTM", "name": "Aneka Tambang", "price": 2900,
+          "rule_signal": "SKIP"}], "08:30 WIB", predict_fn=lambda tk: fake_pr)
+    assert txt and "ANTM" in txt and "P(BUY) 71%" in txt
+    assert "18% di atas rata-rata 200 hari" in txt      # dari nilai fitur nyata
+    assert "mengungguli IHSG +12%" in txt
+    assert "volume 2.1×" in txt
+    assert "Pelajaran" in txt and "SKIP" in txt
+    # tanpa kandidat -> None (tidak kirim pesan kosong)
+    assert narrator.build_narrative([], None) is None

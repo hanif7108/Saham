@@ -647,7 +647,35 @@ def telegram_summary(source: str = "store",
     if rows.empty:
         return {"ok": False, "error": "belum ada prediksi tersedia"}
     text = build_telegram_text(rows, stats(last_days=180), label=label)
-    return telegram_notify.send(text)
+    res = telegram_notify.send(text)
+    if res.get("ok"):
+        try:
+            _send_narrative(rows, label)
+        except Exception:  # noqa: BLE001
+            pass
+    return res
+
+
+def _send_narrative(rows: pd.DataFrame, label: Optional[str]) -> None:
+    """Pesan ke-2: narasi & pembelajaran 3 pilihan teratas sesi ini."""
+    from app.config import settings as _st
+    if not getattr(_st, "ml_narrative_telegram", True):
+        return
+    from app.core import telegram_notify
+    from app.ml import narrator
+    cand = rows[rows["signal"] == "BUY"].copy()
+    if "veto_sell" in cand.columns:
+        cand = cand[~cand["veto_sell"].fillna(False).astype(bool)]
+    if "price" in cand.columns:
+        min_p = float(getattr(_st, "ml_min_price", 500) or 0)
+        cand = cand[cand["price"].fillna(0) >= min_p]
+    top = cand.nlargest(3, "p_buy")
+    picks = [{"ticker": r["ticker"], "name": r.get("name"),
+              "price": r.get("price"),
+              "rule_signal": r.get("rule_signal")} for _, r in top.iterrows()]
+    text = narrator.build_narrative(picks, label)
+    if text:
+        telegram_notify.send(text)
 
 
 def run_daily() -> dict[str, Any]:
